@@ -80,9 +80,10 @@
             margin-top: 12px; 
         }
         @media (min-width: 768px) {
-            .stats-grid { grid-template-columns: repeat(6, 1fr); }
-            .controls-grid { grid-template-columns: repeat(4, 1fr); }
-            .full-width { grid-column: span 1; }
+            .stats-grid { grid-template-columns: repeat(7, 1fr); }
+            .controls-grid { grid-template-columns: 1fr 1fr 1.2fr 1.5fr; }
+            .full-width-mobile { grid-column: span 1; }
+            .btn-refresh { grid-column: span 1; }
         }
 
         .stat-card { 
@@ -202,6 +203,188 @@
         .rec-risk { background: rgba(241, 196, 15, 0.2); border: 1px solid #f1c40f; color: #f1c40f; }
         .rec-danger { background: rgba(231, 76, 60, 0.2); border: 1px solid #e74c3c; color: #e74c3c; }
         .rec-warning { background: rgba(230, 126, 34, 0.2); border: 1px solid #e67e22; color: #e67e22; }
+
+        .double-tie-panel {
+            background: #181e2b;
+            border: 1px solid #2a3a54;
+            border-left: 4px solid #3498db;
+            border-radius: 8px;
+            padding: 14px;
+            margin-top: 15px;
+        }
+        .double-tie-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+        .double-tie-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #fff;
+        }
+        .verdict-badge {
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 12px;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .verdict-yes { background: #27ae60; color: #fff; }
+        .verdict-maybe { background: #f39c12; color: #121212; }
+        .verdict-bubble { background: #e67e22; color: #fff; }
+        .verdict-no { background: #c0392b; color: #fff; }
+
+        .scenario-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 10px;
+        }
+        @media (min-width: 768px) {
+            .scenario-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        .scenario-card {
+            background: #1d212f;
+            border: 1px solid #2f3b52;
+            border-radius: 6px;
+            padding: 10px;
+            text-align: center;
+        }
+        .scenario-title {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .scenario-chance {
+            font-size: 22px;
+            font-weight: bold;
+            margin: 4px 0;
+        }
+        .scenario-pts {
+            font-size: 11px;
+            color: #888;
+        }
+        .scenario-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-top: 4px;
+            font-weight: 600;
+        }
+        .round-pill {
+            background: rgba(52, 152, 219, 0.15);
+            color: #3498db;
+            border: 1px solid rgba(52, 152, 219, 0.4);
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .pagination-bar {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: -10px;
+            margin-bottom: 20px;
+            padding: 8px 12px;
+            background: #181818;
+            border-radius: 6px;
+            border: 1px solid #2d2d2d;
+            font-size: 13px;
+            color: #aaa;
+        }
+        .pagination-btn {
+            background: #2a2a2a;
+            color: #fff;
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 6px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            width: auto;
+            height: 34px;
+            transition: background 0.2s, border-color 0.2s;
+        }
+        .pagination-btn:hover:not(:disabled) {
+            background: #3498db;
+            border-color: #3498db;
+            color: #fff;
+        }
+        .pagination-btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+            border-color: #333;
+        }
+        .pagination-info {
+            font-size: 13px;
+            color: #ccc;
+        }
+        .filter-controls-row {
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .poles-toggle-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: #1e2230;
+            color: #cbd5e1;
+            border: 1px solid #3b4252;
+            border-radius: 6px;
+            padding: 9px 16px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            width: auto;
+        }
+        .poles-toggle-btn:hover {
+            background: #283046;
+            border-color: #e74c3c;
+            color: #fff;
+        }
+        .poles-toggle-btn.active {
+            background: #c0392b;
+            border-color: #e74c3c;
+            color: #fff;
+            box-shadow: 0 0 12px rgba(231, 76, 60, 0.4);
+        }
+        .poles-badge {
+            background: rgba(0, 0, 0, 0.35);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 7px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+        .poles-toggle-btn.active .poles-badge {
+            background: #fff;
+            color: #c0392b;
+        }
+        .filter-active-pill {
+            font-size: 11px;
+            background: rgba(231, 76, 60, 0.2);
+            color: #e74c3c;
+            border: 1px solid #e74c3c;
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: bold;
+            margin-left: 8px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -212,20 +395,20 @@
     <div class="controls-grid">
         <input type="number" id="eventId" value="865248" placeholder="Event ID">
         <input type="number" id="cutSize" value="4" placeholder="Cut (np. 4)">
-        
-        <select id="cutRule" class="full-width">
+        <select id="cutRule" class="full-width full-width-mobile">
             <option value="hard" selected>Twardy Cut (Sztywne Top X) [ME 2]</option>
             <option value="soft">Miękki Cut (Top X + równe punkty) [ME 1]</option>
         </select>
         
-        <button onclick="startTracking()" class="full-width">Odśwież / Śledź Live</button>
-        <button onclick="toggleTokenPanel()" class="btn-secondary full-width">🔑 Ustawienia Tokena (Dla Parowań)</button>
+        <button onclick="startTracking()" class="full-width btn-refresh">Odśwież / Śledź Live</button>
     </div>
 
-    <div id="tokenPanel">
-        <p style="font-size: 12px; color: #aaa; margin: 0 0 8px 0;">Wklej nagłówek z przeglądarki (Token 16ef...):</p>
-        <input type="text" id="tokenInput" placeholder="Token 16ef..." style="margin-bottom: 8px;">
-        <button onclick="saveToken()" style="height: 38px; font-size: 14px;">Zapisz Token na Serwerze</button>
+    <div class="filter-controls-row">
+        <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, szczur, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
+            <span style="font-size: 16px;">🇵🇱</span>
+            <span id="polesFilterBtnText">Śledź tylko Polaków</span>
+            <span id="polesCountBadge" class="poles-badge" style="display: none;">0 PL</span>
+        </button>
     </div>
 
     <div id="status">Gotowy do pobierania...</div>
@@ -236,7 +419,8 @@
     <div class="stats-grid">
         <div class="stat-card"><div class="label">Graczy</div><div class="value" id="totalPlayersDisplay">-</div></div>
         <div class="stat-card"><div class="label">Runda Live</div><div class="value" id="activeRoundInfo">-</div></div>
-        <div class="stat-card"><div class="label">Standings R.</div><div class="value" id="standingsRoundInfo">-</div></div>
+        <div class="stat-card"><div class="label">Do Końca</div><div class="value" id="roundsLeftInfo">-</div></div>
+        <div class="stat-card"><div class="label">Remisy</div><div class="value" id="tournamentDrawsInfo">-</div></div>
         <div class="stat-card"><div class="label">Obecny Próg</div><div class="value" id="bubbleScore">-</div></div>
         <div class="stat-card"><div class="label">Próg Koniec</div><div class="value" id="projectedBubbleScore">-</div></div>
         <div class="stat-card"><div class="label">W Cut</div><div class="value" id="playersInCut">-</div></div>
@@ -245,7 +429,7 @@
 
 <!-- SEKCJA: PAROWANIA NA ŻYWO -->
 <div class="section-header">
-    <h3>⚔️ Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>)</h3>
+    <h3>⚔️ Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>) <span id="pairingsPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
     <span id="matchesProgress" style="font-size: 12px; color: #aaa;">-</span>
 </div>
 <div class="table-responsive">
@@ -264,10 +448,34 @@
         </tbody>
     </table>
 </div>
+<div id="pairingsPagination" class="pagination-bar" style="display: none;"></div>
 
-<!-- SEKCJA 1: TABELA LIVE ZE STRATEGIĄ I WYNIKAMI NA ŻYWO -->
+<!-- SEKCJA 1: TABELA OFICJALNA RAVENSBURGER (STAN PO RUNDZIE X) -->
 <div class="section-header">
-    <h3 style="color: #3498db;">🔥 Klasyfikacja LIVE & Strategia Awansu (Z uwzględnieniem zakończonych stołów)</h3>
+    <h3 style="color: #888;">📋 Oficjalna Tabela Ravensburger (Stan po Rundzie <span id="officialRoundNum">-</span>) <span id="officialPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+</div>
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 45px;">Msc</th>
+                <th>Gracz</th>
+                <th>Pkt</th>
+                <th>Bilans</th>
+                <th>OMWP / GWP</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="officialStandingsBody">
+            <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
+        </tbody>
+    </table>
+</div>
+<div id="officialPagination" class="pagination-bar" style="display: none;"></div>
+
+<!-- SEKCJA 2: TABELA LIVE ZE STRATEGIĄ I WYNIKAMI NA ŻYWO -->
+<div class="section-header">
+    <h3 style="color: #3498db;">🔥 Klasyfikacja LIVE & Strategia Awansu (Z uwzględnieniem zakończonych stołów) <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
     <span style="font-size: 11px; color: #888;">(Kliknij gracza, by zbadać TIE)</span>
 </div>
 <div class="table-responsive">
@@ -288,28 +496,7 @@
         </tbody>
     </table>
 </div>
-
-<!-- SEKCJA 2: TABELA OFICJALNA RAVENSBURGER (STAN PO RUNDZIE X) -->
-<div class="section-header">
-    <h3 style="color: #888;">📋 Oficjalna Tabela Ravensburger (Stan po Rundzie <span id="officialRoundNum">-</span>)</h3>
-</div>
-<div class="table-responsive">
-    <table>
-        <thead>
-            <tr>
-                <th style="width: 45px;">Msc</th>
-                <th>Gracz</th>
-                <th>Pkt</th>
-                <th>Bilans</th>
-                <th>OMWP / GWP</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody id="officialStandingsBody">
-            <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
-        </tbody>
-    </table>
-</div>
+<div id="livePagination" class="pagination-bar" style="display: none;"></div>
 
 <!-- SEKCJA 3: MODUŁ CAN I TAKE A TIE -->
 <div class="panel tie-panel" id="tieModule">
@@ -324,7 +511,7 @@
     </div>
 
     <div id="tieResultArea" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 8px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 8px; flex-wrap: wrap; gap: 8px;">
             <div>
                 Wybrany gracz: <strong id="selectedPlayerName" style="color: #fff; font-size: 16px;">-</strong>
                 <span id="selectedPlayerTable" style="color: #3498db; font-size: 13px; margin-left: 8px;"></span>
@@ -332,6 +519,30 @@
             <div id="selectedPlayerBaseStats" style="font-size: 13px; color: #888;"></div>
         </div>
 
+        <div id="tieRoundContext" style="margin-top: 10px; font-size: 13px; color: #cbd5e1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"></div>
+
+        <!-- DEDYKOWANA PODPOWIEDŹ: CZY 2 REMISY Z RZĘDU DAJĄ TOP CUT? -->
+        <div id="doubleTiePromptPanel" class="double-tie-panel" style="display: none;">
+            <div class="double-tie-header">
+                <div class="double-tie-title" id="doubleTiePromptTitle">🤝 Czy 2 remisy z rzędu dają Top Cut?</div>
+                <div class="verdict-badge" id="doubleTieVerdictBadge">-</div>
+            </div>
+            <div id="doubleTiePromptDesc" style="font-size: 13px; color: #cbd5e1; line-height: 1.5;"></div>
+            <div id="doubleTieOpponentNote" style="font-size: 12px; color: #f39c12; margin-top: 6px;"></div>
+        </div>
+
+        <!-- ŚCIEŻKI AWANSU / SCENARIUSZE WIELORUNDOWE -->
+        <div id="multiRoundScenariosWrapper" style="margin-top: 15px; display: none;">
+            <div style="font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
+                🛣️ Ścieżki Awansu (Kombinacje wyników do końca turnieju)
+            </div>
+            <div class="scenario-grid" id="multiRoundScenarioGrid"></div>
+        </div>
+
+        <!-- BIEŻĄCY STÓŁ -->
+        <div style="margin-top: 18px; font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
+            ⚡ Scenariusze dla obecnego meczu (Runda <span id="tieCurrentRoundNum">-</span>)
+        </div>
         <div class="simulation-grid">
             <div class="sim-card">
                 <div class="sim-title">Jeśli padnie REMIS (ID)</div>

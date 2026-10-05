@@ -116,6 +116,16 @@ if (isset($eventData['tournament_phases'])) {
     }
 }
 
+if ($totalRounds === 0 && $playerCount > 0) {
+    if ($playerCount <= 8) $totalRounds = 3;
+    elseif ($playerCount <= 16) $totalRounds = 4;
+    elseif ($playerCount <= 32) $totalRounds = 5;
+    elseif ($playerCount <= 64) $totalRounds = 6;
+    elseif ($playerCount <= 128) $totalRounds = 7;
+    elseif ($playerCount <= 226) $totalRounds = 8;
+    else $totalRounds = 9;
+}
+
 if (!$pairingsRoundId && $standingsRoundId) {
     $pairingsRoundId = $standingsRoundId;
     $activeRoundNumber = $standingsRoundNumber;
