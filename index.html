@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Lorcana Live Predictor & Tie Simulator</title>
+    <title>Lorcana Live Predictor & Standings Hub</title>
     <style>
         * { box-sizing: border-box; }
         body { 
@@ -125,7 +125,7 @@
         th { background: #222; color: #aaa; font-weight: 600; }
         
         tbody tr.clickable-row { cursor: pointer; }
-        tbody tr.clickable-row:hover { background: rgba(243, 156, 18, 0.1); }
+        tbody tr.clickable-row:hover { background: rgba(52, 152, 219, 0.15); }
         
         .safe { background: rgba(46, 204, 113, 0.12); }
         .bubble { background: rgba(241, 196, 15, 0.12); }
@@ -188,6 +188,7 @@
         .sim-card .sim-title { font-size: 12px; color: #aaa; text-transform: uppercase; }
         .sim-card .sim-chance { font-size: 24px; font-weight: bold; margin: 6px 0; }
         .sim-card .sim-pts { font-size: 12px; color: #888; }
+        .sim-card .sim-sub { font-size: 11px; color: #f39c12; margin-top: 4px; }
         
         .recommendation-box {
             margin-top: 15px;
@@ -200,6 +201,7 @@
         .rec-safe { background: rgba(46, 204, 113, 0.2); border: 1px solid #2ecc71; color: #2ecc71; }
         .rec-risk { background: rgba(241, 196, 15, 0.2); border: 1px solid #f1c40f; color: #f1c40f; }
         .rec-danger { background: rgba(231, 76, 60, 0.2); border: 1px solid #e74c3c; color: #e74c3c; }
+        .rec-warning { background: rgba(230, 126, 34, 0.2); border: 1px solid #e67e22; color: #e67e22; }
     </style>
 </head>
 <body>
@@ -208,11 +210,10 @@
     <h2>Lorcana Live Hub</h2>
     
     <div class="controls-grid">
-        <input type="number" id="eventId" value="1074323" placeholder="Event ID">
-        <input type="number" id="cutSize" value="32" placeholder="Cut (np. 32)">
+        <input type="number" id="eventId" value="865248" placeholder="Event ID">
+        <input type="number" id="cutSize" value="4" placeholder="Cut (np. 4)">
         
         <select id="cutRule" class="full-width">
-            <!-- Twardy Cut jako opcja domyślna -->
             <option value="hard" selected>Twardy Cut (Sztywne Top X) [ME 2]</option>
             <option value="soft">Miękki Cut (Top X + równe punkty) [ME 1]</option>
         </select>
@@ -242,6 +243,7 @@
     </div>
 </div>
 
+<!-- SEKCJA: PAROWANIA NA ŻYWO -->
 <div class="section-header">
     <h3>⚔️ Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>)</h3>
     <span id="matchesProgress" style="font-size: 12px; color: #aaa;">-</span>
@@ -263,8 +265,33 @@
     </table>
 </div>
 
+<!-- SEKCJA 1: TABELA LIVE ZE STRATEGIĄ I WYNIKAMI NA ŻYWO -->
 <div class="section-header">
-    <h3>📊 Klasyfikacja i Strategia Awansu <span style="font-size: 11px; color: #888;">(Kliknij gracza, by zbadać TIE)</span></h3>
+    <h3 style="color: #3498db;">🔥 Klasyfikacja LIVE & Strategia Awansu (Z uwzględnieniem zakończonych stołów)</h3>
+    <span style="font-size: 11px; color: #888;">(Kliknij gracza, by zbadać TIE)</span>
+</div>
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 45px;">Msc</th>
+                <th>Gracz</th>
+                <th>Pkt LIVE</th>
+                <th>OMWP / GWP</th>
+                <th>Wymagane</th>
+                <th>Optymalna Strategia</th>
+                <th>Status LIVE</th>
+            </tr>
+        </thead>
+        <tbody id="liveStandingsBody">
+            <tr><td colspan="7" style="color: #666; padding: 20px;">Trwa symulacja wyników live...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<!-- SEKCJA 2: TABELA OFICJALNA RAVENSBURGER (STAN PO RUNDZIE X) -->
+<div class="section-header">
+    <h3 style="color: #888;">📋 Oficjalna Tabela Ravensburger (Stan po Rundzie <span id="officialRoundNum">-</span>)</h3>
 </div>
 <div class="table-responsive">
     <table>
@@ -273,26 +300,26 @@
                 <th style="width: 45px;">Msc</th>
                 <th>Gracz</th>
                 <th>Pkt</th>
+                <th>Bilans</th>
                 <th>OMWP / GWP</th>
-                <th>Wymagane</th>
-                <th>Optymalna Strategia</th>
                 <th>Status</th>
             </tr>
         </thead>
-        <tbody id="standingsBody">
-            <tr><td colspan="7" style="color: #666; padding: 20px;">Wpisz ID i kliknij Śledź Live.</td></tr>
+        <tbody id="officialStandingsBody">
+            <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
         </tbody>
     </table>
 </div>
 
+<!-- SEKCJA 3: MODUŁ CAN I TAKE A TIE -->
 <div class="panel tie-panel" id="tieModule">
-    <h3 style="color: #3498db; margin-bottom: 12px;">🤝 Can I take a TIE? (Live Simulator & Tiebreakers)</h3>
+    <h3 style="color: #3498db; margin-bottom: 12px;">🤝 Can I take a TIE? (Live Simulator & Mutual Agreement)</h3>
     <p style="font-size: 13px; color: #aaa; margin: 0 0 10px 0;">
-        Wpisz swój nick lub kliknij siebie w tabeli powyżej. Algorytm analizuje zakończone stoły i oblicza matematyczną szansę wejścia do Cutu.
+        Wpisz swój nick lub kliknij siebie w tabeli LIVE. Algorytm na bieżąco monitoruje zakończone stoły i oblicza matematyczną szansę wejścia do Cutu.
     </p>
 
     <div class="autocomplete-wrapper">
-        <input type="text" id="playerSearchInput" placeholder="Wyszukaj gracza (np. james, Asia, Olivia)..." autocomplete="off" oninput="onPlayerSearchInput()">
+        <input type="text" id="playerSearchInput" placeholder="Wyszukaj gracza (np. Amanda, Rose, Kelly)..." autocomplete="off" oninput="onPlayerSearchInput()">
         <div id="playerSuggestions" class="suggestions-dropdown"></div>
     </div>
 
@@ -307,9 +334,10 @@
 
         <div class="simulation-grid">
             <div class="sim-card">
-                <div class="sim-title">Jeśli weźmiesz REMIS (ID)</div>
+                <div class="sim-title">Jeśli padnie REMIS (ID)</div>
                 <div class="sim-chance" id="chanceTieDisplay" style="color: #f1c40f;">-%</div>
                 <div class="sim-pts" id="ptsTieDisplay">Pkt: -</div>
+                <div class="sim-sub" id="oppTieChanceDisplay">Rywal po TIE: -%</div>
             </div>
             <div class="sim-card">
                 <div class="sim-title">Jeśli WYGRASZ (WIN)</div>
