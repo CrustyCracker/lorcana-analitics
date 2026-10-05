@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <title>Lorcana Analytics Live - Strategy Predictor</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #121212; color: #e0e0e0; padding: 20px; margin: 0; }
+        .panel { background: #1e1e1e; padding: 20px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #8e44ad; }
+        select, input, button { padding: 10px; margin-right: 10px; font-size: 16px; background: #333; color: white; border: 1px solid #555; border-radius: 4px; }
+        button { background: #8e44ad; color: white; font-weight: bold; cursor: pointer; border: none; }
+        button:hover { background: #9b59b6; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 14px; }
+        th, td { padding: 10px; border: 1px solid #333; text-align: center; }
+        th { background-color: #2d2d2d; position: sticky; top: 0; }
+        .safe { background: rgba(46, 204, 113, 0.15); }
+        .bubble { background: rgba(241, 196, 15, 0.15); }
+        .dead { background: rgba(231, 76, 60, 0.15); }
+        .header-stats { display: flex; gap: 20px; margin-top: 15px; flex-wrap: wrap; }
+        .stat-box { background: #2a2a2a; padding: 15px; border-radius: 6px; flex: 1; min-width: 150px; text-align: center; border: 1px solid #444; }
+        .stat-box span { display: block; font-size: 22px; font-weight: bold; color: #8e44ad; margin-top: 5px; }
+        .strategy { font-weight: bold; color: #3498db; }
+        .tiebreaker { font-size: 11px; color: #888; }
+    </style>
+</head>
+<body>
+
+<div class="panel">
+    <h2>Lorcana Analytics - Dynamic Strategy Predictor</h2>
+    <input type="number" id="eventId" value="1074323" placeholder="Event ID">
+    <input type="number" id="cutSize" value="32" placeholder="Top Cut (np. 32)">
+    
+    <select id="cutRule">
+        <!-- ZAMIANA MIEJSC ZGODNIE Z WYTYCZNĄ -->
+        <option value="hard">Twardy Cut (Top X + równe punkty) [Main Event 1]</option>
+        <option value="soft">Miękki Cut (Sztywne Top X, brak remisów) [Main Event 2]</option>
+    </select>
+    
+    <button onclick="startTracking()">Odśwież / Start Live</button>
+    <p id="status" style="margin-top: 15px; color: #aaa;">Oczekuje na start...</p>
+</div>
+
+<div class="panel" id="statsPanel" style="display: none;">
+    <h3 id="eventNameDisplay">Nazwa Turnieju</h3>
+    <div class="header-stats">
+        <div class="stat-box">Graczy:<span id="totalPlayersDisplay">-</span></div>
+        <div class="stat-box">Runda:<span id="roundInfo">-</span></div>
+        <div class="stat-box">Obecny Próg:<span id="bubbleScore">-</span></div>
+        <div class="stat-box">Projekcja (Koniec):<span id="projectedBubbleScore">-</span></div>
+        <div class="stat-box">Miejsc w Cut:<span id="playersInCut">-</span></div>
+    </div>
+</div>
+
+<table>
+    <thead>
+        <tr>
+            <th>Miejsce</th>
+            <th>Gracz</th>
+            <th>Punkty (Teraz)</th>
+            <th>OMWP / GWP / OGWP</th>
+            <th>Wymagane Punkty</th>
+            <th>Optymalna Strategia (Live)</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody id="standingsBody"></tbody>
+</table>
+
+<script src="app.js"></script>
+</body>
+</html>
