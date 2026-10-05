@@ -8,7 +8,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-// 1. Zarządzanie tokenem autoryzacji
 $tokenFile = __DIR__ . '/token.txt';
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['set_token'])) {
     $newToken = trim($_POST['set_token']);
@@ -33,7 +32,6 @@ if (!empty($rawToken) && !str_starts_with($rawToken, 'Token ') && !str_starts_wi
 }
 $authToken = !empty($rawToken) ? $rawToken : null;
 
-// 2. Cache
 $eventId = isset($_GET['eventId']) ? (int)$_GET['eventId'] : 1074323;
 $cacheFile = __DIR__ . '/cache_' . $eventId . '.json';
 $cacheTime = 15;
@@ -71,7 +69,6 @@ function fetchUrlWithStatus($url, $token = null) {
     return ['body' => $output, 'code' => $httpCode];
 }
 
-// 3. Pobieranie danych Eventu
 $eventUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/events/{$eventId}/";
 $eventRes = fetchUrlWithStatus($eventUrl);
 $eventData = json_decode($eventRes['body'], true);
@@ -90,7 +87,6 @@ $pairingsRoundId = null;
 $activeRoundNumber = 0;
 $totalRounds = 0;
 
-// 4. Szukanie identyfikatorów rund
 if (isset($eventData['tournament_phases'])) {
     foreach ($eventData['tournament_phases'] as $phase) {
         if (isset($phase['rounds']) && is_array($phase['rounds'])) {
@@ -99,7 +95,6 @@ if (isset($eventData['tournament_phases'])) {
             foreach ($phase['rounds'] as $round) {
                 $rNum = (int)($round['round_number'] ?? 0);
                 
-                // Runda z wyliczonymi Standings
                 if (($round['standings_status'] ?? '') === 'GENERATED') {
                     if ($rNum > $standingsRoundNumber) {
                         $standingsRoundId = $round['id'];
@@ -107,7 +102,6 @@ if (isset($eventData['tournament_phases'])) {
                     }
                 }
                 
-                // Runda z parowaniami (aktywna lub zakończona)
                 $status = strtoupper($round['status'] ?? '');
                 $pStatus = strtoupper($round['pairings_status'] ?? '');
                 
@@ -127,7 +121,6 @@ if (!$pairingsRoundId && $standingsRoundId) {
     $activeRoundNumber = $standingsRoundNumber;
 }
 
-// 5. Standings
 $standingsData = null;
 if ($standingsRoundId) {
     $standingsUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$standingsRoundId}/standings/";
@@ -135,7 +128,6 @@ if ($standingsRoundId) {
     $standingsData = json_decode($standingsRes['body'], true);
 }
 
-// 6. Pobieranie parowań z oficjalnego paginowanego endpointu
 $pairingsData = null;
 if ($pairingsRoundId) {
     $matchesPaginatedUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$pairingsRoundId}/matches/paginated/?page=1&page_size=150&avoid_cache=false";

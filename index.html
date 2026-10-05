@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Lorcana Live Predictor</title>
+    <title>Lorcana Live Predictor & Tie Simulator</title>
     <style>
         * { box-sizing: border-box; }
         body { 
@@ -38,9 +38,9 @@
 
         input, select, button { 
             width: 100%;
-            height: 44px; /* Standardowy touch-target dla smartfonów */
+            height: 44px;
             padding: 8px 12px; 
-            font-size: 16px; /* Zapobiega automatycznemu zoomowi w iOS */
+            font-size: 16px;
             background: #2a2a2a; 
             color: #fff; 
             border: 1px solid #444; 
@@ -73,7 +73,6 @@
             border: 1px dashed #555;
         }
 
-        /* Statystyki Kafelkowe */
         .stats-grid { 
             display: grid; 
             grid-template-columns: repeat(2, 1fr); 
@@ -96,7 +95,6 @@
         .stat-card .label { font-size: 11px; color: #888; text-transform: uppercase; }
         .stat-card .value { font-size: 18px; font-weight: bold; color: #f39c12; margin-top: 4px; }
 
-        /* Tabela Responsywna */
         .section-header { 
             display: flex; 
             justify-content: space-between; 
@@ -126,6 +124,9 @@
         }
         th { background: #222; color: #aaa; font-weight: 600; }
         
+        tbody tr.clickable-row { cursor: pointer; }
+        tbody tr.clickable-row:hover { background: rgba(243, 156, 18, 0.1); }
+        
         .safe { background: rgba(46, 204, 113, 0.12); }
         .bubble { background: rgba(241, 196, 15, 0.12); }
         .dead { background: rgba(231, 76, 60, 0.12); }
@@ -140,6 +141,65 @@
         .score-box { font-weight: bold; font-size: 15px; letter-spacing: 2px; }
         
         #status { font-size: 12px; color: #888; margin-top: 10px; }
+
+        .tie-panel {
+            background: #1a1a24;
+            border-left: 4px solid #3498db;
+            margin-top: 30px;
+        }
+        .autocomplete-wrapper {
+            position: relative;
+            margin-bottom: 15px;
+        }
+        .suggestions-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #2a2a35;
+            border: 1px solid #444;
+            border-radius: 0 0 6px 6px;
+            max-height: 180px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        }
+        .suggestion-item {
+            padding: 10px 12px;
+            cursor: pointer;
+            border-bottom: 1px solid #333;
+            font-size: 14px;
+        }
+        .suggestion-item:hover { background: #3498db; color: #fff; }
+        
+        .simulation-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .sim-card {
+            background: #222230;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+        .sim-card .sim-title { font-size: 12px; color: #aaa; text-transform: uppercase; }
+        .sim-card .sim-chance { font-size: 24px; font-weight: bold; margin: 6px 0; }
+        .sim-card .sim-pts { font-size: 12px; color: #888; }
+        
+        .recommendation-box {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.4;
+            font-weight: 500;
+        }
+        .rec-safe { background: rgba(46, 204, 113, 0.2); border: 1px solid #2ecc71; color: #2ecc71; }
+        .rec-risk { background: rgba(241, 196, 15, 0.2); border: 1px solid #f1c40f; color: #f1c40f; }
+        .rec-danger { background: rgba(231, 76, 60, 0.2); border: 1px solid #e74c3c; color: #e74c3c; }
     </style>
 </head>
 <body>
@@ -152,18 +212,18 @@
         <input type="number" id="cutSize" value="32" placeholder="Cut (np. 32)">
         
         <select id="cutRule" class="full-width">
-            <option value="hard">Twardy Cut (Top X) [DLC ME2]</option>
-            <option value="soft">Miekki Cut (Top X + równe punkty) [DLC ME1]</option>
+            <!-- Twardy Cut jako opcja domyślna -->
+            <option value="hard" selected>Twardy Cut (Sztywne Top X) [ME 2]</option>
+            <option value="soft">Miękki Cut (Top X + równe punkty) [ME 1]</option>
         </select>
         
         <button onclick="startTracking()" class="full-width">Odśwież / Śledź Live</button>
         <button onclick="toggleTokenPanel()" class="btn-secondary full-width">🔑 Ustawienia Tokena (Dla Parowań)</button>
     </div>
 
-    <!-- Zwijany formularz tokena -->
     <div id="tokenPanel">
-        <p style="font-size: 12px; color: #aaa; margin: 0 0 8px 0;">Wklej nagłówek z przeglądarki (Bearer eyJ...), by widzieć mecze w trakcie rundy:</p>
-        <input type="text" id="tokenInput" placeholder="Bearer eyJhbGciOi..." style="margin-bottom: 8px;">
+        <p style="font-size: 12px; color: #aaa; margin: 0 0 8px 0;">Wklej nagłówek z przeglądarki (Token 16ef...):</p>
+        <input type="text" id="tokenInput" placeholder="Token 16ef..." style="margin-bottom: 8px;">
         <button onclick="saveToken()" style="height: 38px; font-size: 14px;">Zapisz Token na Serwerze</button>
     </div>
 
@@ -198,13 +258,13 @@
             </tr>
         </thead>
         <tbody id="pairingsBody">
-            <tr><td colspan="5" style="color: #666; padding: 20px;">Brak danych live (wymagany start lub token).</td></tr>
+            <tr><td colspan="5" style="color: #666; padding: 20px;">Brak danych live.</td></tr>
         </tbody>
     </table>
 </div>
 
 <div class="section-header">
-    <h3>📊 Klasyfikacja i Strategia Awansu</h3>
+    <h3>📊 Klasyfikacja i Strategia Awansu <span style="font-size: 11px; color: #888;">(Kliknij gracza, by zbadać TIE)</span></h3>
 </div>
 <div class="table-responsive">
     <table>
@@ -223,6 +283,50 @@
             <tr><td colspan="7" style="color: #666; padding: 20px;">Wpisz ID i kliknij Śledź Live.</td></tr>
         </tbody>
     </table>
+</div>
+
+<div class="panel tie-panel" id="tieModule">
+    <h3 style="color: #3498db; margin-bottom: 12px;">🤝 Can I take a TIE? (Live Simulator & Tiebreakers)</h3>
+    <p style="font-size: 13px; color: #aaa; margin: 0 0 10px 0;">
+        Wpisz swój nick lub kliknij siebie w tabeli powyżej. Algorytm analizuje zakończone stoły i oblicza matematyczną szansę wejścia do Cutu.
+    </p>
+
+    <div class="autocomplete-wrapper">
+        <input type="text" id="playerSearchInput" placeholder="Wyszukaj gracza (np. james, Asia, Olivia)..." autocomplete="off" oninput="onPlayerSearchInput()">
+        <div id="playerSuggestions" class="suggestions-dropdown"></div>
+    </div>
+
+    <div id="tieResultArea" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 8px;">
+            <div>
+                Wybrany gracz: <strong id="selectedPlayerName" style="color: #fff; font-size: 16px;">-</strong>
+                <span id="selectedPlayerTable" style="color: #3498db; font-size: 13px; margin-left: 8px;"></span>
+            </div>
+            <div id="selectedPlayerBaseStats" style="font-size: 13px; color: #888;"></div>
+        </div>
+
+        <div class="simulation-grid">
+            <div class="sim-card">
+                <div class="sim-title">Jeśli weźmiesz REMIS (ID)</div>
+                <div class="sim-chance" id="chanceTieDisplay" style="color: #f1c40f;">-%</div>
+                <div class="sim-pts" id="ptsTieDisplay">Pkt: -</div>
+            </div>
+            <div class="sim-card">
+                <div class="sim-title">Jeśli WYGRASZ (WIN)</div>
+                <div class="sim-chance" id="chanceWinDisplay" style="color: #2ecc71;">-%</div>
+                <div class="sim-pts" id="ptsWinDisplay">Pkt: -</div>
+            </div>
+            <div class="sim-card">
+                <div class="sim-title">Jeśli PRZEGRASZ (LOSS)</div>
+                <div class="sim-chance" id="chanceLossDisplay" style="color: #e74c3c;">-%</div>
+                <div class="sim-pts" id="ptsLossDisplay">Pkt: -</div>
+            </div>
+        </div>
+
+        <div id="tieRecommendationBanner" class="recommendation-box rec-risk">
+            Wybierz gracza, aby wyliczyć rekomendację live.
+        </div>
+    </div>
 </div>
 
 <script src="app.js"></script>
