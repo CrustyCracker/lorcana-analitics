@@ -86,6 +86,7 @@ $standingsRoundNumber = 0;
 $pairingsRoundId = null;
 $activeRoundNumber = 0;
 $totalRounds = 0;
+$eligibleRounds = [];
 
 if (isset($eventData['tournament_phases'])) {
     foreach ($eventData['tournament_phases'] as $phase) {
@@ -109,6 +110,13 @@ if (isset($eventData['tournament_phases'])) {
                     if ($rNum >= $activeRoundNumber) {
                         $pairingsRoundId = $round['id'];
                         $activeRoundNumber = $rNum;
+                    }
+                    if ($rNum > 0) {
+                        $eligibleRounds[$rNum] = [
+                            'id' => $round['id'],
+                            'round_number' => $rNum,
+                            'status' => $status
+                        ];
                     }
                 }
             }
@@ -145,6 +153,33 @@ if ($pairingsRoundId) {
     $pairingsData = json_decode($resMatches['body'], true);
 }
 
+$roundsMatches = [];
+if (!empty($eligibleRounds)) {
+    ksort($eligibleRounds);
+    foreach ($eligibleRounds as $rNum => $rInfo) {
+        if ($pairingsRoundId && $rInfo['id'] == $pairingsRoundId && $pairingsData) {
+            $roundsMatches[$rNum] = [
+                'round_number' => $rNum,
+                'round_id' => $rInfo['id'],
+                'status' => $rInfo['status'],
+                'matches' => $pairingsData['results'] ?? $pairingsData['data'] ?? $pairingsData
+            ];
+        } else {
+            $mUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$rInfo['id']}/matches/paginated/?page=1&page_size=150&avoid_cache=false";
+            $mRes = fetchUrlWithStatus($mUrl, $authToken);
+            $mData = json_decode($mRes['body'], true);
+            if ($mData) {
+                $roundsMatches[$rNum] = [
+                    'round_number' => $rNum,
+                    'round_id' => $rInfo['id'],
+                    'status' => $rInfo['status'],
+                    'matches' => $mData['results'] ?? $mData['data'] ?? $mData
+                ];
+            }
+        }
+    }
+}
+
 $result = [
     "eventId" => $eventId,
     "eventName" => $eventName,
@@ -154,7 +189,8 @@ $result = [
     "totalRounds" => $totalRounds,
     "hasTokenConfigured" => !empty($authToken),
     "standings" => $standingsData,
-    "pairings" => $pairingsData
+    "pairings" => $pairingsData,
+    "roundsMatches" => $roundsMatches
 ];
 
 file_put_contents($cacheFile, json_encode($result));

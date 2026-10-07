@@ -24,6 +24,8 @@ const POLISH_MOUNTAIN_REGEX = /[\u{1F3D4}\u{26F0}\u{1F5FB}]|[🏔⛰🗻]/u;
 const POLISH_RAT_REGEX = /[\u{1F400}\u{1F401}]|[🐀🐁]/u;
 
 let filterOnlyPoles = false;
+let currentLiveStatusFilter = 'all';
+let currentPredictorScenario = 'WIN';
 
 function checkTextForPolishIndicators(text) {
     if (!text || typeof text !== 'string') return false;
@@ -622,13 +624,16 @@ function processStandings(data) {
         };
     });
 
-    // Sortujemy tabelę LIVE według zasad tiebreakerów Lorcany
+    // Sortujemy tabelę LIVE według zasad tiebreakerów Lorcany (Match Points -> OMW% -> GW% -> OGW%)
     liveStandings.sort((a, b) => {
         if (b.livePoints !== a.livePoints) return b.livePoints - a.livePoints;
         if ((b.opponent_match_win_percentage || 0) !== (a.opponent_match_win_percentage || 0)) {
             return (b.opponent_match_win_percentage || 0) - (a.opponent_match_win_percentage || 0);
         }
-        return (b.game_win_percentage || 0) - (a.game_win_percentage || 0);
+        if ((b.game_win_percentage || 0) !== (a.game_win_percentage || 0)) {
+            return (b.game_win_percentage || 0) - (a.game_win_percentage || 0);
+        }
+        return (b.opponent_game_win_percentage || 0) - (a.opponent_game_win_percentage || 0);
     });
 
     liveStandings.forEach((p, idx) => {
@@ -705,10 +710,23 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
         list = list.filter(p => isPolishPlayer(p, cachedStandingsMap));
     }
 
+    if (currentLiveStatusFilter !== 'all') {
+        list = list.filter(p => {
+            const cached = simulatedResultsCache.get(String(p.player.id));
+            const sim = cached?.sim;
+            const category = getCutStatusCategory(p, sim, ctx.cutSize);
+            if (currentLiveStatusFilter === 'cut') return category === 'cut' || category === 'bubble';
+            if (currentLiveStatusFilter === 'bubble') return category === 'bubble';
+            return true;
+        });
+    }
+
     if (!list || list.length === 0) {
-        tbody.innerHTML = filterOnlyPoles
-            ? `<tr><td colspan="7" style="color: #888; padding: 20px;">Brak graczy z Polski w tabeli LIVE.</td></tr>`
-            : `<tr><td colspan="7" style="color: #666; padding: 20px;">Trwa symulacja wyników live...</td></tr>`;
+        let emptyMsg = "Trwa symulacja wyników live...";
+        if (filterOnlyPoles) emptyMsg = "Brak graczy z Polski w tabeli LIVE.";
+        else if (currentLiveStatusFilter !== 'all') emptyMsg = "Brak graczy pasujących do wybranego filtra statusu.";
+
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #888; padding: 20px;">${emptyMsg}</td></tr>`;
         renderPagination('livePagination', 0, 1, 'changeLivePage');
         return;
     }
@@ -732,47 +750,41 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
         const formattedName = formatStandingsPlayerName(player);
         const omwp = ((player.opponent_match_win_percentage || 0) * 100).toFixed(1) + "%";
         const gwp = ((player.game_win_percentage || 0) * 100).toFixed(1) + "%";
+        const ogwp = ((player.opponent_game_win_percentage || 0) * 100).toFixed(1) + "%";
         
         const cached = simulatedResultsCache.get(String(player.player.id));
         const sim = cached?.sim;
         
         let ptsNeededText = "";
         let strategyText = "";
-        let status = "";
         let rowClass = "";
         
         const inCut = (displayRank <= ctx.cutSize);
 
         if (!sim || sim.matchesLeft === 0) {
-            status = inCut ? "W Cut" : "Odpada";
             rowClass = inCut ? "safe" : "dead";
             ptsNeededText = "Koniec";
-            strategyText = status;
+            strategyText = inCut ? "Awans w Cut" : "Odpada";
         } else if (sim.matchesLeft >= 2) {
             if (sim.chanceDoubleTie >= 90) {
                 ptsNeededText = "2x TIE (+2)";
                 strategyText = `Pewny 2x ID (${sim.chanceDoubleTie}%)`;
-                status = "W Cut";
                 rowClass = "safe";
             } else if (sim.chanceDoubleTie >= 75) {
                 ptsNeededText = "2x TIE (+2)";
                 strategyText = `Możliwy 2x ID (${sim.chanceDoubleTie}%)`;
-                status = "W Cut";
                 rowClass = "safe";
             } else if (sim.chanceWinTie >= 75) {
                 ptsNeededText = "1x W + 1x T (+4)";
                 strategyText = `Wymaga 1x W (${sim.chanceWinTie}%)`;
-                status = "W grze";
                 rowClass = "bubble";
             } else if (sim.chanceDoubleWin >= 40) {
                 ptsNeededText = "2x WIN (+6)";
                 strategyText = `Musi wygrać 2x (${sim.chanceDoubleWin}%)`;
-                status = "W grze";
                 rowClass = "bubble";
             } else {
                 ptsNeededText = "2x WIN";
                 strategyText = "Minimalne szanse";
-                status = "Odpada";
                 rowClass = "dead";
             }
         } else {
@@ -780,26 +792,24 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
             if (sim.chanceTie >= 90 && sim.oppChanceTie >= 90) {
                 ptsNeededText = "TIE (1 pkt)";
                 strategyText = "Bezpieczny ID";
-                status = "W Cut";
                 rowClass = "safe";
             } else if (sim.chanceTie >= 75) {
                 ptsNeededText = "TIE (1 pkt)";
                 strategyText = `Możliwy ID (${sim.chanceTie}%)`;
-                status = "W Cut";
                 rowClass = "safe";
             } else if (sim.chanceWin >= 35) {
                 ptsNeededText = "WIN (3 pkt)";
                 strategyText = "Wymaga 1x W";
-                status = "W grze";
                 rowClass = "bubble";
             } else {
                 ptsNeededText = "WIN";
                 strategyText = "Odpada";
-                status = "Odpada";
                 rowClass = "dead";
             }
         }
         
+        const cutBadgeHtml = getCutStatusBadge(player, sim, inCut, ctx.cutSize, sim?.matchesLeft ?? 0);
+
         // Zaznaczenie dodanych punktów live (np. 1 + 3)
         let pointsDisplay = `<strong>${player.livePoints}</strong>`;
         if (player.delta > 0) {
@@ -816,10 +826,10 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
             <td><strong>${displayRank}</strong></td>
             <td style="text-align: left;"><strong>${formattedName}</strong></td>
             <td>${pointsDisplay}</td>
-            <td class="tiebreaker">${omwp} / ${gwp}</td>
+            <td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="event.stopPropagation(); openOmwpInspector('${player.player.id}')">${omwp} / ${gwp} / ${ogwp} 🔍</td>
             <td><strong>${ptsNeededText}</strong></td>
             <td class="strategy">${strategyText}</td>
-            <td>${status}</td>
+            <td>${cutBadgeHtml}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -876,6 +886,7 @@ function renderOfficialStandingsTable(standings, cutSize, cutRule) {
         const formattedName = formatStandingsPlayerName(player);
         const omwp = ((player.opponent_match_win_percentage || 0) * 100).toFixed(1) + "%";
         const gwp = ((player.game_win_percentage || 0) * 100).toFixed(1) + "%";
+        const ogwp = ((player.opponent_game_win_percentage || 0) * 100).toFixed(1) + "%";
         
         const inCut = ctx.cutRule === 'soft' 
             ? player.match_points >= bubbleScore 
@@ -887,7 +898,7 @@ function renderOfficialStandingsTable(standings, cutSize, cutRule) {
             <td style="text-align: left;">${formattedName}</td>
             <td><strong>${player.match_points}</strong></td>
             <td>${player.record || player.match_record || "-"}</td>
-            <td class="tiebreaker">${omwp} / ${gwp}</td>
+            <td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="openOmwpInspector('${player.player.id}')">${omwp} / ${gwp} / ${ogwp} 🔍</td>
             <td>${inCut ? 'W Cut' : 'Poza Cut'}</td>
         `;
         tbody.appendChild(tr);
@@ -1009,7 +1020,10 @@ function recalculateTieForSelectedPlayer() {
     const formattedName = formatStandingsPlayerName(targetPlayer);
     setElText('selectedPlayerName', formattedName);
     setElText('selectedPlayerTable', myMatch ? `(Stół #${myMatch.table_number || myMatch.tableNumber || '?'} vs ${myOpponent?.name || 'BYE'})` : "");
-    setElText('selectedPlayerBaseStats', `Stan bazowy: ${targetPlayer.match_points} pkt | OMWP: ${(targetPlayer.opponent_match_win_percentage * 100).toFixed(1)}%`);
+    const baseOmw = ((targetPlayer.opponent_match_win_percentage || 0) * 100).toFixed(1);
+    const baseGw = ((targetPlayer.game_win_percentage || 0) * 100).toFixed(1);
+    const baseOgw = ((targetPlayer.opponent_game_win_percentage || 0) * 100).toFixed(1);
+    setElText('selectedPlayerBaseStats', `Stan bazowy: ${targetPlayer.match_points} pkt | OMW: ${baseOmw}% | GW: ${baseGw}% | OGW: ${baseOgw}%`);
 
     // 1. Pasek kontekstu rundy
     const tieRoundContextEl = document.getElementById('tieRoundContext');
@@ -1049,6 +1063,9 @@ function recalculateTieForSelectedPlayer() {
 
     // 5. Główny baner z poradą taktyczną
     updateRecommendationBanner(simResults, myMatch, targetPlayer, myOpponent, activeRound, totalRounds);
+
+    // 6. Symulator parowań na następną rundę
+    recalculateNextRoundPairingsPredictor(simResults, targetPlayer, activeRound, totalRounds);
 }
 
 function renderDoubleTiePrompt(sim, targetPlayer, myOpponent, totalRounds) {
@@ -1250,6 +1267,7 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
         points: p.match_points,
         baseOmwp: p.opponent_match_win_percentage || 0.33,
         gwp: p.game_win_percentage || 0.33,
+        ogwp: p.opponent_game_win_percentage || 0.33,
         activeOpponentId: roundPairingPairs.get(p.player.id) || null
     }));
 
@@ -1308,6 +1326,7 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
             points: p.points + (fixedMatchDeltas.get(p.id) || 0),
             baseOmwp: p.baseOmwp,
             gwp: p.gwp,
+            ogwp: p.ogwp,
             opponents: p.activeOpponentId ? [p.activeOpponentId] : []
         }));
 
@@ -1391,14 +1410,24 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
             p.finalOmwp = ((p.baseOmwp * baseWeight) + oppMwpSum) / (baseWeight + p.opponents.length);
         });
 
-        const checkPlayerCut = (playerId, simPoints, simOmwp) => {
+        const checkPlayerCut = (playerId, simPoints, simOmwp, simGwp, simOgwp) => {
             let playersAhead = 0;
             for (const p of simBoard) {
                 if (p.id === playerId) continue;
                 if (p.points > simPoints) {
                     playersAhead++;
-                } else if (p.points === simPoints && p.finalOmwp > simOmwp) {
-                    playersAhead++;
+                } else if (p.points === simPoints) {
+                    if (p.finalOmwp > simOmwp) {
+                        playersAhead++;
+                    } else if (p.finalOmwp === simOmwp) {
+                        if ((p.gwp || 0) > (simGwp || 0)) {
+                            playersAhead++;
+                        } else if ((p.gwp || 0) === (simGwp || 0)) {
+                            if ((p.ogwp || 0) > (simOgwp || 0)) {
+                                playersAhead++;
+                            }
+                        }
+                    }
                 }
             }
             const rank = playersAhead + 1;
@@ -1419,32 +1448,36 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
         const oppBasePts = oppP ? (oppP.points - (fixedMatchDeltas.get(opponentId) || 0) + (isCurrentMatchFinished ? opponentFixedRoundDelta : 0)) : 0;
         const targetOmwp = targetP?.finalOmwp || 0.5;
         const oppOmwp = oppP?.finalOmwp || 0.5;
+        const targetGwp = targetP?.gwp || 0.33;
+        const oppGwp = oppP?.gwp || 0.33;
+        const targetOgwp = targetP?.ogwp || 0.33;
+        const oppOgwp = oppP?.ogwp || 0.33;
 
         // 1. Scenariusz REMIS w bieżącym meczu
         const tPtsTie = targetBasePts + 1 + targetFutureAuto;
-        if (checkPlayerCut(targetId, tPtsTie, targetOmwp)) tieSuccesses++;
+        if (checkPlayerCut(targetId, tPtsTie, targetOmwp, targetGwp, targetOgwp)) tieSuccesses++;
 
         if (oppP) {
             const oPtsTie = oppBasePts + 1 + oppFutureAuto;
-            if (checkPlayerCut(opponentId, oPtsTie, oppOmwp)) oppTieSuccesses++;
+            if (checkPlayerCut(opponentId, oPtsTie, oppOmwp, oppGwp, oppOgwp)) oppTieSuccesses++;
         }
 
         // 2. Scenariusz WYGRANA w bieżącym meczu
         const tPtsWin = targetBasePts + 3 + targetFutureAuto;
-        if (checkPlayerCut(targetId, tPtsWin, targetOmwp)) winSuccesses++;
+        if (checkPlayerCut(targetId, tPtsWin, targetOmwp, targetGwp, targetOgwp)) winSuccesses++;
 
         // 3. Scenariusz PRZEGRANA w bieżącym meczu
         const tPtsLoss = targetBasePts + 0 + targetFutureAuto;
-        if (checkPlayerCut(targetId, tPtsLoss, targetOmwp)) lossSuccesses++;
+        if (checkPlayerCut(targetId, tPtsLoss, targetOmwp, targetGwp, targetOgwp)) lossSuccesses++;
 
         // 4. Scenariusze wielorundowe (2x TIE, WIN+TIE itp.)
-        if (checkPlayerCut(targetId, targetBasePts + 2 + targetFutureAuto, targetOmwp)) doubleTieSuccesses++;
-        if (oppP && checkPlayerCut(opponentId, oppBasePts + 2 + oppFutureAuto, oppOmwp)) oppDoubleTieSuccesses++;
+        if (checkPlayerCut(targetId, targetBasePts + 2 + targetFutureAuto, targetOmwp, targetGwp, targetOgwp)) doubleTieSuccesses++;
+        if (oppP && checkPlayerCut(opponentId, oppBasePts + 2 + oppFutureAuto, oppOmwp, oppGwp, oppOgwp)) oppDoubleTieSuccesses++;
 
-        if (checkPlayerCut(targetId, targetBasePts + 4 + targetFutureAuto, targetOmwp)) winTieSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 3 + targetFutureAuto, targetOmwp)) winLossSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 1 + targetFutureAuto, targetOmwp)) tieLossSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 6 + targetFutureAuto, targetOmwp)) doubleWinSuccesses++;
+        if (checkPlayerCut(targetId, targetBasePts + 4 + targetFutureAuto, targetOmwp, targetGwp, targetOgwp)) winTieSuccesses++;
+        if (checkPlayerCut(targetId, targetBasePts + 3 + targetFutureAuto, targetOmwp, targetGwp, targetOgwp)) winLossSuccesses++;
+        if (checkPlayerCut(targetId, targetBasePts + 1 + targetFutureAuto, targetOmwp, targetGwp, targetOgwp)) tieLossSuccesses++;
+        if (checkPlayerCut(targetId, targetBasePts + 6 + targetFutureAuto, targetOmwp, targetGwp, targetOgwp)) doubleWinSuccesses++;
     }
 
     const basePtsForCalc = targetPlayer.match_points + (isCurrentMatchFinished ? targetFixedRoundDelta : 0);
@@ -1580,4 +1613,471 @@ function updateRecommendationBanner(sim, myMatch, targetPlayer, myOpponent, acti
         ⚠️ <strong>STREFA BUBBLE:</strong> Szansa po remisie wynosi ${sim.chanceTie}% (dla rywala: ${sim.oppChanceTie}%). 
         Obserwuj sąsiednie stoły – jeśli rywale z innych stołów przegrają swoje mecze, sytuacja może ulec poprawie.
     `;
+}
+
+// -------------------------------------------------------------
+// FUNKCJE POMOCNICZE STATUSU I ETYKIET CUT
+// -------------------------------------------------------------
+
+function setLiveStatusFilter(filterType) {
+    currentLiveStatusFilter = filterType;
+    currentPages.live = 1;
+    ['filterStatusAll', 'filterStatusCut', 'filterStatusBubble'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.classList.remove('active');
+    });
+    if (filterType === 'all') document.getElementById('filterStatusAll')?.classList.add('active');
+    if (filterType === 'cut') document.getElementById('filterStatusCut')?.classList.add('active');
+    if (filterType === 'bubble') document.getElementById('filterStatusBubble')?.classList.add('active');
+    renderLiveStandingsTable();
+}
+
+function getCutStatusCategory(player, sim, cutSize) {
+    const rank = player.liveRank || 999;
+    const inCut = (rank <= cutSize);
+    if (!sim || sim.matchesLeft === 0) {
+        return inCut ? 'cut' : 'dead';
+    }
+    if (sim.matchesLeft >= 2) {
+        if (sim.chanceDoubleTie >= 75 || sim.chanceWinTie >= 75) return 'cut';
+        if (sim.chanceDoubleWin >= 40 || sim.chanceWin >= 40) return 'bubble';
+        return 'dead';
+    } else {
+        if (sim.chanceTie >= 75 || sim.chanceWin >= 75) return 'cut';
+        if (sim.chanceWin >= 35) return 'bubble';
+        return 'dead';
+    }
+}
+
+function getCutStatusBadge(player, sim, inCut, cutSize, matchesLeft) {
+    if (!sim || matchesLeft === 0) {
+        return inCut 
+            ? `<span class="cut-badge badge-locked" title="Gracz jest w strefie Top Cut">🔒 W CUT</span>`
+            : `<span class="cut-badge badge-eliminated" title="Poza strefą Cut">💀 ODPADA</span>`;
+    }
+    
+    if (matchesLeft >= 2) {
+        if (sim.chanceDoubleTie >= 90) {
+            return `<span class="cut-badge badge-locked" title="Pewny awans nawet po 2 remisach (${sim.chanceDoubleTie}%)">🔒 LOCKED</span>`;
+        } else if (sim.chanceDoubleTie >= 75) {
+            return `<span class="cut-badge badge-safe-id" title="2 remisy dają awans na ${sim.chanceDoubleTie}%">🤝 SAFE ID</span>`;
+        } else if (sim.chanceWinTie >= 75) {
+            return `<span class="cut-badge badge-win-in" title="1 wygrana i 1 remis dają ${sim.chanceWinTie}% awansu">🎯 WIN & IN</span>`;
+        } else if (sim.chanceDoubleWin >= 40) {
+            if (sim.chanceDoubleTie < 35 && sim.chanceWinTie < 55) {
+                return `<span class="cut-badge badge-must-win" title="Konieczny komplet 2 zwycięstw (${sim.chanceDoubleWin}%)">⚠️ MUST WIN OUT</span>`;
+            }
+            return `<span class="cut-badge badge-bubble" title="Strefa Bubble - szanse zależne od OMWP (${sim.chanceDoubleWin}%)">🟡 BUBBLE</span>`;
+        } else {
+            return `<span class="cut-badge badge-eliminated" title="Minimalne szanse na awans">💀 ELIMINATED</span>`;
+        }
+    } else {
+        // matchesLeft === 1
+        if (sim.chanceTie >= 90 && sim.oppChanceTie >= 90) {
+            return `<span class="cut-badge badge-locked" title="Pewny obopólny remis z rywalem">🔒 LOCKED</span>`;
+        } else if (sim.chanceTie >= 75) {
+            return `<span class="cut-badge badge-safe-id" title="Remis daje ${sim.chanceTie}% szans na Cut">🤝 SAFE ID</span>`;
+        } else if (sim.chanceWin >= 75) {
+            return `<span class="cut-badge badge-win-in" title="Wygrana daje ${sim.chanceWin}% szans na Cut">🎯 WIN & IN</span>`;
+        } else if (sim.chanceWin >= 35) {
+            return `<span class="cut-badge badge-bubble" title="Strefa Bubble - o awansie decydują tiebreakery">🟡 BUBBLE</span>`;
+        } else {
+            return `<span class="cut-badge badge-eliminated" title="Brak realnych szans na awans">💀 ELIMINATED</span>`;
+        }
+    }
+}
+
+// -------------------------------------------------------------
+// HISTORIA MECZÓW I INSPEKTOR TIEBREAKERÓW OMWP
+// -------------------------------------------------------------
+
+function getPlayerHistoricalMatches(playerId, data) {
+    const history = [];
+    if (!data) return history;
+    const standingsMap = buildStandingsMap(data.standings?.standings || []);
+    const pIdStr = String(playerId);
+    
+    if (data.roundsMatches && typeof data.roundsMatches === 'object') {
+        const roundsKeys = Object.keys(data.roundsMatches).map(Number).sort((a,b) => a - b);
+        for (const rNum of roundsKeys) {
+            const rData = data.roundsMatches[rNum] || data.roundsMatches[String(rNum)];
+            if (!rData) continue;
+            const matches = extractPairingsList(rData.matches);
+            for (const m of matches) {
+                const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+                const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+                const id1 = p1 ? String(p1.id) : null;
+                const id2 = p2 ? String(p2.id) : null;
+                
+                if (id1 === pIdStr || id2 === pIdStr) {
+                    const isP1 = (id1 === pIdStr);
+                    const opp = isP1 ? p2 : p1;
+                    const scores = getMatchScores(m);
+                    const status = (m.status || m.state || "").toUpperCase();
+                    const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
+                    const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || scores.winnerId != null || scores.hasScore;
+                    
+                    let outcome = "W TOKU";
+                    let myScore = isP1 ? scores.score1 : scores.score2;
+                    let oppScore = isP1 ? scores.score2 : scores.score1;
+                    
+                    if (isComplete) {
+                        if (isDraw) outcome = "TIE";
+                        else if (scores.winnerId != null) {
+                            outcome = (String(scores.winnerId) === pIdStr) ? "WIN" : "LOSS";
+                        } else if (myScore > oppScore) {
+                            outcome = "WIN";
+                        } else if (oppScore > myScore) {
+                            outcome = "LOSS";
+                        }
+                    }
+                    
+                    history.push({
+                        round: rNum,
+                        match: m,
+                        table: m.table_number || m.tableNumber || "?",
+                        opponent: opp,
+                        myScore,
+                        oppScore,
+                        outcome,
+                        isComplete
+                    });
+                    break;
+                }
+            }
+        }
+    } else {
+        const currentMatches = extractPairingsList(data.pairings);
+        for (const m of currentMatches) {
+            const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+            const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+            const id1 = p1 ? String(p1.id) : null;
+            const id2 = p2 ? String(p2.id) : null;
+            if (id1 === pIdStr || id2 === pIdStr) {
+                const isP1 = (id1 === pIdStr);
+                const opp = isP1 ? p2 : p1;
+                const scores = getMatchScores(m);
+                const status = (m.status || m.state || "").toUpperCase();
+                const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
+                const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || scores.winnerId != null || scores.hasScore;
+                
+                let outcome = "W TOKU";
+                if (isComplete) {
+                    if (isDraw) outcome = "TIE";
+                    else if (scores.winnerId != null) outcome = (String(scores.winnerId) === pIdStr) ? "WIN" : "LOSS";
+                    else if (scores.score1 > scores.score2) outcome = isP1 ? "WIN" : "LOSS";
+                    else if (scores.score2 > scores.score1) outcome = isP1 ? "LOSS" : "WIN";
+                }
+
+                history.push({
+                    round: data.activeRound || 1,
+                    match: m,
+                    table: m.table_number || m.tableNumber || "?",
+                    opponent: opp,
+                    myScore: isP1 ? scores.score1 : scores.score2,
+                    oppScore: isP1 ? scores.score2 : scores.score1,
+                    outcome,
+                    isComplete
+                });
+                break;
+            }
+        }
+    }
+    return history;
+}
+
+function openOmwpInspector(playerId) {
+    if (!latestData || !latestData.standings?.standings) return;
+    const standings = latestData.standings.standings;
+    const targetPlayer = standings.find(p => String(p.player?.id || p.id) === String(playerId));
+    if (!targetPlayer) return;
+
+    const modal = document.getElementById('omwpInspectorModal');
+    if (!modal) return;
+
+    const name = formatStandingsPlayerName(targetPlayer);
+    setElText('omwpPlayerName', name);
+
+    const officialOmwp = ((targetPlayer.opponent_match_win_percentage || 0) * 100).toFixed(2);
+    const officialGwp = ((targetPlayer.game_win_percentage || 0) * 100).toFixed(2);
+    const officialOgwp = ((targetPlayer.opponent_game_win_percentage || 0) * 100).toFixed(2);
+    setElText('omwpCurrentVal', officialOmwp + "%");
+    setElText('omwpCurrentGwp', officialGwp + "%");
+    setElText('omwpCurrentOgwp', officialOgwp + "%");
+
+    const history = getPlayerHistoricalMatches(playerId, latestData);
+    const standingsMap = buildStandingsMap(standings);
+    const totalRounds = Math.max(latestData.totalRounds || 1, latestData.activeRound || 1);
+    const activePairingsList = extractPairingsList(latestData.pairings);
+
+    const tbody = document.getElementById('omwpOpponentsBody');
+    if (!tbody) return;
+
+    if (history.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="padding: 20px; color: #888;">Brak zapisanej historii meczów dla tego gracza w pobranych rundach.</td></tr>`;
+        setElText('omwpMaxVal', officialOmwp + "%");
+        setElText('omwpMinVal', officialOmwp + "%");
+        setElHtml('omwpInsightBox', `Brak danych o rozegranych rundach. Tiebreaker bazuje na oficjalnym OMWP (${officialOmwp}%) oraz OGW% (${officialOgwp}%) z API.`);
+        modal.style.display = 'flex';
+        return;
+    }
+
+    let floorCount = 0;
+    let boostCount = 0;
+    let dragCount = 0;
+    let rowsHtml = "";
+
+    let currentMwpSum = 0;
+    let maxMwpSum = 0;
+    let minMwpSum = 0;
+
+    history.forEach(item => {
+        const oppId = item.opponent?.id;
+        const oppStanding = oppId ? standings.find(p => String(p.player?.id || p.id) === String(oppId)) : null;
+        
+        let oppName = item.opponent?.name || "Nieznany";
+        if (oppStanding) oppName = formatStandingsPlayerName(oppStanding);
+
+        const oppPts = oppStanding ? (oppStanding.livePoints || oppStanding.match_points) : 0;
+        const oppRecord = oppStanding ? (oppStanding.record || oppStanding.match_record || `${oppStanding.user_event_status?.matches_won || 0}-${oppStanding.user_event_status?.matches_lost || 0}`) : "-";
+        const oppGwp = oppStanding ? ((oppStanding.game_win_percentage || 0) * 100).toFixed(1) + "%" : "-";
+
+        const maxPtsTotal = totalRounds * 3;
+        const rawMwp = Math.min(1.0, oppPts / Math.max(1, maxPtsTotal));
+        const isFloor = rawMwp < 0.3333;
+        const oppMwp = Math.max(0.3333, rawMwp);
+
+        currentMwpSum += oppMwp;
+
+        let liveMatchInfo = "Zakończony";
+        let isOppStillPlaying = false;
+        if (oppId) {
+            for (const m of activePairingsList) {
+                const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+                const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+                if ((p1 && String(p1.id) === String(oppId)) || (p2 && String(p2.id) === String(oppId))) {
+                    const scores = getMatchScores(m);
+                    const status = (m.status || m.state || "").toUpperCase();
+                    const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || scores.winnerId != null || scores.hasScore;
+                    if (!isComplete) {
+                        isOppStillPlaying = true;
+                        liveMatchInfo = `<span style="color: #f39c12; font-weight: bold;">⚔️ Stół #${m.table_number || '?'} (W grze)</span>`;
+                    }
+                    break;
+                }
+            }
+        }
+
+        if (isOppStillPlaying) {
+            maxMwpSum += Math.max(0.3333, (oppPts + 3) / maxPtsTotal);
+            minMwpSum += Math.max(0.3333, (oppPts + 0) / maxPtsTotal);
+        } else {
+            maxMwpSum += oppMwp;
+            minMwpSum += oppMwp;
+        }
+
+        let impactBadge = "";
+        const playerOmwpFloat = (targetPlayer.opponent_match_win_percentage || 0.5);
+        if (isFloor) {
+            impactBadge = `<span class="badge-floor">🛡️ Floor 33.3%</span>`;
+            floorCount++;
+        } else if (oppMwp > playerOmwpFloat) {
+            const diff = ((oppMwp - playerOmwpFloat) * 100).toFixed(1);
+            impactBadge = `<span class="badge-boost">🚀 Podbija (+${diff}%)</span>`;
+            boostCount++;
+        } else {
+            const diff = ((playerOmwpFloat - oppMwp) * 100).toFixed(1);
+            impactBadge = `<span class="badge-drag">📉 Obniża (-${diff}%)</span>`;
+            dragCount++;
+        }
+
+        let resultBadge = `<span style="color: #aaa;">${item.outcome}</span>`;
+        if (item.outcome === "WIN") resultBadge = `<span style="color: #2ecc71; font-weight: bold;">WIN (${item.myScore}-${item.oppScore})</span>`;
+        if (item.outcome === "LOSS") resultBadge = `<span style="color: #e74c3c; font-weight: bold;">LOSS (${item.myScore}-${item.oppScore})</span>`;
+        if (item.outcome === "TIE") resultBadge = `<span style="color: #f1c40f; font-weight: bold;">TIE (${item.myScore}-${item.oppScore})</span>`;
+
+        rowsHtml += `
+            <tr>
+                <td><strong>R${item.round}</strong></td>
+                <td style="text-align: left; font-weight: 600;">${oppName}</td>
+                <td>${resultBadge}</td>
+                <td>${oppRecord}</td>
+                <td><strong>${oppPts} pkt</strong></td>
+                <td><strong>${(oppMwp * 100).toFixed(1)}%</strong></td>
+                <td>${oppGwp}</td>
+                <td>${impactBadge}</td>
+                <td>${liveMatchInfo}</td>
+            </tr>
+        `;
+    });
+
+    tbody.innerHTML = rowsHtml;
+
+    const maxOmwp = ((maxMwpSum / history.length) * 100).toFixed(1);
+    const minOmwp = ((minMwpSum / history.length) * 100).toFixed(1);
+    setElText('omwpMaxVal', maxOmwp + "%");
+    setElText('omwpMinVal', minOmwp + "%");
+
+    let insightText = `Gracz rozegrał mecze z <strong>${history.length}</strong> rywalami. `;
+    if (boostCount > 0) insightText += `Aż <strong>${boostCount}</strong> rywali radzi sobie świetnie i ciągnie OMWP w górę (🚀). `;
+    if (floorCount > 0) insightText += `<strong>${floorCount}</strong> rywali jest objętych ochronnym limitem Floor 33.33% (🛡️), dzięki czemu ich porażki nie obniżają OMWP poniżej 33.3%. `;
+    if (maxOmwp !== minOmwp) {
+        insightText += `<br/>⚡ <strong>Wpływ trwających meczów:</strong> Część Twoich byłych rywali wciąż gra w tej rundzie! Jeśli wygrają swoje mecze, Twoje OMWP może wzrosnąć nawet do <strong>${maxOmwp}%</strong>.`;
+    }
+    insightText += `<br/>ℹ️ <strong>OGW% (${officialOgwp}%):</strong> Średnia z indywidualnych Game Win % (GW%) Twoich przeciwników. Jeśli Ty i inny gracz macie identyczne punkty, OMW% i GW%, to właśnie wyższy OGW% decyduje o awansie!`;
+
+    setElHtml('omwpInsightBox', insightText);
+    modal.style.display = 'flex';
+}
+
+function closeOmwpInspector(event) {
+    if (event && event.target && event.target.id !== 'omwpInspectorModal' && !event.target.classList.contains('modal-close-btn')) {
+        return;
+    }
+    const modal = document.getElementById('omwpInspectorModal');
+    if (modal) modal.style.display = 'none';
+}
+
+// -------------------------------------------------------------
+// SYMULATOR PAROWAŃ NA NASTĘPNĄ RUNDĘ (SWISS PREDICTOR)
+// -------------------------------------------------------------
+
+function switchPredictorScenario(scenario) {
+    currentPredictorScenario = scenario;
+    ['scenarioBtnWin', 'scenarioBtnTie', 'scenarioBtnLoss'].forEach(id => {
+        document.getElementById(id)?.classList.remove('active');
+    });
+    if (scenario === 'WIN') document.getElementById('scenarioBtnWin')?.classList.add('active');
+    if (scenario === 'TIE') document.getElementById('scenarioBtnTie')?.classList.add('active');
+    if (scenario === 'LOSS') document.getElementById('scenarioBtnLoss')?.classList.add('active');
+    
+    if (latestData && currentSelectedPlayerId) {
+        const standings = latestData.standings?.standings || [];
+        const targetPlayer = standings.find(p => String(p.player?.id || p.id) === String(currentSelectedPlayerId));
+        const activeRound = latestData.activeRound || 1;
+        const totalRounds = Math.max(latestData.totalRounds || 1, activeRound);
+        const cached = simulatedResultsCache.get(String(currentSelectedPlayerId));
+        if (targetPlayer) {
+            recalculateNextRoundPairingsPredictor(cached?.sim, targetPlayer, activeRound, totalRounds);
+        }
+    }
+}
+
+function recalculateNextRoundPairingsPredictor(sim, targetPlayer, activeRound, totalRounds) {
+    const panel = document.getElementById('nextRoundPairingsPanel');
+    if (!panel) return;
+
+    if (!latestData || activeRound >= totalRounds) {
+        panel.style.display = 'none';
+        return;
+    }
+
+    panel.style.display = 'block';
+    setElText('predictorNextRoundNum', activeRound + 1);
+
+    const basePts = (targetPlayer.livePoints || targetPlayer.match_points);
+    const isFinished = sim?.isCurrentMatchFinished ?? false;
+
+    const pWin = isFinished ? basePts : (basePts + 3);
+    const pTie = isFinished ? basePts : (basePts + 1);
+    const pLoss = isFinished ? basePts : basePts;
+
+    setElText('predictorWinPts', pWin);
+    setElText('predictorTiePts', pTie);
+    setElText('predictorLossPts', pLoss);
+
+    let targetScenarioPts = pWin;
+    if (currentPredictorScenario === 'TIE') targetScenarioPts = pTie;
+    if (currentPredictorScenario === 'LOSS') targetScenarioPts = pLoss;
+
+    const history = getPlayerHistoricalMatches(targetPlayer.player.id, latestData);
+    const playedOpponentsIds = new Set(history.map(h => String(h.opponent?.id)).filter(Boolean));
+    playedOpponentsIds.add(String(targetPlayer.player.id));
+
+    const standings = latestData.standings?.standings || [];
+    const candidates = [];
+
+    standings.forEach(p => {
+        const pIdStr = String(p.player?.id || p.id);
+        if (playedOpponentsIds.has(pIdStr)) return;
+
+        const candLivePts = (p.livePoints || p.match_points);
+        let candExpectedPts = candLivePts;
+        if (!isFinished && p.delta === 0) {
+            candExpectedPts = candLivePts + 1.5;
+        }
+
+        const delta = Math.abs(candExpectedPts - targetScenarioPts);
+        let weight = 2;
+        let bracketTag = "Możliwy Pair-down";
+
+        if (delta <= 0.8) {
+            weight = 100;
+            bracketTag = "Ten sam koszyk punktowy";
+        } else if (delta <= 1.8) {
+            weight = 45;
+            bracketTag = (candExpectedPts > targetScenarioPts) ? "Bliski Pair-up (+1)" : "Bliski Pair-down (-1)";
+        } else if (delta <= 3.2) {
+            weight = 18;
+            bracketTag = (candExpectedPts > targetScenarioPts) ? "Pair-up (+3)" : "Pair-down (-3)";
+        } else {
+            weight = 3;
+            bracketTag = (candExpectedPts > targetScenarioPts) ? "Daleki Pair-up" : "Daleki Pair-down";
+        }
+
+        const candOmwp = p.opponent_match_win_percentage || 0.5;
+        const targetOmwp = targetPlayer.opponent_match_win_percentage || 0.5;
+        const omwpCloseness = Math.max(0.5, 1.0 - Math.abs(candOmwp - targetOmwp));
+        weight *= omwpCloseness;
+
+        candidates.push({
+            player: p,
+            name: formatStandingsPlayerName(p),
+            pts: candLivePts,
+            omwp: (candOmwp * 100).toFixed(1) + "%",
+            record: p.record || p.match_record || "-",
+            weight,
+            bracketTag
+        });
+    });
+
+    const listEl = document.getElementById('predictorCandidatesList');
+    const summaryEl = document.getElementById('predictorSummaryText');
+    if (!listEl) return;
+
+    if (candidates.length === 0) {
+        listEl.innerHTML = `<div style="grid-column: span 2; padding: 15px; color: #888; text-align: center;">Brak dostępnych rywali w systemie Swiss (grano już ze wszystkimi graczami).</div>`;
+        if (summaryEl) summaryEl.innerHTML = `Rozegrano już mecze z każdym uczestnikiem turnieju.`;
+        return;
+    }
+
+    const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
+    candidates.forEach(c => {
+        c.prob = Math.max(1, Math.round((c.weight / totalWeight) * 100));
+    });
+
+    candidates.sort((a, b) => b.prob - a.prob);
+    const topCandidates = candidates.slice(0, 8);
+
+    if (summaryEl) {
+        const scenarioLabel = currentPredictorScenario === 'WIN' ? 'WYGRANEJ' : (currentPredictorScenario === 'TIE' ? 'REMISIE' : 'PORAŻCE');
+        summaryEl.innerHTML = `
+            🎯 Przy Twoim wyniku po <strong>${scenarioLabel}</strong> (${targetScenarioPts} pkt), algorytm zidentyfikował 
+            <strong>${candidates.length}</strong> uprawnionych rywali (z którymi jeszcze nie grałeś). Poniżej najbardziej prawdopodobne parowania w Rundzie ${activeRound + 1}:
+        `;
+    }
+
+    listEl.innerHTML = topCandidates.map(c => `
+        <div class="candidate-card clickable-row" onclick="selectPlayerForTie('${c.player.player.id}')" title="Kliknij, aby przeanalizować mecz z tym rywalem">
+            <div>
+                <div class="candidate-name">${c.name}</div>
+                <div class="candidate-sub">Aktualnie: <strong>${c.pts} pkt</strong> | Bilans: ${c.record} | OMWP: ${c.omwp}</div>
+                <div class="candidate-bracket-tag">${c.bracketTag}</div>
+            </div>
+            <div class="candidate-prob-badge">
+                ${c.prob}%
+                <div style="font-size: 10px; color: #94a3b8; font-weight: normal;">szans</div>
+            </div>
+        </div>
+    `).join('');
 }

@@ -385,6 +385,208 @@
             margin-left: 8px;
             vertical-align: middle;
         }
+
+        /* CUT STATUS BADGES */
+        .cut-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .badge-locked { background: rgba(46, 204, 113, 0.2); border: 1px solid #2ecc71; color: #2ecc71; }
+        .badge-win-in { background: rgba(52, 152, 219, 0.2); border: 1px solid #3498db; color: #3498db; }
+        .badge-safe-id { background: rgba(241, 196, 15, 0.2); border: 1px solid #f1c40f; color: #f1c40f; }
+        .badge-bubble { background: rgba(230, 126, 34, 0.2); border: 1px solid #e67e22; color: #e67e22; }
+        .badge-must-win { background: rgba(231, 76, 60, 0.2); border: 1px solid #e74c3c; color: #e74c3c; }
+        .badge-eliminated { background: rgba(127, 140, 141, 0.2); border: 1px solid #7f8c8d; color: #95a5a6; }
+
+        /* STATUS FILTER BUTTONS */
+        .status-filter-btn {
+            background: #1e2230;
+            color: #94a3b8;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            padding: 5px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            width: auto;
+            height: 32px;
+            transition: all 0.2s;
+        }
+        .status-filter-btn:hover { background: #283046; color: #fff; border-color: #3498db; }
+        .status-filter-btn.active { background: #3498db; color: #fff; border-color: #3498db; }
+
+        /* OMWP CLICKABLE */
+        .omwp-clickable {
+            cursor: pointer;
+            text-decoration: underline;
+            text-decoration-style: dotted;
+            text-underline-offset: 3px;
+            color: #94a3b8;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+        .omwp-clickable:hover {
+            color: #3498db;
+        }
+
+        /* OMWP MODAL */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 15px;
+        }
+        .modal-content {
+            background: #181922;
+            border: 1px solid #2f3448;
+            border-radius: 10px;
+            width: 100%;
+            max-width: 820px;
+            max-height: 90vh;
+            overflow-y: auto;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+        }
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 1px solid #282c3c;
+            padding-bottom: 12px;
+        }
+        .modal-close-btn {
+            background: transparent;
+            border: none;
+            color: #aaa;
+            font-size: 20px;
+            font-weight: bold;
+            cursor: pointer;
+            padding: 2px 8px;
+            width: auto;
+            height: auto;
+        }
+        .modal-close-btn:hover { color: #fff; }
+
+        .omwp-stats-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+            margin-top: 14px;
+        }
+        @media (min-width: 600px) {
+            .omwp-stats-summary-grid { grid-template-columns: repeat(5, 1fr); }
+        }
+        .omwp-stat-card {
+            background: #202330;
+            padding: 10px;
+            border-radius: 6px;
+            text-align: center;
+            border: 1px solid #2b3044;
+        }
+        .omwp-stat-card .label { font-size: 11px; color: #888; text-transform: uppercase; }
+        .omwp-stat-card .value { font-size: 18px; font-weight: bold; margin-top: 4px; }
+
+        .omwp-table th, .omwp-table td { padding: 8px 10px; font-size: 12px; text-align: center; }
+        .badge-boost { color: #2ecc71; font-weight: bold; }
+        .badge-floor { color: #3498db; font-style: italic; font-weight: bold; }
+        .badge-drag { color: #e74c3c; font-weight: bold; }
+
+        .omwp-insight-box {
+            background: rgba(52, 152, 219, 0.12);
+            border: 1px solid rgba(52, 152, 219, 0.35);
+            border-radius: 6px;
+            padding: 12px 14px;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #cbd5e1;
+        }
+
+        /* NEXT ROUND PAIRINGS PREDICTOR */
+        .pairings-predictor-panel {
+            background: #191c28;
+            border: 1px solid #2b3248;
+            border-left: 4px solid #9b59b6;
+            border-radius: 8px;
+            padding: 14px;
+        }
+        .scenario-toggle-bar {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            flex-wrap: wrap;
+        }
+        .scenario-toggle-btn {
+            background: #202434;
+            border: 1px solid #363e58;
+            color: #aaa;
+            border-radius: 6px;
+            padding: 8px 14px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            width: auto;
+            height: 38px;
+            transition: all 0.2s;
+        }
+        .scenario-toggle-btn:hover { background: #282e44; color: #fff; }
+        .scenario-toggle-btn.active {
+            background: #8e44ad;
+            border-color: #9b59b6;
+            color: #fff;
+            box-shadow: 0 0 10px rgba(155, 89, 182, 0.35);
+        }
+
+        .candidate-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        @media (min-width: 600px) {
+            .candidate-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        .candidate-card {
+            background: #212536;
+            border: 1px solid #30374e;
+            border-radius: 6px;
+            padding: 10px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: transform 0.15s, border-color 0.15s;
+        }
+        .candidate-card:hover {
+            border-color: #9b59b6;
+            transform: translateY(-2px);
+        }
+        .candidate-name { font-weight: bold; font-size: 14px; color: #fff; }
+        .candidate-sub { font-size: 11px; color: #888; margin-top: 2px; }
+        .candidate-prob-badge {
+            text-align: right;
+            font-size: 16px;
+            font-weight: bold;
+            color: #9b59b6;
+        }
+        .candidate-bracket-tag {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: rgba(155, 89, 182, 0.2);
+            color: #d2b4de;
+            display: inline-block;
+            margin-top: 3px;
+        }
     </style>
 </head>
 <body>
@@ -462,7 +664,7 @@
                 <th>Gracz</th>
                 <th>Pkt</th>
                 <th>Bilans</th>
-                <th>OMWP / GWP</th>
+                <th>Tiebreakery (OMW / GW / OGW)</th>
                 <th>Status</th>
             </tr>
         </thead>
@@ -476,8 +678,16 @@
 <!-- SEKCJA 2: TABELA LIVE ZE STRATEGIĄ I WYNIKAMI NA ŻYWO -->
 <div class="section-header">
     <h3 style="color: #3498db;">🔥 Klasyfikacja LIVE & Strategia Awansu (Z uwzględnieniem zakończonych stołów) <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-    <span style="font-size: 11px; color: #888;">(Kliknij gracza, by zbadać TIE)</span>
+    <span style="font-size: 11px; color: #888;">(Kliknij gracza, by zbadać TIE / kliknij OMWP po szczegóły)</span>
 </div>
+
+<div class="filter-controls-row" style="margin-top: 5px; margin-bottom: 10px;">
+    <span style="font-size: 12px; color: #888; margin-right: 4px;">Filtruj status awansu:</span>
+    <button class="status-filter-btn active" id="filterStatusAll" onclick="setLiveStatusFilter('all')">Wszyscy</button>
+    <button class="status-filter-btn" id="filterStatusCut" onclick="setLiveStatusFilter('cut')">🎯 W grze o Cut</button>
+    <button class="status-filter-btn" id="filterStatusBubble" onclick="setLiveStatusFilter('bubble')">🟡 Tylko Bubble</button>
+</div>
+
 <div class="table-responsive">
     <table>
         <thead>
@@ -485,10 +695,10 @@
                 <th style="width: 45px;">Msc</th>
                 <th>Gracz</th>
                 <th>Pkt LIVE</th>
-                <th>OMWP / GWP</th>
+                <th>Tiebreakery (OMW / GW / OGW)</th>
                 <th>Wymagane</th>
                 <th>Optymalna Strategia</th>
-                <th>Status LIVE</th>
+                <th>Status Awansu</th>
             </tr>
         </thead>
         <tbody id="liveStandingsBody">
@@ -516,7 +726,10 @@
                 Wybrany gracz: <strong id="selectedPlayerName" style="color: #fff; font-size: 16px;">-</strong>
                 <span id="selectedPlayerTable" style="color: #3498db; font-size: 13px; margin-left: 8px;"></span>
             </div>
-            <div id="selectedPlayerBaseStats" style="font-size: 13px; color: #888;"></div>
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <div id="selectedPlayerBaseStats" style="font-size: 13px; color: #888;"></div>
+                <button type="button" class="btn-secondary" style="width: auto; height: 30px; padding: 4px 10px; font-size: 12px; background: #2a3346; color: #3498db; border: 1px solid #3498db; border-radius: 4px; cursor: pointer;" onclick="openOmwpInspector(currentSelectedPlayerId)">🔍 Inspektor OMWP</button>
+            </div>
         </div>
 
         <div id="tieRoundContext" style="margin-top: 10px; font-size: 13px; color: #cbd5e1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"></div>
@@ -564,6 +777,92 @@
 
         <div id="tieRecommendationBanner" class="recommendation-box rec-risk">
             Wybierz gracza, aby wyliczyć rekomendację live.
+        </div>
+
+        <!-- DEDYKOWANA SEKCJA: SYMULATOR PAROWAŃ NA NASTĘPNĄ RUNDĘ -->
+        <div id="nextRoundPairingsPanel" class="pairings-predictor-panel" style="display: none; margin-top: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                <div>
+                    <span style="font-size: 15px; font-weight: bold; color: #fff;">🔮 Symulator Parowań: Z kim zagram w Rundzie <span id="predictorNextRoundNum">-</span>?</span>
+                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                        Model Swiss z wykluczeniem wcześniejszych rywali (no-rematches) oraz analizą trwających stołów.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="scenario-toggle-bar">
+                <button id="scenarioBtnWin" class="scenario-toggle-btn active" onclick="switchPredictorScenario('WIN')">🟢 Jeśli WYGRASZ (<span id="predictorWinPts">-</span> pkt)</button>
+                <button id="scenarioBtnTie" class="scenario-toggle-btn" onclick="switchPredictorScenario('TIE')">🟡 Jeśli REMIS (<span id="predictorTiePts">-</span> pkt)</button>
+                <button id="scenarioBtnLoss" class="scenario-toggle-btn" onclick="switchPredictorScenario('LOSS')">🔴 Jeśli PRZEGRASZ (<span id="predictorLossPts">-</span> pkt)</button>
+            </div>
+
+            <div id="predictorSummaryText" style="font-size: 12px; color: #cbd5e1; margin: 12px 0 8px 0; font-weight: 500;"></div>
+
+            <div id="predictorCandidatesList" class="candidate-grid"></div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: INSPEKTOR TIEBREAKERÓW OMWP -->
+<div id="omwpInspectorModal" class="modal-overlay" style="display: none;" onclick="closeOmwpInspector(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div>
+                <h3 id="omwpModalTitle" style="color: #fff; margin: 0; font-size: 17px;">🔍 Inspektor Tiebreakerów: <span id="omwpPlayerName">-</span></h3>
+                <div id="omwpPlayerSubtitle" style="font-size: 12px; color: #888; margin-top: 3px;">Szczegółowa analiza 3 wskaźników turniejowych Lorcany: OMW%, GW%, OGW%</div>
+            </div>
+            <button class="modal-close-btn" onclick="closeOmwpInspector()">✕</button>
+        </div>
+
+        <div class="omwp-stats-summary-grid">
+            <div class="omwp-stat-card">
+                <div class="label">1. OMW % (Rywali Match %)</div>
+                <div class="value" id="omwpCurrentVal" style="color: #3498db;">-%</div>
+            </div>
+            <div class="omwp-stat-card">
+                <div class="label">2. GW % (Twoje Gry %)</div>
+                <div class="value" id="omwpCurrentGwp" style="color: #f39c12;">-%</div>
+            </div>
+            <div class="omwp-stat-card">
+                <div class="label">3. OGW % (Rywali Gry %)</div>
+                <div class="value" id="omwpCurrentOgwp" style="color: #9b59b6;">-%</div>
+            </div>
+            <div class="omwp-stat-card">
+                <div class="label">Max OMW po rundzie</div>
+                <div class="value" id="omwpMaxVal" style="color: #2ecc71;">-%</div>
+            </div>
+            <div class="omwp-stat-card">
+                <div class="label">Min OMW po rundzie</div>
+                <div class="value" id="omwpMinVal" style="color: #e74c3c;">-%</div>
+            </div>
+        </div>
+
+        <div style="margin-top: 15px; margin-bottom: 6px; font-size: 12px; font-weight: bold; color: #aaa; text-transform: uppercase;">
+            ⚔️ Historia Rywali i Wpływ na OMW% oraz OGW%
+        </div>
+        <div class="table-responsive" style="max-height: 280px; margin-bottom: 12px;">
+            <table class="omwp-table">
+                <thead>
+                    <tr>
+                        <th style="width: 50px;">Runda</th>
+                        <th>Przeciwnik</th>
+                        <th style="width: 70px;">Wynik</th>
+                        <th>Bilans</th>
+                        <th>Pkt</th>
+                        <th>Rywal MW%</th>
+                        <th>Rywal GW%</th>
+                        <th>Wpływ na OMW%</th>
+                        <th>Stół Live</th>
+                    </tr>
+                </thead>
+                <tbody id="omwpOpponentsBody">
+                    <tr><td colspan="9" style="color: #666; padding: 20px;">Ładowanie danych rywali...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div id="omwpInsightBox" class="omwp-insight-box">
+            Informacje taktyczne dotyczące Twoich rywali...
         </div>
     </div>
 </div>
