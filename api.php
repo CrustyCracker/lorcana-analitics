@@ -180,10 +180,15 @@ if (!empty($eligibleRounds)) {
     }
 }
 
+$displayStatus = strtolower($eventData['display_status'] ?? '');
+$isCompleted = in_array($displayStatus, ['complete', 'completed', 'finished']);
+
 $result = [
     "eventId" => $eventId,
     "eventName" => $eventName,
     "playerCount" => $playerCount,
+    "displayStatus" => $displayStatus,
+    "isCompleted" => $isCompleted,
     "standingsRound" => $standingsRoundNumber,
     "activeRound" => $activeRoundNumber,
     "totalRounds" => $totalRounds,

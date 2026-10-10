@@ -565,6 +565,13 @@ function processStandings(data) {
     
     const activeRound = data.activeRound || 1;
     const totalRounds = Math.max(data.totalRounds || getDefaultTotalRounds(data.playerCount), activeRound);
+    const standingsRound = data.standingsRound || 0;
+    const isCompleted = Boolean(data.isCompleted || data.displayStatus === 'complete');
+
+    // Sprawdzamy, czy w bieżącej rundzie mecze jeszcze trwają i nie są ujęte w oficjalnej tabeli standings.
+    // W turniejach historycznych lub gdy standings zostały już wygenerowane dla bieżącej rundy (standingsRound >= activeRound),
+    // oficjalne punkty w tabeli zawierają już komplet wyników – doliczanie delty zdublowałoby punkty z ostatniej rundy!
+    const isLiveRoundInProgress = Boolean(activeRound > standingsRound && !isCompleted);
 
     setElText('eventNameDisplay', data.eventName || 'Turniej');
     setElText('totalPlayersDisplay', data.playerCount || 0);
@@ -572,7 +579,9 @@ function processStandings(data) {
     
     const roundsLeftCount = Math.max(0, totalRounds - activeRound);
     let roundsLeftLabel = "";
-    if (roundsLeftCount === 0) {
+    if (isCompleted || (!isLiveRoundInProgress && roundsLeftCount === 0)) {
+        roundsLeftLabel = "Turniej zakończony";
+    } else if (roundsLeftCount === 0) {
         roundsLeftLabel = "Ostatnia runda!";
     } else if (roundsLeftCount === 1) {
         roundsLeftLabel = "2 z tą";
@@ -587,32 +596,34 @@ function processStandings(data) {
     const pairingsList = extractPairingsList(data.pairings);
     const standingsMap = buildStandingsMap(standings);
 
-    // 1. Zbieramy delty punktowe z zakończonych meczów w bieżącej rundzie
+    // 1. Zbieramy delty punktowe z zakończonych meczów w bieżącej rundzie (tylko gdy runda na żywo jest w toku)
     const liveScoreDeltas = new Map();
-    pairingsList.forEach(m => {
-        const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
-        const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
-        const id1 = p1?.id;
-        const id2 = p2?.id;
+    if (isLiveRoundInProgress) {
+        pairingsList.forEach(m => {
+            const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+            const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+            const id1 = p1?.id;
+            const id2 = p2?.id;
 
-        const { score1, score2, hasScore, winnerId } = getMatchScores(m);
-        const status = (m.status || m.state || "").toUpperCase();
-        const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
-        const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
+            const { score1, score2, hasScore, winnerId } = getMatchScores(m);
+            const status = (m.status || m.state || "").toUpperCase();
+            const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
+            const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
 
-        if (isComplete) {
-            if (isDraw) {
-                if (id1) liveScoreDeltas.set(String(id1), 1);
-                if (id2) liveScoreDeltas.set(String(id2), 1);
-            } else if (score1 > score2 || (winnerId && id1 && String(id1) === String(winnerId))) {
-                if (id1) liveScoreDeltas.set(String(id1), 3);
-                if (id2) liveScoreDeltas.set(String(id2), 0);
-            } else if (score2 > score1 || (winnerId && id2 && String(id2) === String(winnerId))) {
-                if (id1) liveScoreDeltas.set(String(id1), 0);
-                if (id2) liveScoreDeltas.set(String(id2), 3);
+            if (isComplete) {
+                if (isDraw) {
+                    if (id1) liveScoreDeltas.set(String(id1), 1);
+                    if (id2) liveScoreDeltas.set(String(id2), 1);
+                } else if (score1 > score2 || (winnerId && id1 && String(id1) === String(winnerId))) {
+                    if (id1) liveScoreDeltas.set(String(id1), 3);
+                    if (id2) liveScoreDeltas.set(String(id2), 0);
+                } else if (score2 > score1 || (winnerId && id2 && String(id2) === String(winnerId))) {
+                    if (id1) liveScoreDeltas.set(String(id1), 0);
+                    if (id2) liveScoreDeltas.set(String(id2), 3);
+                }
             }
-        }
-    });
+        });
+    }
 
     // 2. Budujemy tablicę LIVE STANDINGS (bazowe punkty + punkty z zakończonych meczów bieżącej rundy)
     const liveStandings = standings.map(p => {
@@ -680,7 +691,7 @@ function processStandings(data) {
             }
         }
         
-        const simRes = runLiveTieSimulation(p, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble);
+        const simRes = runLiveTieSimulation(p, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress);
         simulatedResultsCache.set(String(p.player.id), { sim: simRes, opp: myOpponent });
     });
 
@@ -1015,7 +1026,10 @@ function recalculateTieForSelectedPlayer() {
     let bubbleScore = standings[bubbleIndex]?.match_points || 0;
     let projectedFinalBubble = Math.ceil((bubbleScore / Math.max(1, activeRound)) * totalRounds);
 
-    const simResults = runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble);
+    const isCompleted = Boolean(latestData.isCompleted || latestData.displayStatus === 'complete');
+    const isLiveRoundInProgress = Boolean(activeRound > (latestData.standingsRound || 0) && !isCompleted);
+
+    const simResults = runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress);
 
     const formattedName = formatStandingsPlayerName(targetPlayer);
     setElText('selectedPlayerName', formattedName);
@@ -1028,19 +1042,32 @@ function recalculateTieForSelectedPlayer() {
     // 1. Pasek kontekstu rundy
     const tieRoundContextEl = document.getElementById('tieRoundContext');
     if (tieRoundContextEl) {
-        let matchStatePill = "";
-        if (simResults.isCurrentMatchFinished) {
-            matchStatePill = `<span style="color: #2ecc71;">✅ Twój mecz w R${activeRound} jest zakończony.</span>`;
-        } else if (myMatch) {
-            matchStatePill = `<span>⚔️ Stół #${myMatch.table_number || myMatch.tableNumber || '?'} vs <strong>${myOpponent?.name || 'BYE'}</strong></span>`;
+        if (simResults.matchesLeft === 0) {
+            tieRoundContextEl.innerHTML = `
+                <span class="round-pill">🎯 Wszystkie rundy rozegrane (${totalRounds}/${totalRounds})</span>
+                <span class="round-pill" style="background: rgba(46, 204, 113, 0.2); color: #2ecc71; border-color: #2ecc71;">🏆 Turniej / Faza Swiss zakończona</span>
+            `;
+        } else {
+            let matchStatePill = "";
+            if (simResults.isCurrentMatchFinished) {
+                matchStatePill = `<span style="color: #2ecc71;">✅ Twój mecz w R${activeRound} jest zakończony.</span>`;
+            } else if (myMatch) {
+                matchStatePill = `<span>⚔️ Stół #${myMatch.table_number || myMatch.tableNumber || '?'} vs <strong>${myOpponent?.name || 'BYE'}</strong></span>`;
+            }
+            
+            let roundWord = simResults.matchesLeft === 1 ? 'mecz' : (simResults.matchesLeft >= 2 && simResults.matchesLeft <= 4 ? 'mecze' : 'meczów');
+            tieRoundContextEl.innerHTML = `
+                <span class="round-pill">🎯 Runda ${activeRound} z ${totalRounds}</span>
+                <span class="round-pill">⏳ Pozostało do rozegrania: ${simResults.matchesLeft} ${roundWord}</span>
+                ${matchStatePill}
+            `;
         }
-        
-        let roundWord = simResults.matchesLeft === 1 ? 'mecz' : (simResults.matchesLeft >= 2 && simResults.matchesLeft <= 4 ? 'mecze' : 'meczów');
-        tieRoundContextEl.innerHTML = `
-            <span class="round-pill">🎯 Runda ${activeRound} z ${totalRounds}</span>
-            <span class="round-pill">⏳ Pozostało do rozegrania: ${simResults.matchesLeft} ${roundWord}</span>
-            ${matchStatePill}
-        `;
+    }
+
+    // Widoczność sekcji scenariuszy bieżącego meczu (ukrywamy, gdy faza Swiss jest zakończona)
+    const currentMatchScenariosWrapper = document.getElementById('currentMatchScenariosWrapper');
+    if (currentMatchScenariosWrapper) {
+        currentMatchScenariosWrapper.style.display = simResults.matchesLeft === 0 ? 'none' : 'block';
     }
 
     // 2. Podpowiedź: Czy 2 remisy z rzędu dają Top Cut?
@@ -1075,6 +1102,11 @@ function renderDoubleTiePrompt(sim, targetPlayer, myOpponent, totalRounds) {
     const descEl = document.getElementById('doubleTiePromptDesc');
     const oppNoteEl = document.getElementById('doubleTieOpponentNote');
     if (!panel || !badgeEl || !descEl) return;
+
+    if (!sim || sim.matchesLeft === 0) {
+        panel.style.display = 'none';
+        return;
+    }
 
     panel.style.display = 'block';
     const oppName = myOpponent?.name || "Twój rywal";
@@ -1212,39 +1244,44 @@ function renderMultiRoundScenarios(sim) {
     `).join('');
 }
 
-function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, currentRound, totalRounds, projectedFinalBubble) {
+function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, currentRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress = true) {
     const SIM_COUNT = 600;
     const targetId = targetPlayer.player.id;
     const opponentId = myOpponent?.id || null;
 
-    let isCurrentMatchFinished = false;
+    let isCurrentMatchFinished = !isLiveRoundInProgress;
     let targetFixedRoundDelta = 0;
     let opponentFixedRoundDelta = 0;
+    const fixedMatchDeltas = new Map();
+    const liveUnfinishedMatches = [];
 
-    for (const m of pairingsList) {
-        const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
-        const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
-        if ((p1 && String(p1.id) === String(targetId)) || (p2 && String(p2.id) === String(targetId))) {
-            const { score1, score2, hasScore, winnerId } = getMatchScores(m);
-            const status = (m.status || m.state || "").toUpperCase();
-            const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
-            const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
-            
-            if (isComplete) {
-                isCurrentMatchFinished = true;
-                const isP1 = (p1 && String(p1.id) === String(targetId));
-                if (isDraw) {
-                    targetFixedRoundDelta = 1;
-                    opponentFixedRoundDelta = 1;
-                } else if (score1 > score2 || (winnerId && p1 && String(p1.id) === String(winnerId))) {
-                    targetFixedRoundDelta = isP1 ? 3 : 0;
-                    opponentFixedRoundDelta = isP1 ? 0 : 3;
-                } else if (score2 > score1 || (winnerId && p2 && String(p2.id) === String(winnerId))) {
-                    targetFixedRoundDelta = isP1 ? 0 : 3;
-                    opponentFixedRoundDelta = isP1 ? 3 : 0;
+    // Jeśli runda na żywo jest w toku, sprawdzamy status trwających stołów i doliczamy delty punktowe
+    if (isLiveRoundInProgress) {
+        for (const m of pairingsList) {
+            const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+            const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+            if ((p1 && String(p1.id) === String(targetId)) || (p2 && String(p2.id) === String(targetId))) {
+                const { score1, score2, hasScore, winnerId } = getMatchScores(m);
+                const status = (m.status || m.state || "").toUpperCase();
+                const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
+                const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
+                
+                if (isComplete) {
+                    isCurrentMatchFinished = true;
+                    const isP1 = (p1 && String(p1.id) === String(targetId));
+                    if (isDraw) {
+                        targetFixedRoundDelta = 1;
+                        opponentFixedRoundDelta = 1;
+                    } else if (score1 > score2 || (winnerId && p1 && String(p1.id) === String(winnerId))) {
+                        targetFixedRoundDelta = isP1 ? 3 : 0;
+                        opponentFixedRoundDelta = isP1 ? 0 : 3;
+                    } else if (score2 > score1 || (winnerId && p2 && String(p2.id) === String(winnerId))) {
+                        targetFixedRoundDelta = isP1 ? 0 : 3;
+                        opponentFixedRoundDelta = isP1 ? 3 : 0;
+                    }
                 }
+                break;
             }
-            break;
         }
     }
 
@@ -1271,41 +1308,40 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
         activeOpponentId: roundPairingPairs.get(p.player.id) || null
     }));
 
-    const fixedMatchDeltas = new Map();
-    const liveUnfinishedMatches = [];
+    if (isLiveRoundInProgress) {
+        pairingsList.forEach(m => {
+            const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+            const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+            const id1 = p1?.id;
+            const id2 = p2?.id;
 
-    pairingsList.forEach(m => {
-        const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
-        const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
-        const id1 = p1?.id;
-        const id2 = p2?.id;
-
-        if (!isCurrentMatchFinished && (id1 === targetId || id2 === targetId)) {
-            return;
-        }
-
-        const { score1, score2, hasScore, winnerId } = getMatchScores(m);
-        const status = (m.status || m.state || "").toUpperCase();
-        const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
-        const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
-
-        if (isComplete) {
-            if (isDraw) {
-                if (id1) fixedMatchDeltas.set(id1, 1);
-                if (id2) fixedMatchDeltas.set(id2, 1);
-            } else if (score1 > score2 || (winnerId && id1 && String(id1) === String(winnerId))) {
-                if (id1) fixedMatchDeltas.set(id1, 3);
-                if (id2) fixedMatchDeltas.set(id2, 0);
-            } else if (score2 > score1 || (winnerId && id2 && String(id2) === String(winnerId))) {
-                if (id1) fixedMatchDeltas.set(id1, 0);
-                if (id2) fixedMatchDeltas.set(id2, 3);
+            if (!isCurrentMatchFinished && (id1 === targetId || id2 === targetId)) {
+                return;
             }
-        } else {
-            if (id1 && id2) {
-                liveUnfinishedMatches.push({ id1, id2 });
+
+            const { score1, score2, hasScore, winnerId } = getMatchScores(m);
+            const status = (m.status || m.state || "").toUpperCase();
+            const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
+            const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
+
+            if (isComplete) {
+                if (isDraw) {
+                    if (id1) fixedMatchDeltas.set(id1, 1);
+                    if (id2) fixedMatchDeltas.set(id2, 1);
+                } else if (score1 > score2 || (winnerId && id1 && String(id1) === String(winnerId))) {
+                    if (id1) fixedMatchDeltas.set(id1, 3);
+                    if (id2) fixedMatchDeltas.set(id2, 0);
+                } else if (score2 > score1 || (winnerId && id2 && String(id2) === String(winnerId))) {
+                    if (id1) fixedMatchDeltas.set(id1, 0);
+                    if (id2) fixedMatchDeltas.set(id2, 3);
+                }
+            } else {
+                if (id1 && id2) {
+                    liveUnfinishedMatches.push({ id1, id2 });
+                }
             }
-        }
-    });
+        });
+    }
 
     let tieSuccesses = 0;
     let oppTieSuccesses = 0;
@@ -1507,6 +1543,20 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
 function updateRecommendationBanner(sim, myMatch, targetPlayer, myOpponent, activeRound, totalRounds) {
     const banner = document.getElementById('tieRecommendationBanner');
     if (!banner || !sim) return;
+
+    if (sim.matchesLeft === 0) {
+        const cutSize = cachedCutContext.cutSize || 4;
+        const rank = targetPlayer.liveRank || targetPlayer.rank || 999;
+        const inCut = rank <= cutSize;
+        if (inCut) {
+            banner.className = "recommendation-box rec-safe";
+            banner.innerHTML = `🏆 <strong>TURNIEJ ZAKOŃCZONY:</strong> Faza Swiss dobiegła końca. Gracz zakwalifikował się do Top Cut (miejsce #${rank}) z dorobkiem <strong>${targetPlayer.livePoints || targetPlayer.match_points} pkt</strong>!`;
+        } else {
+            banner.className = "recommendation-box rec-danger";
+            banner.innerHTML = `🏁 <strong>TURNIEJ ZAKOŃCZONY:</strong> Faza Swiss dobiegła końca. Gracz ukończył turniej na miejscu #${rank} (<strong>${targetPlayer.livePoints || targetPlayer.match_points} pkt</strong>) poza strefą Top Cut.`;
+        }
+        return;
+    }
 
     const oppName = myOpponent?.name || "Twój rywal";
 

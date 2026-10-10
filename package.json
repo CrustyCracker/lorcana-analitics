@@ -1,0 +1,19 @@
+{
+  "name": "lorcana-analytics",
+  "version": "1.0.0",
+  "description": "Lorcana Live Standings & Tournament Strategy Predictor",
+  "main": "app.js",
+  "scripts": {
+    "test": "node --test tests/",
+    "test:scenario": "node --test tests/scenario-terry-crusty-r8.test.js"
+  },
+  "keywords": [
+    "lorcana",
+    "tcg",
+    "swiss",
+    "tiebreakers",
+    "monte-carlo"
+  ],
+  "author": "CrustyCracker",
+  "license": "MIT"
+}

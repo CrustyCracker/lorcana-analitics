@@ -753,25 +753,27 @@
         </div>
 
         <!-- BIEŻĄCY STÓŁ -->
-        <div style="margin-top: 18px; font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
-            ⚡ Scenariusze dla obecnego meczu (Runda <span id="tieCurrentRoundNum">-</span>)
-        </div>
-        <div class="simulation-grid">
-            <div class="sim-card">
-                <div class="sim-title">Jeśli padnie REMIS (ID)</div>
-                <div class="sim-chance" id="chanceTieDisplay" style="color: #f1c40f;">-%</div>
-                <div class="sim-pts" id="ptsTieDisplay">Pkt: -</div>
-                <div class="sim-sub" id="oppTieChanceDisplay">Rywal po TIE: -%</div>
+        <div id="currentMatchScenariosWrapper">
+            <div style="margin-top: 18px; font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
+                ⚡ Scenariusze dla obecnego meczu (Runda <span id="tieCurrentRoundNum">-</span>)
             </div>
-            <div class="sim-card">
-                <div class="sim-title">Jeśli WYGRASZ (WIN)</div>
-                <div class="sim-chance" id="chanceWinDisplay" style="color: #2ecc71;">-%</div>
-                <div class="sim-pts" id="ptsWinDisplay">Pkt: -</div>
-            </div>
-            <div class="sim-card">
-                <div class="sim-title">Jeśli PRZEGRASZ (LOSS)</div>
-                <div class="sim-chance" id="chanceLossDisplay" style="color: #e74c3c;">-%</div>
-                <div class="sim-pts" id="ptsLossDisplay">Pkt: -</div>
+            <div class="simulation-grid">
+                <div class="sim-card">
+                    <div class="sim-title">Jeśli padnie REMIS (ID)</div>
+                    <div class="sim-chance" id="chanceTieDisplay" style="color: #f1c40f;">-%</div>
+                    <div class="sim-pts" id="ptsTieDisplay">Pkt: -</div>
+                    <div class="sim-sub" id="oppTieChanceDisplay">Rywal po TIE: -%</div>
+                </div>
+                <div class="sim-card">
+                    <div class="sim-title">Jeśli WYGRASZ (WIN)</div>
+                    <div class="sim-chance" id="chanceWinDisplay" style="color: #2ecc71;">-%</div>
+                    <div class="sim-pts" id="ptsWinDisplay">Pkt: -</div>
+                </div>
+                <div class="sim-card">
+                    <div class="sim-title">Jeśli PRZEGRASZ (LOSS)</div>
+                    <div class="sim-chance" id="chanceLossDisplay" style="color: #e74c3c;">-%</div>
+                    <div class="sim-pts" id="ptsLossDisplay">Pkt: -</div>
+                </div>
             </div>
         </div>
 
