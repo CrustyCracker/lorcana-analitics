@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Lorcana Live Predictor & Standings Hub</title>
     <style>
         * { box-sizing: border-box; }
@@ -587,11 +587,649 @@
             display: inline-block;
             margin-top: 3px;
         }
+
+        /* WHAT-IF CONTROLS */
+        .whatif-banner {
+            background: rgba(243, 156, 18, 0.16);
+            border: 1px solid #f39c12;
+            border-left: 4px solid #f39c12;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 13px;
+            color: #fde68a;
+        }
+        .whatif-btn-group {
+            display: inline-flex;
+            gap: 4px;
+            align-items: center;
+            justify-content: center;
+        }
+        .whatif-btn {
+            width: auto;
+            height: 26px;
+            padding: 2px 8px;
+            font-size: 11px;
+            font-weight: 700;
+            border-radius: 4px;
+            background: #252836;
+            color: #94a3b8;
+            border: 1px solid #3b4256;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .whatif-btn:hover {
+            color: #fff;
+            border-color: #64748b;
+            background: #32374a;
+        }
+        .whatif-btn.active-w1 {
+            background: #27ae60;
+            border-color: #2ecc71;
+            color: #fff;
+            box-shadow: 0 0 8px rgba(46, 204, 113, 0.4);
+        }
+        .whatif-btn.active-tie {
+            background: #d35400;
+            border-color: #f39c12;
+            color: #fff;
+            box-shadow: 0 0 8px rgba(243, 156, 18, 0.4);
+        }
+        .whatif-btn.active-w2 {
+            background: #2980b9;
+            border-color: #3498db;
+            color: #fff;
+            box-shadow: 0 0 8px rgba(52, 152, 219, 0.4);
+        }
+        .whatif-reset-mini {
+            background: rgba(231, 76, 60, 0.2);
+            border-color: #e74c3c;
+            color: #e74c3c;
+        }
+        .badge-whatif {
+            background: #9b59b6;
+            color: #fff;
+        }
+
+        /* CUT LINE BREAKDOWN PANEL */
+        .cut-breakdown-panel {
+            background: #181c26;
+            border: 1px solid #2b3548;
+            border-left: 4px solid #2ecc71;
+            border-radius: 8px;
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+        .cut-breakdown-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        @media (min-width: 768px) {
+            .cut-breakdown-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        .cut-metric-card {
+            background: #202634;
+            border: 1px solid #2f3a4f;
+            border-radius: 6px;
+            padding: 10px 12px;
+        }
+        .cut-metric-card .metric-label {
+            font-size: 11px;
+            color: #94a3b8;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        .cut-metric-card .metric-val {
+            font-size: 16px;
+            font-weight: 700;
+            color: #fff;
+            margin-top: 4px;
+        }
+        .cut-metric-card .metric-sub {
+            font-size: 11px;
+            color: #cbd5e1;
+            margin-top: 3px;
+        }
+        .brackets-pills-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid #283142;
+        }
+        .bracket-pill {
+            background: #222838;
+            border: 1px solid #333d54;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .bracket-pill.pill-safe { border-color: rgba(46, 204, 113, 0.5); background: rgba(46, 204, 113, 0.08); }
+        .bracket-pill.pill-split { border-color: rgba(241, 196, 15, 0.65); background: rgba(241, 196, 15, 0.12); }
+        .bracket-pill.pill-out { border-color: rgba(231, 76, 60, 0.4); background: rgba(231, 76, 60, 0.06); }
+
+        /* TOP CUT BRACKET & PLAY/DRAW PREDICTOR */
+        .bracket-panel {
+            background: #171a24;
+            border-left: 4px solid #f1c40f;
+            margin-top: 25px;
+        }
+        .bracket-mode-bar {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 10px;
+            margin-bottom: 6px;
+        }
+        .bracket-mode-btn {
+            width: auto;
+            height: 34px;
+            padding: 0 12px;
+            font-size: 12px;
+            font-weight: 700;
+            border-radius: 6px;
+            background: #232838;
+            color: #94a3b8;
+            border: 1px solid #36405a;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .bracket-mode-btn:hover {
+            color: #fff;
+            border-color: #64748b;
+        }
+        .bracket-mode-btn.active {
+            background: rgba(241, 196, 15, 0.18);
+            color: #f1c40f;
+            border-color: #f1c40f;
+            box-shadow: 0 0 10px rgba(241, 196, 15, 0.2);
+        }
+        .bracket-tree-wrapper {
+            overflow-x: auto;
+            padding: 12px 4px 16px 4px;
+            margin-top: 8px;
+            -webkit-overflow-scrolling: touch;
+        }
+        .bracket-tree {
+            display: flex;
+            align-items: stretch;
+            gap: 24px;
+            min-width: max-content;
+        }
+        .bracket-round-col {
+            display: flex;
+            flex-direction: column;
+            width: 280px;
+            flex-shrink: 0;
+            position: relative;
+        }
+        .bracket-round-header {
+            background: linear-gradient(135deg, #22283a 0%, #1a1f2e 100%);
+            border: 1px solid #333d56;
+            border-top: 3px solid #f1c40f;
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .bracket-round-title {
+            font-size: 13px;
+            font-weight: 800;
+            color: #f8fafc;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+        .bracket-round-sub {
+            font-size: 11px;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+        .bracket-round-matches {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            flex: 1;
+            gap: 12px;
+        }
+        .bracket-matches-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin-top: 12px;
+        }
+        @media (min-width: 768px) {
+            .bracket-matches-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        .bracket-match-card {
+            background: #1f2433;
+            border: 1px solid #2e364d;
+            border-radius: 8px;
+            padding: 9px 11px;
+            transition: all 0.15s;
+            position: relative;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.25);
+        }
+        .bracket-round-col:not(:last-child) .bracket-match-card::after {
+            content: '';
+            position: absolute;
+            right: -13px;
+            top: 50%;
+            width: 12px;
+            height: 2px;
+            background: #3b4664;
+        }
+        .bracket-match-card.selected-in-bracket {
+            border: 2px solid #3498db;
+            background: linear-gradient(135deg, rgba(52, 152, 219, 0.16) 0%, rgba(241, 196, 15, 0.08) 100%);
+            box-shadow: 0 0 14px rgba(52, 152, 219, 0.35);
+        }
+        .bracket-match-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 10.5px;
+            color: #94a3b8;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .bracket-player-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 8px;
+            border-radius: 5px;
+            margin-bottom: 4px;
+            font-size: 12.5px;
+            cursor: pointer;
+            transition: background 0.15s;
+            gap: 6px;
+        }
+        .bracket-player-row:last-child {
+            margin-bottom: 0;
+        }
+        .bracket-player-row:hover {
+            background: rgba(255, 255, 255, 0.08);
+        }
+        .bracket-high-seed {
+            background: rgba(46, 204, 113, 0.09);
+            border-left: 3px solid #2ecc71;
+        }
+        .bracket-low-seed {
+            background: rgba(241, 196, 15, 0.06);
+            border-left: 3px solid #f1c40f;
+        }
+        .bracket-winner-row {
+            background: rgba(46, 204, 113, 0.2) !important;
+            border-left: 3px solid #2ecc71 !important;
+            color: #fff;
+            font-weight: 700;
+        }
+        .bracket-eliminated-row {
+            opacity: 0.52;
+        }
+        .bracket-selected-player-row {
+            outline: 1px solid #38bdf8;
+            background: rgba(56, 189, 248, 0.15) !important;
+        }
+        .bracket-seed-badge {
+            display: inline-block;
+            min-width: 24px;
+            text-align: center;
+            padding: 1px 5px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 800;
+            background: #2b3348;
+            color: #f8fafc;
+            margin-right: 4px;
+        }
+        .bracket-score-pill {
+            font-size: 12px;
+            font-weight: 800;
+            padding: 1px 6px;
+            border-radius: 4px;
+            background: #283044;
+            color: #e2e8f0;
+            margin-left: 4px;
+        }
+        .bracket-score-pill.win {
+            background: #27ae60;
+            color: #fff;
+        }
+        .bracket-champion-card {
+            background: linear-gradient(135deg, rgba(241, 196, 15, 0.18) 0%, rgba(211, 84, 0, 0.12) 100%);
+            border: 2px solid #f1c40f;
+            border-radius: 10px;
+            padding: 16px 14px;
+            text-align: center;
+            box-shadow: 0 0 20px rgba(241, 196, 15, 0.2);
+        }
+        .play-draw-pill {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .pill-play { background: rgba(46, 204, 113, 0.22); color: #2ecc71; border: 1px solid #2ecc71; }
+        .pill-draw { background: rgba(241, 196, 15, 0.2); color: #f1c40f; border: 1px solid #f1c40f; }
+
+        /* PLAYER PERSONAL BRACKET PATH STEPPER */
+        .player-bracket-path-box {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #2d364d;
+        }
+        .player-bracket-path-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+            margin-top: 8px;
+        }
+        @media (min-width: 768px) {
+            .player-bracket-path-grid {
+                grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            }
+        }
+        .path-stage-card {
+            background: #1b202e;
+            border: 1px solid #2f384e;
+            border-top: 3px solid #3498db;
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        .path-stage-card.stage-won {
+            border-top-color: #2ecc71;
+            background: rgba(46, 204, 113, 0.06);
+        }
+        .path-stage-card.stage-lost {
+            border-top-color: #e74c3c;
+            background: rgba(231, 76, 60, 0.05);
+            opacity: 0.75;
+        }
+        .path-stage-card.stage-final {
+            border-top-color: #f1c40f;
+        }
+        .path-stage-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 11px;
+            font-weight: 800;
+            text-transform: uppercase;
+            color: #94a3b8;
+        }
+        .path-opp-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+            background: #23293a;
+            border: 1px solid #313a52;
+            border-radius: 5px;
+            padding: 5px 8px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .path-opp-item:hover {
+            border-color: #64748b;
+        }
+        .path-opp-item.fav-opp {
+            border-left: 3px solid #f1c40f;
+        }
+
+        /* QUICK SEARCH INPUTS & COLLAPSIBLE SECTIONS */
+        .quick-search-row {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .quick-search-input {
+            height: 38px;
+            font-size: 14px;
+            padding: 6px 12px;
+            background: #1c1f2b;
+            border: 1px solid #333c52;
+            border-radius: 6px;
+            color: #fff;
+            flex: 1;
+        }
+        .quick-search-input:focus {
+            outline: none;
+            border-color: #3498db;
+            box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+        }
+        .quick-search-clear {
+            width: auto;
+            height: 38px;
+            padding: 0 12px;
+            font-size: 13px;
+            background: #282d3e;
+            color: #94a3b8;
+            border: 1px solid #384158;
+            border-radius: 6px;
+            display: none;
+        }
+        .collapse-toggle-btn {
+            width: auto;
+            height: 30px;
+            padding: 4px 10px;
+            font-size: 12px;
+            font-weight: 600;
+            background: #232736;
+            color: #94a3b8;
+            border: 1px solid #363e54;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .collapse-toggle-btn:hover {
+            color: #fff;
+            border-color: #3498db;
+        }
+
+        /* STICKY MOBILE BOTTOM NAVIGATION BAR */
+        .mobile-bottom-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(18, 20, 29, 0.95);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-top: 1px solid #2e364f;
+            padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
+            z-index: 950;
+            box-shadow: 0 -4px 18px rgba(0, 0, 0, 0.55);
+            justify-content: space-around;
+            align-items: center;
+            gap: 4px;
+        }
+        .mobile-nav-btn {
+            flex: 1;
+            height: 46px;
+            padding: 4px 2px;
+            background: transparent;
+            color: #94a3b8;
+            border: none;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2px;
+            font-size: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s, color 0.15s;
+        }
+        .mobile-nav-btn .nav-icon {
+            font-size: 16px;
+            line-height: 1;
+        }
+        .mobile-nav-btn:active,
+        .mobile-nav-btn.active {
+            background: rgba(52, 152, 219, 0.18);
+            color: #fff;
+        }
+        .mobile-nav-btn.nav-refresh {
+            color: #f39c12;
+        }
+
+        /* MOBILE OPTIMIZATIONS (< 768px & < 520px) */
+        @media (max-width: 767px) {
+            body {
+                padding: 10px 8px calc(76px + env(safe-area-inset-bottom)) 8px;
+            }
+            .mobile-bottom-nav {
+                display: flex;
+            }
+            .panel {
+                padding: 12px;
+                border-radius: 8px;
+            }
+            .section-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+                margin: 16px 0 8px 0;
+            }
+            .section-header-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                width: 100%;
+                gap: 8px;
+            }
+            /* Przypięta 1. kolumna (Msc / Stół) podczas przewijania poziomego tabeli na telefonie */
+            .table-responsive table th:first-child,
+            .table-responsive table td:first-child {
+                position: sticky;
+                left: 0;
+                z-index: 2;
+                background: #1d202b;
+                box-shadow: 2px 0 5px rgba(0, 0, 0, 0.35);
+            }
+            th, td {
+                padding: 8px 8px;
+                font-size: 12px;
+            }
+            .player-cell-truncate {
+                max-width: 145px;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+            /* Wygodniejsze pod kciuk przyciski What-If na ekranach dotykowych */
+            .whatif-btn {
+                min-height: 32px;
+                min-width: 32px;
+                padding: 4px 9px;
+                font-size: 12px;
+            }
+            .poles-toggle-btn {
+                width: 100%;
+                justify-content: center;
+            }
+            /* Poziomy, przewijany pasek pigułek koszyków punktowych na telefonie */
+            .brackets-pills-row {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 6px;
+            }
+            .bracket-pill {
+                flex: 0 0 auto;
+            }
+            /* Przełącznik scenariuszy parowań jako pełnej szerokości kafelki pod kciuk */
+            .scenario-toggle-bar {
+                display: grid;
+                grid-template-columns: 1fr;
+                gap: 6px;
+            }
+            .scenario-toggle-btn {
+                width: 100%;
+                justify-content: center;
+            }
+            /* Modal OMWP jako nowoczesny Bottom Sheet wysuwany od dołu ekranu */
+            .modal-overlay {
+                align-items: flex-end;
+                padding: 0;
+            }
+            .modal-content {
+                border-radius: 16px 16px 0 0;
+                max-height: 88vh;
+                padding: 14px 12px calc(18px + env(safe-area-inset-bottom)) 12px;
+                border-bottom: none;
+            }
+            .modal-header {
+                position: sticky;
+                top: -14px;
+                background: #181922;
+                z-index: 10;
+                padding-top: 6px;
+                margin-bottom: 8px;
+            }
+            .modal-close-btn {
+                background: #282c3e;
+                border-radius: 50%;
+                width: 34px;
+                height: 34px;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 520px) {
+            /* Na wąskich telefonach karta REMIS (ID) na całą szerokość u góry, a WIN / LOSS obok siebie pod spodem */
+            .simulation-grid {
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+            }
+            .simulation-grid .sim-card:first-child {
+                grid-column: span 2;
+                border-color: rgba(241, 196, 15, 0.45);
+                background: linear-gradient(180deg, #252536 0%, #1e1e2c 100%);
+            }
+            /* 2 kolumny dla metryk Cut Line Breakdown na telefonie zamiast 1 długiej kolumny */
+            .cut-breakdown-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+            .cut-metric-card .metric-val {
+                font-size: 14px;
+            }
+            .stats-grid .stat-card:last-child {
+                grid-column: span 2;
+            }
+        }
     </style>
 </head>
 <body>
 
-<div class="panel">
+<div class="panel" id="topControlPanel">
     <h2>Lorcana Live Hub</h2>
     
     <div class="controls-grid">
@@ -629,10 +1267,24 @@
     </div>
 </div>
 
+<!-- PASEK STATUSU WHAT-IF -->
+<div id="whatIfStatusBar" class="whatif-banner" style="display: none;">
+    <div>
+        🎛️ <strong>Tryb symulacji „What-If” jest aktywny!</strong> Ręcznie ustawiono wyniki na <strong id="whatIfCountDisplay">0</strong> stołach. Wszystkie tabele, progi OMW% i szanse na Cut uwzględniają Twoje zmiany.
+    </div>
+    <button type="button" class="whatif-btn whatif-reset-mini" style="height: 32px; padding: 4px 12px; font-size: 12px;" onclick="clearAllWhatIfOverrides()">↺ Resetuj wszystkie What-If</button>
+</div>
+
 <!-- SEKCJA: PAROWANIA NA ŻYWO -->
-<div class="section-header">
-    <h3>⚔️ Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>) <span id="pairingsPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-    <span id="matchesProgress" style="font-size: 12px; color: #aaa;">-</span>
+<div class="section-header" id="pairingsSection">
+    <div class="section-header-row">
+        <h3>⚔️ Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>) <span id="pairingsPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+        <span id="matchesProgress" style="font-size: 12px; color: #aaa;">-</span>
+    </div>
+</div>
+<div class="quick-search-row">
+    <input type="text" id="pairingsSearchInput" class="quick-search-input" placeholder="🔎 Szukaj gracza lub numeru stołu (np. #12, Crusty)..." autocomplete="off" oninput="onPairingsSearchInput()">
+    <button type="button" id="pairingsSearchClearBtn" class="quick-search-clear" onclick="clearPairingsSearch()">✕ Wyczyść</button>
 </div>
 <div class="table-responsive">
     <table>
@@ -643,42 +1295,60 @@
                 <th style="width: 80px;">Wynik</th>
                 <th>Gracz 2</th>
                 <th style="width: 90px;">Status</th>
+                <th style="width: 150px;" title="Kliknij 1 / ID / 2, aby zasymulować wynik stołu i przeliczyć tabelę LIVE">🎛️ Symuluj (What-If)</th>
             </tr>
         </thead>
         <tbody id="pairingsBody">
-            <tr><td colspan="5" style="color: #666; padding: 20px;">Brak danych live.</td></tr>
+            <tr><td colspan="6" style="color: #666; padding: 20px;">Brak danych live.</td></tr>
         </tbody>
     </table>
 </div>
 <div id="pairingsPagination" class="pagination-bar" style="display: none;"></div>
 
 <!-- SEKCJA 1: TABELA OFICJALNA RAVENSBURGER (STAN PO RUNDZIE X) -->
-<div class="section-header">
-    <h3 style="color: #888;">📋 Oficjalna Tabela Ravensburger (Stan po Rundzie <span id="officialRoundNum">-</span>) <span id="officialPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+<div class="section-header" id="officialStandingsSection">
+    <div class="section-header-row">
+        <h3 style="color: #888;">📋 Oficjalna Tabela Ravensburger (Po R<span id="officialRoundNum">-</span>) <span id="officialPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+        <button type="button" id="toggleOfficialTableBtn" class="collapse-toggle-btn" onclick="toggleOfficialTableSection()">Ukryj ▲</button>
+    </div>
 </div>
-<div class="table-responsive">
-    <table>
-        <thead>
-            <tr>
-                <th style="width: 45px;">Msc</th>
-                <th>Gracz</th>
-                <th>Pkt</th>
-                <th>Bilans</th>
-                <th>Tiebreakery (OMW / GW / OGW)</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody id="officialStandingsBody">
-            <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
-        </tbody>
-    </table>
+<div id="officialStandingsWrapper">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 45px;">Msc</th>
+                    <th>Gracz</th>
+                    <th>Pkt</th>
+                    <th>Bilans</th>
+                    <th>Tiebreakery (OMW / GW / OGW)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="officialStandingsBody">
+                <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div id="officialPagination" class="pagination-bar" style="display: none;"></div>
 </div>
-<div id="officialPagination" class="pagination-bar" style="display: none;"></div>
 
 <!-- SEKCJA 2: TABELA LIVE ZE STRATEGIĄ I WYNIKAMI NA ŻYWO -->
-<div class="section-header">
+<div class="section-header" id="liveStandingsSection">
     <h3 style="color: #3498db;">🔥 Klasyfikacja LIVE & Strategia Awansu (Z uwzględnieniem zakończonych stołów) <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-    <span style="font-size: 11px; color: #888;">(Kliknij gracza, by zbadać TIE / kliknij OMWP po szczegóły)</span>
+    <span style="font-size: 11px; color: #888;">(Dotknij gracza, by zbadać TIE / dotknij OMWP po szczegóły)</span>
+</div>
+
+<!-- KALKULATOR ROZKŁADU KOSZYKÓW PUNKTOWYCH (CUT LINE BREAKDOWN) -->
+<div id="cutBreakdownPanel" class="cut-breakdown-panel" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+        <div style="font-size: 14px; font-weight: 700; color: #2ecc71;">
+            📊 Analiza Kreski i Koszyków Punktowych (Cut Line Breakdown — Top <span id="breakdownCutSizeLabel">4</span>)
+        </div>
+        <div id="breakdownSummarySubtitle" style="font-size: 12px; color: #94a3b8;"></div>
+    </div>
+    <div class="cut-breakdown-grid" id="cutBreakdownMetricsGrid"></div>
+    <div class="brackets-pills-row" id="cutBreakdownBracketsRow"></div>
 </div>
 
 <div class="filter-controls-row" style="margin-top: 5px; margin-bottom: 10px;">
@@ -686,6 +1356,11 @@
     <button class="status-filter-btn active" id="filterStatusAll" onclick="setLiveStatusFilter('all')">Wszyscy</button>
     <button class="status-filter-btn" id="filterStatusCut" onclick="setLiveStatusFilter('cut')">🎯 W grze o Cut</button>
     <button class="status-filter-btn" id="filterStatusBubble" onclick="setLiveStatusFilter('bubble')">🟡 Tylko Bubble</button>
+</div>
+
+<div class="quick-search-row">
+    <input type="text" id="liveTableSearchInput" class="quick-search-input" placeholder="🔎 Filtruj tabelę LIVE po nicku gracza..." autocomplete="off" oninput="onLiveTableSearchInput()">
+    <button type="button" id="liveTableSearchClearBtn" class="quick-search-clear" onclick="clearLiveTableSearch()">✕ Wyczyść</button>
 </div>
 
 <div class="table-responsive">
@@ -726,9 +1401,9 @@
                 Wybrany gracz: <strong id="selectedPlayerName" style="color: #fff; font-size: 16px;">-</strong>
                 <span id="selectedPlayerTable" style="color: #3498db; font-size: 13px; margin-left: 8px;"></span>
             </div>
-            <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <div id="selectedPlayerBaseStats" style="font-size: 13px; color: #888;"></div>
-                <button type="button" class="btn-secondary" style="width: auto; height: 30px; padding: 4px 10px; font-size: 12px; background: #2a3346; color: #3498db; border: 1px solid #3498db; border-radius: 4px; cursor: pointer;" onclick="openOmwpInspector(currentSelectedPlayerId)">🔍 Inspektor OMWP</button>
+                <button type="button" class="btn-secondary" style="width: auto; height: 32px; padding: 4px 10px; font-size: 12px; background: #2a3346; color: #3498db; border: 1px solid #3498db; border-radius: 4px; cursor: pointer;" onclick="openOmwpInspector(currentSelectedPlayerId)">🔍 Inspektor OMWP</button>
             </div>
         </div>
 
@@ -781,6 +1456,29 @@
             Wybierz gracza, aby wyliczyć rekomendację live.
         </div>
 
+        <!-- NOWY MODUŁ: PLAY/DRAW & SEEDING W TOP CUT DLA WYBRANEGO GRACZA -->
+        <div id="playDrawSeedingPanel" class="double-tie-panel" style="display: none; border-left-color: #f1c40f; margin-top: 15px;">
+            <div class="double-tie-header">
+                <div class="double-tie-title">🎲 Rozstawienie (Seeding) i Przywilej Play/Draw w Top Cut</div>
+                <div id="playDrawCurrentBadge" class="play-draw-pill pill-play">-</div>
+            </div>
+            <div id="playDrawSeedingBody" style="font-size: 13px; color: #cbd5e1; line-height: 1.5;"></div>
+        </div>
+
+        <!-- NOWY MODUŁ: SZYBKI WHAT-IF SĄSIEDNICH STOŁÓW BUBBLE -->
+        <div id="bubbleNeighborsWhatIfPanel" class="pairings-predictor-panel" style="display: none; border-left-color: #f39c12; margin-top: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
+                <div>
+                    <span style="font-size: 15px; font-weight: bold; color: #fff;">🎛️ Sąsiednie Stoły Bubble (Szybki symulator „What-If”)</span>
+                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                        Przeklikaj wyniki na kluczowych stołach wokół progu Cutu, aby od razu zobaczyć jak zmienią się Twoje szanse!
+                    </div>
+                </div>
+                <button type="button" class="whatif-btn whatif-reset-mini" onclick="clearAllWhatIfOverrides()">↺ Resetuj What-If</button>
+            </div>
+            <div id="bubbleNeighborsList" class="candidate-grid"></div>
+        </div>
+
         <!-- DEDYKOWANA SEKCJA: SYMULATOR PAROWAŃ NA NASTĘPNĄ RUNDĘ -->
         <div id="nextRoundPairingsPanel" class="pairings-predictor-panel" style="display: none; margin-top: 15px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
@@ -803,6 +1501,24 @@
             <div id="predictorCandidatesList" class="candidate-grid"></div>
         </div>
     </div>
+</div>
+
+<!-- SEKCJA 4: SYMULATOR DRABINKI TOP CUT (BRACKET & PLAY/DRAW PREDICTOR) -->
+<div class="panel bracket-panel" id="topCutBracketPanel" style="display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
+        <div>
+            <h3 style="color: #f1c40f; margin-bottom: 4px;">🏆 Drabinka Pucharowa Top Cut (Top <span id="bracketSizeTitle">8</span> — Drzewko & Play/Draw)</h3>
+            <div id="bracketPhaseStatusText" style="font-size: 12px; color: #94a3b8;">
+                Oficjalne drzewko pucharowe (od 1. rundy Top Cut aż do Finału). W każdej rundzie wyższy seed po fazie Swiss ma przywilej <strong>🟢 PLAY</strong>!
+            </div>
+        </div>
+        <div class="bracket-mode-bar" style="margin: 0;">
+            <button type="button" id="bracketModeProjectedBtn" class="bracket-mode-btn active" onclick="setBracketDisplayMode('projected')" title="Pokazuje pełną symulację kolejnych rund drabinki przy założeniu awansu wyższych seedów">🔮 Pełna Ścieżka (Faworyci wg Seedu)</button>
+            <button type="button" id="bracketModeStrictBtn" class="bracket-mode-btn" onclick="setBracketDisplayMode('strict')" title="Pokazuje w kolejnych rundach tylko potwierdzonych zwycięzców oraz pary potencjalnych seedów">🌳 Tylko Potwierdzone / TBD</button>
+        </div>
+    </div>
+    <div id="bracketSelectedPlayerBanner" style="display: none; margin-top: 10px;"></div>
+    <div id="topCutBracketGrid" class="bracket-tree-wrapper"></div>
 </div>
 
 <!-- MODAL: INSPEKTOR TIEBREAKERÓW OMWP -->
@@ -868,6 +1584,30 @@
         </div>
     </div>
 </div>
+
+<!-- DOLNY PASEK NAWIGACJI MOBILNEJ (STICKY APP BAR) -->
+<nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Szybka nawigacja mobilna">
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('pairingsSection', this)">
+        <span class="nav-icon">⚔️</span>
+        <span>Mecze</span>
+    </button>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('liveStandingsSection', this)">
+        <span class="nav-icon">🔥</span>
+        <span>Tabela Live</span>
+    </button>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('tieModule', this)">
+        <span class="nav-icon">🤝</span>
+        <span>Kalkulator ID</span>
+    </button>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('topCutBracketPanel', this)">
+        <span class="nav-icon">🏆</span>
+        <span>Drabinka</span>
+    </button>
+    <button type="button" class="mobile-nav-btn nav-refresh" onclick="startTracking()">
+        <span class="nav-icon">🔄</span>
+        <span>Odśwież</span>
+    </button>
+</nav>
 
 <script src="app.js"></script>
 </body>

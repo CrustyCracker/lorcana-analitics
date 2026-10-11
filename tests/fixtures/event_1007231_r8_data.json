@@ -1,0 +1,4000 @@
+{
+  "eventId": 1007231,
+  "eventName": "Iconic Tour - CCQ",
+  "swissRounds": 8,
+  "totalPlayers": 205,
+  "standings": [
+    {
+      "id": 11150,
+      "name": "Kilian Michael B",
+      "match_points": 22,
+      "omwp": 0.619375,
+      "gwp": 0.68181818,
+      "ogwp": 0.56963503,
+      "rank": 1
+    },
+    {
+      "id": 7010,
+      "name": "Justice B",
+      "match_points": 22,
+      "omwp": 0.59705357,
+      "gwp": 0.83333333,
+      "ogwp": 0.54746725,
+      "rank": 2
+    },
+    {
+      "id": 61368,
+      "name": "Daniel L",
+      "match_points": 19,
+      "omwp": 0.70833333,
+      "gwp": 0.73684211,
+      "ogwp": 0.62209147,
+      "rank": 3
+    },
+    {
+      "id": 75471,
+      "name": "Grzegorz S",
+      "match_points": 19,
+      "omwp": 0.66145833,
+      "gwp": 0.66666667,
+      "ogwp": 0.61229842,
+      "rank": 4
+    },
+    {
+      "id": 24971,
+      "name": "Gabriel B",
+      "match_points": 19,
+      "omwp": 0.65625,
+      "gwp": 0.72222222,
+      "ogwp": 0.58202492,
+      "rank": 5
+    },
+    {
+      "id": 25033,
+      "name": "Vanessa P",
+      "match_points": 19,
+      "omwp": 0.63159722,
+      "gwp": 0.66666667,
+      "ogwp": 0.57381975,
+      "rank": 6
+    },
+    {
+      "id": 62296,
+      "name": "Jakub Z",
+      "match_points": 19,
+      "omwp": 0.59375,
+      "gwp": 0.66666667,
+      "ogwp": 0.56810777,
+      "rank": 7
+    },
+    {
+      "id": 52366,
+      "name": "Kevin T",
+      "match_points": 19,
+      "omwp": 0.58645833,
+      "gwp": 0.68421053,
+      "ogwp": 0.56703217,
+      "rank": 8
+    },
+    {
+      "id": 13928,
+      "name": "Martin M",
+      "match_points": 19,
+      "omwp": 0.56101191,
+      "gwp": 0.65,
+      "ogwp": 0.53376392,
+      "rank": 9
+    },
+    {
+      "id": 9208,
+      "name": "Damian W",
+      "match_points": 19,
+      "omwp": 0.48395834,
+      "gwp": 0.66666667,
+      "ogwp": 0.49252997,
+      "rank": 10
+    },
+    {
+      "id": 19774,
+      "name": "Šarlota T",
+      "match_points": 18,
+      "omwp": 0.59895833,
+      "gwp": 0.63157895,
+      "ogwp": 0.55725466,
+      "rank": 11
+    },
+    {
+      "id": 54219,
+      "name": "Michael N",
+      "match_points": 18,
+      "omwp": 0.56770833,
+      "gwp": 0.61904762,
+      "ogwp": 0.55197463,
+      "rank": 12
+    },
+    {
+      "id": 504643,
+      "name": "Moritz W",
+      "match_points": 18,
+      "omwp": 0.56208333,
+      "gwp": 0.68421053,
+      "ogwp": 0.53363233,
+      "rank": 13
+    },
+    {
+      "id": 39212,
+      "name": "Michele J",
+      "match_points": 18,
+      "omwp": 0.56208333,
+      "gwp": 0.61904762,
+      "ogwp": 0.54397406,
+      "rank": 14
+    },
+    {
+      "id": 36092,
+      "name": "Andrej K",
+      "match_points": 18,
+      "omwp": 0.55729167,
+      "gwp": 0.68421053,
+      "ogwp": 0.54564552,
+      "rank": 15
+    },
+    {
+      "id": 15136,
+      "name": "Jakub R",
+      "match_points": 18,
+      "omwp": 0.55173611,
+      "gwp": 0.65,
+      "ogwp": 0.5422714,
+      "rank": 16
+    },
+    {
+      "id": 10870,
+      "name": "Terry M",
+      "match_points": 18,
+      "omwp": 0.54645833,
+      "gwp": 0.57142857,
+      "ogwp": 0.51580087,
+      "rank": 17
+    },
+    {
+      "id": 22345,
+      "name": "Jamie M",
+      "match_points": 18,
+      "omwp": 0.54627976,
+      "gwp": 0.66666667,
+      "ogwp": 0.53426796,
+      "rank": 18
+    },
+    {
+      "id": 11020,
+      "name": "Leonardo G",
+      "match_points": 18,
+      "omwp": 0.53083333,
+      "gwp": 0.66666667,
+      "ogwp": 0.49702485,
+      "rank": 19
+    },
+    {
+      "id": 71898,
+      "name": "Emanuel S",
+      "match_points": 18,
+      "omwp": 0.51520833,
+      "gwp": 0.6,
+      "ogwp": 0.51833087,
+      "rank": 20
+    },
+    {
+      "id": 17306,
+      "name": "shawky m",
+      "match_points": 18,
+      "omwp": 0.4958631,
+      "gwp": 0.6,
+      "ogwp": 0.51681084,
+      "rank": 21
+    },
+    {
+      "id": 14308,
+      "name": "Jennifer F",
+      "match_points": 18,
+      "omwp": 0.48126984,
+      "gwp": 0.61904762,
+      "ogwp": 0.5002422,
+      "rank": 22
+    },
+    {
+      "id": 30715,
+      "name": "Jacob F",
+      "match_points": 17,
+      "omwp": 0.71354167,
+      "gwp": 0.61666667,
+      "ogwp": 0.62446932,
+      "rank": 23
+    },
+    {
+      "id": 226067,
+      "name": "Even L",
+      "match_points": 17,
+      "omwp": 0.56041667,
+      "gwp": 0.61666667,
+      "ogwp": 0.54783968,
+      "rank": 24
+    },
+    {
+      "id": 41864,
+      "name": "Robert K",
+      "match_points": 17,
+      "omwp": 0.55208333,
+      "gwp": 0.57142857,
+      "ogwp": 0.53046252,
+      "rank": 25
+    },
+    {
+      "id": 18448,
+      "name": "Karol P",
+      "match_points": 17,
+      "omwp": 0.50826389,
+      "gwp": 0.66666667,
+      "ogwp": 0.49683719,
+      "rank": 26
+    },
+    {
+      "id": 30841,
+      "name": "sebastian m",
+      "match_points": 16,
+      "omwp": 0.65583333,
+      "gwp": 0.6,
+      "ogwp": 0.59037793,
+      "rank": 27
+    },
+    {
+      "id": 41880,
+      "name": "Lukas K",
+      "match_points": 16,
+      "omwp": 0.64583333,
+      "gwp": 0.6,
+      "ogwp": 0.59583333,
+      "rank": 28
+    },
+    {
+      "id": 15719,
+      "name": "Richard H",
+      "match_points": 16,
+      "omwp": 0.588125,
+      "gwp": 0.54545455,
+      "ogwp": 0.55570175,
+      "rank": 29
+    },
+    {
+      "id": 68938,
+      "name": "vegeta p",
+      "match_points": 16,
+      "omwp": 0.5625,
+      "gwp": 0.64912281,
+      "ogwp": 0.53174081,
+      "rank": 30
+    },
+    {
+      "id": 39665,
+      "name": "Kryštof H",
+      "match_points": 16,
+      "omwp": 0.53604167,
+      "gwp": 0.63157895,
+      "ogwp": 0.51925578,
+      "rank": 31
+    },
+    {
+      "id": 11319,
+      "name": "Marek S",
+      "match_points": 16,
+      "omwp": 0.51479167,
+      "gwp": 0.58730159,
+      "ogwp": 0.50622105,
+      "rank": 32
+    },
+    {
+      "id": 20769,
+      "name": "Johannes S",
+      "match_points": 16,
+      "omwp": 0.494375,
+      "gwp": 0.61666667,
+      "ogwp": 0.49317086,
+      "rank": 33
+    },
+    {
+      "id": 14417,
+      "name": "Mustafa Y",
+      "match_points": 15,
+      "omwp": 0.65625,
+      "gwp": 0.54545455,
+      "ogwp": 0.58076441,
+      "rank": 34
+    },
+    {
+      "id": 25045,
+      "name": "Ludvík R",
+      "match_points": 15,
+      "omwp": 0.63020833,
+      "gwp": 0.57142857,
+      "ogwp": 0.59298341,
+      "rank": 35
+    },
+    {
+      "id": 21658,
+      "name": "Balázs V",
+      "match_points": 15,
+      "omwp": 0.61458333,
+      "gwp": 0.61111111,
+      "ogwp": 0.55523493,
+      "rank": 36
+    },
+    {
+      "id": 44726,
+      "name": "Christian S",
+      "match_points": 15,
+      "omwp": 0.60565476,
+      "gwp": 0.54385965,
+      "ogwp": 0.57175245,
+      "rank": 37
+    },
+    {
+      "id": 41965,
+      "name": "Krzysztof L",
+      "match_points": 15,
+      "omwp": 0.60375,
+      "gwp": 0.55,
+      "ogwp": 0.54428031,
+      "rank": 38
+    },
+    {
+      "id": 42035,
+      "name": "Trung Duc N",
+      "match_points": 15,
+      "omwp": 0.60119048,
+      "gwp": 0.61904762,
+      "ogwp": 0.5543938,
+      "rank": 39
+    },
+    {
+      "id": 64744,
+      "name": "Michal V",
+      "match_points": 15,
+      "omwp": 0.59895833,
+      "gwp": 0.55,
+      "ogwp": 0.57447786,
+      "rank": 40
+    },
+    {
+      "id": 34893,
+      "name": "Szymon P",
+      "match_points": 15,
+      "omwp": 0.59375,
+      "gwp": 0.64705882,
+      "ogwp": 0.56210318,
+      "rank": 41
+    },
+    {
+      "id": 90599,
+      "name": "Paweł K",
+      "match_points": 15,
+      "omwp": 0.59375,
+      "gwp": 0.55,
+      "ogwp": 0.56329887,
+      "rank": 42
+    },
+    {
+      "id": 35654,
+      "name": "Harald S",
+      "match_points": 15,
+      "omwp": 0.56729167,
+      "gwp": 0.6,
+      "ogwp": 0.55720459,
+      "rank": 43
+    },
+    {
+      "id": 27669,
+      "name": "Mateusz K",
+      "match_points": 15,
+      "omwp": 0.56622024,
+      "gwp": 0.6,
+      "ogwp": 0.51820175,
+      "rank": 44
+    },
+    {
+      "id": 31609,
+      "name": "Marco J",
+      "match_points": 15,
+      "omwp": 0.5625,
+      "gwp": 0.57142857,
+      "ogwp": 0.54272851,
+      "rank": 45
+    },
+    {
+      "id": 35751,
+      "name": "Keane M",
+      "match_points": 15,
+      "omwp": 0.5483631,
+      "gwp": 0.57142857,
+      "ogwp": 0.55241323,
+      "rank": 46
+    },
+    {
+      "id": 42116,
+      "name": "Agata Zofia S",
+      "match_points": 15,
+      "omwp": 0.53621032,
+      "gwp": 0.55555556,
+      "ogwp": 0.51820591,
+      "rank": 47
+    },
+    {
+      "id": 11226,
+      "name": "Arne W",
+      "match_points": 15,
+      "omwp": 0.53354167,
+      "gwp": 0.65,
+      "ogwp": 0.49712606,
+      "rank": 48
+    },
+    {
+      "id": 42674,
+      "name": "Micha K",
+      "match_points": 15,
+      "omwp": 0.53354167,
+      "gwp": 0.47368421,
+      "ogwp": 0.54769581,
+      "rank": 49
+    },
+    {
+      "id": 27830,
+      "name": "Konrad S",
+      "match_points": 15,
+      "omwp": 0.53229167,
+      "gwp": 0.66666667,
+      "ogwp": 0.51730986,
+      "rank": 50
+    },
+    {
+      "id": 30920,
+      "name": "Julian G",
+      "match_points": 15,
+      "omwp": 0.52708333,
+      "gwp": 0.65,
+      "ogwp": 0.52143905,
+      "rank": 51
+    },
+    {
+      "id": 14366,
+      "name": "Thomas A",
+      "match_points": 15,
+      "omwp": 0.51694445,
+      "gwp": 0.57894737,
+      "ogwp": 0.49340941,
+      "rank": 52
+    },
+    {
+      "id": 21709,
+      "name": "Patrick D",
+      "match_points": 15,
+      "omwp": 0.51,
+      "gwp": 0.57142857,
+      "ogwp": 0.50912243,
+      "rank": 53
+    },
+    {
+      "id": 29548,
+      "name": "Edoardo D",
+      "match_points": 15,
+      "omwp": 0.50791667,
+      "gwp": 0.68421053,
+      "ogwp": 0.48178379,
+      "rank": 54
+    },
+    {
+      "id": 38179,
+      "name": "Alan S",
+      "match_points": 15,
+      "omwp": 0.50347222,
+      "gwp": 0.6,
+      "ogwp": 0.50624478,
+      "rank": 55
+    },
+    {
+      "id": 56340,
+      "name": "Philipp R",
+      "match_points": 15,
+      "omwp": 0.5,
+      "gwp": 0.54545455,
+      "ogwp": 0.50512052,
+      "rank": 56
+    },
+    {
+      "id": 13521,
+      "name": "Alexander D",
+      "match_points": 15,
+      "omwp": 0.4975,
+      "gwp": 0.63157895,
+      "ogwp": 0.46493882,
+      "rank": 57
+    },
+    {
+      "id": 14218,
+      "name": "Dzenan S",
+      "match_points": 15,
+      "omwp": 0.49395833,
+      "gwp": 0.66666667,
+      "ogwp": 0.47546053,
+      "rank": 58
+    },
+    {
+      "id": 38655,
+      "name": "Devin B",
+      "match_points": 15,
+      "omwp": 0.48916667,
+      "gwp": 0.57142857,
+      "ogwp": 0.51462902,
+      "rank": 59
+    },
+    {
+      "id": 55883,
+      "name": "Kamil R",
+      "match_points": 15,
+      "omwp": 0.47875,
+      "gwp": 0.52380952,
+      "ogwp": 0.47492045,
+      "rank": 60
+    },
+    {
+      "id": 38061,
+      "name": "Johannes J",
+      "match_points": 15,
+      "omwp": 0.47791667,
+      "gwp": 0.59090909,
+      "ogwp": 0.46088807,
+      "rank": 61
+    },
+    {
+      "id": 16152,
+      "name": "Florian R",
+      "match_points": 15,
+      "omwp": 0.47461309,
+      "gwp": 0.66666667,
+      "ogwp": 0.45225251,
+      "rank": 62
+    },
+    {
+      "id": 467644,
+      "name": "Oskar K",
+      "match_points": 15,
+      "omwp": 0.4475,
+      "gwp": 0.54545455,
+      "ogwp": 0.47291587,
+      "rank": 63
+    },
+    {
+      "id": 528939,
+      "name": "Martin O",
+      "match_points": 14,
+      "omwp": 0.5725,
+      "gwp": 0.53703704,
+      "ogwp": 0.55481199,
+      "rank": 64
+    },
+    {
+      "id": 18499,
+      "name": "Bernhard G",
+      "match_points": 13,
+      "omwp": 0.609375,
+      "gwp": 0.55555556,
+      "ogwp": 0.57794566,
+      "rank": 65
+    },
+    {
+      "id": 7212,
+      "name": "Jake Q",
+      "match_points": 13,
+      "omwp": 0.58285714,
+      "gwp": 0.56666667,
+      "ogwp": 0.56456916,
+      "rank": 66
+    },
+    {
+      "id": 13390,
+      "name": "andrea b",
+      "match_points": 13,
+      "omwp": 0.566875,
+      "gwp": 0.54385965,
+      "ogwp": 0.53754908,
+      "rank": 67
+    },
+    {
+      "id": 66003,
+      "name": "Zoltan T",
+      "match_points": 13,
+      "omwp": 0.55513889,
+      "gwp": 0.56666667,
+      "ogwp": 0.53606001,
+      "rank": 68
+    },
+    {
+      "id": 54686,
+      "name": "Mateusz T",
+      "match_points": 13,
+      "omwp": 0.55208333,
+      "gwp": 0.53623188,
+      "ogwp": 0.53333444,
+      "rank": 69
+    },
+    {
+      "id": 36398,
+      "name": "Roman M",
+      "match_points": 13,
+      "omwp": 0.53125,
+      "gwp": 0.49206349,
+      "ogwp": 0.53046135,
+      "rank": 70
+    },
+    {
+      "id": 14555,
+      "name": "Michael M",
+      "match_points": 13,
+      "omwp": 0.53083334,
+      "gwp": 0.54385965,
+      "ogwp": 0.52127636,
+      "rank": 71
+    },
+    {
+      "id": 54712,
+      "name": "Sarah S",
+      "match_points": 13,
+      "omwp": 0.53083334,
+      "gwp": 0.46666667,
+      "ogwp": 0.51303711,
+      "rank": 72
+    },
+    {
+      "id": 11140,
+      "name": "Andreu V",
+      "match_points": 13,
+      "omwp": 0.46791667,
+      "gwp": 0.54385965,
+      "ogwp": 0.47211577,
+      "rank": 73
+    },
+    {
+      "id": 59611,
+      "name": "István K",
+      "match_points": 13,
+      "omwp": 0.45708334,
+      "gwp": 0.55555556,
+      "ogwp": 0.46193609,
+      "rank": 74
+    },
+    {
+      "id": 14335,
+      "name": "Jens E",
+      "match_points": 13,
+      "omwp": 0.45444445,
+      "gwp": 0.51515152,
+      "ogwp": 0.45205305,
+      "rank": 75
+    },
+    {
+      "id": 32793,
+      "name": "Matus C",
+      "match_points": 12,
+      "omwp": 0.619375,
+      "gwp": 0.5,
+      "ogwp": 0.55549015,
+      "rank": 76
+    },
+    {
+      "id": 483878,
+      "name": "Markus P",
+      "match_points": 12,
+      "omwp": 0.60895833,
+      "gwp": 0.42857143,
+      "ogwp": 0.54989249,
+      "rank": 77
+    },
+    {
+      "id": 7295,
+      "name": "Jakub Ď",
+      "match_points": 12,
+      "omwp": 0.60416667,
+      "gwp": 0.5,
+      "ogwp": 0.54484127,
+      "rank": 78
+    },
+    {
+      "id": 20745,
+      "name": "Lukas H",
+      "match_points": 12,
+      "omwp": 0.59375,
+      "gwp": 0.54901961,
+      "ogwp": 0.55617558,
+      "rank": 79
+    },
+    {
+      "id": 36271,
+      "name": "Richard K",
+      "match_points": 12,
+      "omwp": 0.57770833,
+      "gwp": 0.52631579,
+      "ogwp": 0.55028822,
+      "rank": 80
+    },
+    {
+      "id": 14289,
+      "name": "Michael F",
+      "match_points": 12,
+      "omwp": 0.5725,
+      "gwp": 0.55555556,
+      "ogwp": 0.53810284,
+      "rank": 81
+    },
+    {
+      "id": 14395,
+      "name": "Melanie G",
+      "match_points": 12,
+      "omwp": 0.5725,
+      "gwp": 0.47058824,
+      "ogwp": 0.52753759,
+      "rank": 82
+    },
+    {
+      "id": 41737,
+      "name": "Michael R",
+      "match_points": 12,
+      "omwp": 0.57142857,
+      "gwp": 0.52631579,
+      "ogwp": 0.56466491,
+      "rank": 83
+    },
+    {
+      "id": 42117,
+      "name": "Leonardo P",
+      "match_points": 12,
+      "omwp": 0.56770833,
+      "gwp": 0.54545455,
+      "ogwp": 0.52426046,
+      "rank": 84
+    },
+    {
+      "id": 15747,
+      "name": "Vojtěch K",
+      "match_points": 12,
+      "omwp": 0.56729167,
+      "gwp": 0.57142857,
+      "ogwp": 0.51779292,
+      "rank": 85
+    },
+    {
+      "id": 52635,
+      "name": "Krzysztof P",
+      "match_points": 12,
+      "omwp": 0.56357143,
+      "gwp": 0.47368421,
+      "ogwp": 0.51758302,
+      "rank": 86
+    },
+    {
+      "id": 14154,
+      "name": "Michael K",
+      "match_points": 12,
+      "omwp": 0.56208333,
+      "gwp": 0.47619048,
+      "ogwp": 0.52908916,
+      "rank": 87
+    },
+    {
+      "id": 18162,
+      "name": "Daniel H",
+      "match_points": 12,
+      "omwp": 0.54645833,
+      "gwp": 0.5,
+      "ogwp": 0.54041354,
+      "rank": 88
+    },
+    {
+      "id": 43958,
+      "name": "Michael S",
+      "match_points": 12,
+      "omwp": 0.54125,
+      "gwp": 0.5,
+      "ogwp": 0.50960533,
+      "rank": 89
+    },
+    {
+      "id": 26809,
+      "name": "Pavel K",
+      "match_points": 12,
+      "omwp": 0.53785714,
+      "gwp": 0.52380952,
+      "ogwp": 0.53058609,
+      "rank": 90
+    },
+    {
+      "id": 27673,
+      "name": "Emanuel B",
+      "match_points": 12,
+      "omwp": 0.53604167,
+      "gwp": 0.45,
+      "ogwp": 0.51852876,
+      "rank": 91
+    },
+    {
+      "id": 30812,
+      "name": "Wojciech Z",
+      "match_points": 12,
+      "omwp": 0.52083333,
+      "gwp": 0.53703704,
+      "ogwp": 0.50253358,
+      "rank": 92
+    },
+    {
+      "id": 11607,
+      "name": "Przemysław G",
+      "match_points": 12,
+      "omwp": 0.51520833,
+      "gwp": 0.55,
+      "ogwp": 0.49391718,
+      "rank": 93
+    },
+    {
+      "id": 19835,
+      "name": "Michal N",
+      "match_points": 12,
+      "omwp": 0.50940476,
+      "gwp": 0.52380952,
+      "ogwp": 0.50933495,
+      "rank": 94
+    },
+    {
+      "id": 16072,
+      "name": "David L",
+      "match_points": 12,
+      "omwp": 0.50642857,
+      "gwp": 0.55,
+      "ogwp": 0.49140565,
+      "rank": 95
+    },
+    {
+      "id": 14121,
+      "name": "Jonas M",
+      "match_points": 12,
+      "omwp": 0.50520833,
+      "gwp": 0.5,
+      "ogwp": 0.50658607,
+      "rank": 96
+    },
+    {
+      "id": 10808,
+      "name": "Sebastian S",
+      "match_points": 12,
+      "omwp": 0.5,
+      "gwp": 0.50793651,
+      "ogwp": 0.5106032,
+      "rank": 97
+    },
+    {
+      "id": 38072,
+      "name": "Quentin C",
+      "match_points": 12,
+      "omwp": 0.494375,
+      "gwp": 0.52631579,
+      "ogwp": 0.49400063,
+      "rank": 98
+    },
+    {
+      "id": 34978,
+      "name": "Michael S",
+      "match_points": 12,
+      "omwp": 0.48875,
+      "gwp": 0.52631579,
+      "ogwp": 0.50049449,
+      "rank": 99
+    },
+    {
+      "id": 214831,
+      "name": "Kristijan G",
+      "match_points": 12,
+      "omwp": 0.46875,
+      "gwp": 0.47826087,
+      "ogwp": 0.48253889,
+      "rank": 100
+    },
+    {
+      "id": 32840,
+      "name": "Piotr K",
+      "match_points": 12,
+      "omwp": 0.46791667,
+      "gwp": 0.47368421,
+      "ogwp": 0.46550654,
+      "rank": 101
+    },
+    {
+      "id": 32938,
+      "name": "Markus H",
+      "match_points": 12,
+      "omwp": 0.45857143,
+      "gwp": 0.47058824,
+      "ogwp": 0.43412539,
+      "rank": 102
+    },
+    {
+      "id": 14316,
+      "name": "RICHARD S",
+      "match_points": 12,
+      "omwp": 0.45791667,
+      "gwp": 0.47368421,
+      "ogwp": 0.46003964,
+      "rank": 103
+    },
+    {
+      "id": 229334,
+      "name": "Lars D",
+      "match_points": 12,
+      "omwp": 0.45270833,
+      "gwp": 0.5,
+      "ogwp": 0.4618327,
+      "rank": 104
+    },
+    {
+      "id": 292442,
+      "name": "Radek J",
+      "match_points": 12,
+      "omwp": 0.450625,
+      "gwp": 0.45454545,
+      "ogwp": 0.48058983,
+      "rank": 105
+    },
+    {
+      "id": 15411,
+      "name": "Kevin L",
+      "match_points": 12,
+      "omwp": 0.44541667,
+      "gwp": 0.45,
+      "ogwp": 0.45990635,
+      "rank": 106
+    },
+    {
+      "id": 14384,
+      "name": "Thomas G",
+      "match_points": 12,
+      "omwp": 0.43361111,
+      "gwp": 0.55,
+      "ogwp": 0.4406391,
+      "rank": 107
+    },
+    {
+      "id": 15837,
+      "name": "Ernest K",
+      "match_points": 12,
+      "omwp": 0.400625,
+      "gwp": 0.52380952,
+      "ogwp": 0.44302266,
+      "rank": 108
+    },
+    {
+      "id": 7581,
+      "name": "Rafał W",
+      "match_points": 12,
+      "omwp": 0.39979167,
+      "gwp": 0.52380952,
+      "ogwp": 0.4236276,
+      "rank": 109
+    },
+    {
+      "id": 184536,
+      "name": "Riccardo M",
+      "match_points": 12,
+      "omwp": 0.38979167,
+      "gwp": 0.5,
+      "ogwp": 0.42726713,
+      "rank": 110
+    },
+    {
+      "id": 54790,
+      "name": "Marcus K",
+      "match_points": 12,
+      "omwp": 0.35041667,
+      "gwp": 0.52631579,
+      "ogwp": 0.38050439,
+      "rank": 111
+    },
+    {
+      "id": 27229,
+      "name": "Tobias G",
+      "match_points": 11,
+      "omwp": 0.47875,
+      "gwp": 0.41269841,
+      "ogwp": 0.49762775,
+      "rank": 112
+    },
+    {
+      "id": 81808,
+      "name": "Bryn-Oliver A",
+      "match_points": 11,
+      "omwp": 0.46833333,
+      "gwp": 0.48333333,
+      "ogwp": 0.48671861,
+      "rank": 113
+    },
+    {
+      "id": 42765,
+      "name": "Kilian D",
+      "match_points": 10,
+      "omwp": 0.53660714,
+      "gwp": 0.44444444,
+      "ogwp": 0.52979039,
+      "rank": 114
+    },
+    {
+      "id": 46871,
+      "name": "Christian R",
+      "match_points": 10,
+      "omwp": 0.51520834,
+      "gwp": 0.43859649,
+      "ogwp": 0.50146294,
+      "rank": 115
+    },
+    {
+      "id": 71519,
+      "name": "Andras Patrik M",
+      "match_points": 10,
+      "omwp": 0.504375,
+      "gwp": 0.42105263,
+      "ogwp": 0.49958972,
+      "rank": 116
+    },
+    {
+      "id": 10913,
+      "name": "Alessandro B",
+      "match_points": 10,
+      "omwp": 0.48247024,
+      "gwp": 0.46969697,
+      "ogwp": 0.48856214,
+      "rank": 117
+    },
+    {
+      "id": 50634,
+      "name": "Marcin G",
+      "match_points": 10,
+      "omwp": 0.4775,
+      "gwp": 0.45,
+      "ogwp": 0.48336941,
+      "rank": 118
+    },
+    {
+      "id": 32736,
+      "name": "Jan S",
+      "match_points": 10,
+      "omwp": 0.45791667,
+      "gwp": 0.53968254,
+      "ogwp": 0.46840056,
+      "rank": 119
+    },
+    {
+      "id": 30717,
+      "name": "Rachid A",
+      "match_points": 10,
+      "omwp": 0.41571429,
+      "gwp": 0.5,
+      "ogwp": 0.43603175,
+      "rank": 120
+    },
+    {
+      "id": 54720,
+      "name": "Thomas G",
+      "match_points": 10,
+      "omwp": 0.40458333,
+      "gwp": 0.42105263,
+      "ogwp": 0.43095295,
+      "rank": 121
+    },
+    {
+      "id": 77476,
+      "name": "Maria R",
+      "match_points": 10,
+      "omwp": 0.40458333,
+      "gwp": 0.41666667,
+      "ogwp": 0.41347339,
+      "rank": 122
+    },
+    {
+      "id": 14300,
+      "name": "Lars A",
+      "match_points": 9,
+      "omwp": 0.61111111,
+      "gwp": 0.5,
+      "ogwp": 0.55674603,
+      "rank": 123
+    },
+    {
+      "id": 32786,
+      "name": "Matus G",
+      "match_points": 9,
+      "omwp": 0.58333333,
+      "gwp": 0.35294118,
+      "ogwp": 0.55475146,
+      "rank": 124
+    },
+    {
+      "id": 14181,
+      "name": "Stefan N",
+      "match_points": 9,
+      "omwp": 0.56770833,
+      "gwp": 0.45833333,
+      "ogwp": 0.55988599,
+      "rank": 125
+    },
+    {
+      "id": 42062,
+      "name": "Jiří M",
+      "match_points": 9,
+      "omwp": 0.53285714,
+      "gwp": 0.55555556,
+      "ogwp": 0.50417505,
+      "rank": 126
+    },
+    {
+      "id": 13398,
+      "name": "Paolo S",
+      "match_points": 9,
+      "omwp": 0.53041667,
+      "gwp": 0.42105263,
+      "ogwp": 0.50083647,
+      "rank": 127
+    },
+    {
+      "id": 13840,
+      "name": "Hendrik P",
+      "match_points": 9,
+      "omwp": 0.52027778,
+      "gwp": 0.5,
+      "ogwp": 0.51511827,
+      "rank": 128
+    },
+    {
+      "id": 14163,
+      "name": "Marco R",
+      "match_points": 9,
+      "omwp": 0.52027778,
+      "gwp": 0.46153846,
+      "ogwp": 0.50820488,
+      "rank": 129
+    },
+    {
+      "id": 36418,
+      "name": "Sascha T",
+      "match_points": 9,
+      "omwp": 0.51479167,
+      "gwp": 0.45454545,
+      "ogwp": 0.48692276,
+      "rank": 130
+    },
+    {
+      "id": 26846,
+      "name": "Laura S",
+      "match_points": 9,
+      "omwp": 0.51142857,
+      "gwp": 0.375,
+      "ogwp": 0.51916626,
+      "rank": 131
+    },
+    {
+      "id": 35086,
+      "name": "Jörg H",
+      "match_points": 9,
+      "omwp": 0.51,
+      "gwp": 0.38095238,
+      "ogwp": 0.50912281,
+      "rank": 132
+    },
+    {
+      "id": 14068,
+      "name": "Markus W",
+      "match_points": 9,
+      "omwp": 0.50958333,
+      "gwp": 0.4,
+      "ogwp": 0.50278752,
+      "rank": 133
+    },
+    {
+      "id": 7049,
+      "name": "Rafal K",
+      "match_points": 9,
+      "omwp": 0.504375,
+      "gwp": 0.42105263,
+      "ogwp": 0.47886905,
+      "rank": 134
+    },
+    {
+      "id": 19202,
+      "name": "Michael S",
+      "match_points": 9,
+      "omwp": 0.504375,
+      "gwp": 0.4,
+      "ogwp": 0.47443834,
+      "rank": 135
+    },
+    {
+      "id": 36404,
+      "name": "Petr M",
+      "match_points": 9,
+      "omwp": 0.49944445,
+      "gwp": 0.5,
+      "ogwp": 0.49359649,
+      "rank": 136
+    },
+    {
+      "id": 404357,
+      "name": "Robert K",
+      "match_points": 9,
+      "omwp": 0.49139881,
+      "gwp": 0.42857143,
+      "ogwp": 0.51378723,
+      "rank": 137
+    },
+    {
+      "id": 31318,
+      "name": "Matthias H",
+      "match_points": 9,
+      "omwp": 0.483125,
+      "gwp": 0.36842105,
+      "ogwp": 0.5014271,
+      "rank": 138
+    },
+    {
+      "id": 9366,
+      "name": "Phillip B",
+      "match_points": 9,
+      "omwp": 0.47791667,
+      "gwp": 0.38888889,
+      "ogwp": 0.47690634,
+      "rank": 139
+    },
+    {
+      "id": 15217,
+      "name": "Thiago P",
+      "match_points": 9,
+      "omwp": 0.4716369,
+      "gwp": 0.42857143,
+      "ogwp": 0.45152446,
+      "rank": 140
+    },
+    {
+      "id": 15334,
+      "name": "Fredek B",
+      "match_points": 9,
+      "omwp": 0.46080357,
+      "gwp": 0.42105263,
+      "ogwp": 0.46982659,
+      "rank": 141
+    },
+    {
+      "id": 44730,
+      "name": "Michael H",
+      "match_points": 9,
+      "omwp": 0.45377976,
+      "gwp": 0.52380952,
+      "ogwp": 0.43515864,
+      "rank": 142
+    },
+    {
+      "id": 20500,
+      "name": "Dominik S",
+      "match_points": 9,
+      "omwp": 0.451875,
+      "gwp": 0.45,
+      "ogwp": 0.43140151,
+      "rank": 143
+    },
+    {
+      "id": 36881,
+      "name": "David Z",
+      "match_points": 9,
+      "omwp": 0.44333333,
+      "gwp": 0.5,
+      "ogwp": 0.46957672,
+      "rank": 144
+    },
+    {
+      "id": 58896,
+      "name": "Thomas H",
+      "match_points": 9,
+      "omwp": 0.440625,
+      "gwp": 0.47368421,
+      "ogwp": 0.45260154,
+      "rank": 145
+    },
+    {
+      "id": 41891,
+      "name": "Aldo Q",
+      "match_points": 9,
+      "omwp": 0.43625,
+      "gwp": 0.4,
+      "ogwp": 0.45252648,
+      "rank": 146
+    },
+    {
+      "id": 15430,
+      "name": "Gianmarco D",
+      "match_points": 9,
+      "omwp": 0.42947421,
+      "gwp": 0.47368421,
+      "ogwp": 0.44365383,
+      "rank": 147
+    },
+    {
+      "id": 43951,
+      "name": "Manuel K",
+      "match_points": 9,
+      "omwp": 0.42625,
+      "gwp": 0.45,
+      "ogwp": 0.47248434,
+      "rank": 148
+    },
+    {
+      "id": 80894,
+      "name": "Günter G",
+      "match_points": 9,
+      "omwp": 0.39979167,
+      "gwp": 0.42105263,
+      "ogwp": 0.43983838,
+      "rank": 149
+    },
+    {
+      "id": 86269,
+      "name": "Karol W",
+      "match_points": 9,
+      "omwp": 0.398125,
+      "gwp": 0.47619048,
+      "ogwp": 0.42898199,
+      "rank": 150
+    },
+    {
+      "id": 35407,
+      "name": "Katarzyna W",
+      "match_points": 9,
+      "omwp": 0.38375,
+      "gwp": 0.42857143,
+      "ogwp": 0.41063127,
+      "rank": 151
+    },
+    {
+      "id": 27615,
+      "name": "Andreas Z",
+      "match_points": 8,
+      "omwp": 0.60361111,
+      "gwp": 0.51111111,
+      "ogwp": 0.56425926,
+      "rank": 152
+    },
+    {
+      "id": 23165,
+      "name": "Gergely D",
+      "match_points": 8,
+      "omwp": 0.47875,
+      "gwp": 0.40350877,
+      "ogwp": 0.48795856,
+      "rank": 153
+    },
+    {
+      "id": 6550,
+      "name": "Basti W",
+      "match_points": 8,
+      "omwp": 0.37375,
+      "gwp": 0.41666667,
+      "ogwp": 0.40333886,
+      "rank": 154
+    },
+    {
+      "id": 340389,
+      "name": "Markus P",
+      "match_points": 7,
+      "omwp": 0.59027778,
+      "gwp": 0.38095238,
+      "ogwp": 0.56447179,
+      "rank": 155
+    },
+    {
+      "id": 11254,
+      "name": "Nathalie S",
+      "match_points": 7,
+      "omwp": 0.45583334,
+      "gwp": 0.37878788,
+      "ogwp": 0.47424812,
+      "rank": 156
+    },
+    {
+      "id": 35147,
+      "name": "Marco W",
+      "match_points": 7,
+      "omwp": 0.445,
+      "gwp": 0.35294118,
+      "ogwp": 0.43064718,
+      "rank": 157
+    },
+    {
+      "id": 11800,
+      "name": "Nicholas S",
+      "match_points": 7,
+      "omwp": 0.42625,
+      "gwp": 0.33,
+      "ogwp": 0.44300454,
+      "rank": 158
+    },
+    {
+      "id": 84765,
+      "name": "Christo T",
+      "match_points": 7,
+      "omwp": 0.39979167,
+      "gwp": 0.42857143,
+      "ogwp": 0.42275784,
+      "rank": 159
+    },
+    {
+      "id": 78638,
+      "name": "Polina P",
+      "match_points": 7,
+      "omwp": 0.37598214,
+      "gwp": 0.33,
+      "ogwp": 0.42260101,
+      "rank": 160
+    },
+    {
+      "id": 34269,
+      "name": "Cristian T",
+      "match_points": 6,
+      "omwp": 0.63333333,
+      "gwp": 0.46153846,
+      "ogwp": 0.62874687,
+      "rank": 161
+    },
+    {
+      "id": 60164,
+      "name": "Nicholas C",
+      "match_points": 6,
+      "omwp": 0.63194445,
+      "gwp": 0.375,
+      "ogwp": 0.62449685,
+      "rank": 162
+    },
+    {
+      "id": 11910,
+      "name": "Earl F",
+      "match_points": 6,
+      "omwp": 0.591,
+      "gwp": 0.41666667,
+      "ogwp": 0.55842105,
+      "rank": 163
+    },
+    {
+      "id": 14247,
+      "name": "Ying Jun Q",
+      "match_points": 6,
+      "omwp": 0.566,
+      "gwp": 0.5,
+      "ogwp": 0.50545546,
+      "rank": 164
+    },
+    {
+      "id": 45750,
+      "name": "Arthur R",
+      "match_points": 6,
+      "omwp": 0.52380952,
+      "gwp": 0.35714286,
+      "ogwp": 0.51505848,
+      "rank": 165
+    },
+    {
+      "id": 30892,
+      "name": "Sascha F",
+      "match_points": 6,
+      "omwp": 0.51333334,
+      "gwp": 0.41176471,
+      "ogwp": 0.52378548,
+      "rank": 166
+    },
+    {
+      "id": 37909,
+      "name": "Mario R",
+      "match_points": 6,
+      "omwp": 0.507,
+      "gwp": 0.41666667,
+      "ogwp": 0.51409524,
+      "rank": 167
+    },
+    {
+      "id": 19484,
+      "name": "Eva M",
+      "match_points": 6,
+      "omwp": 0.48354167,
+      "gwp": 0.35,
+      "ogwp": 0.4659596,
+      "rank": 168
+    },
+    {
+      "id": 19839,
+      "name": "Matej M",
+      "match_points": 6,
+      "omwp": 0.47875,
+      "gwp": 0.36842105,
+      "ogwp": 0.47725232,
+      "rank": 169
+    },
+    {
+      "id": 23517,
+      "name": "Matthias L",
+      "match_points": 6,
+      "omwp": 0.47875,
+      "gwp": 0.33,
+      "ogwp": 0.47772077,
+      "rank": 170
+    },
+    {
+      "id": 461506,
+      "name": "Christoph R",
+      "match_points": 6,
+      "omwp": 0.46875,
+      "gwp": 0.33333333,
+      "ogwp": 0.46018631,
+      "rank": 171
+    },
+    {
+      "id": 69493,
+      "name": "Jennifer B",
+      "match_points": 6,
+      "omwp": 0.46138889,
+      "gwp": 0.33,
+      "ogwp": 0.49283483,
+      "rank": 172
+    },
+    {
+      "id": 38936,
+      "name": "Martin N",
+      "match_points": 6,
+      "omwp": 0.457,
+      "gwp": 0.42857143,
+      "ogwp": 0.48026738,
+      "rank": 173
+    },
+    {
+      "id": 35007,
+      "name": "Patrick Z",
+      "match_points": 6,
+      "omwp": 0.44642857,
+      "gwp": 0.41176471,
+      "ogwp": 0.48643633,
+      "rank": 174
+    },
+    {
+      "id": 71524,
+      "name": "Denisa M",
+      "match_points": 6,
+      "omwp": 0.44583333,
+      "gwp": 0.35,
+      "ogwp": 0.43043561,
+      "rank": 175
+    },
+    {
+      "id": 30775,
+      "name": "Andreas H",
+      "match_points": 6,
+      "omwp": 0.43952381,
+      "gwp": 0.375,
+      "ogwp": 0.45463073,
+      "rank": 176
+    },
+    {
+      "id": 11048,
+      "name": "Martin F",
+      "match_points": 6,
+      "omwp": 0.42722222,
+      "gwp": 0.375,
+      "ogwp": 0.43501963,
+      "rank": 177
+    },
+    {
+      "id": 42045,
+      "name": "Florian E",
+      "match_points": 6,
+      "omwp": 0.42671429,
+      "gwp": 0.36363636,
+      "ogwp": 0.47433333,
+      "rank": 178
+    },
+    {
+      "id": 32909,
+      "name": "JV R",
+      "match_points": 6,
+      "omwp": 0.4202381,
+      "gwp": 0.33333333,
+      "ogwp": 0.45037594,
+      "rank": 179
+    },
+    {
+      "id": 74102,
+      "name": "Francisco A",
+      "match_points": 6,
+      "omwp": 0.419375,
+      "gwp": 0.33,
+      "ogwp": 0.47529083,
+      "rank": 180
+    },
+    {
+      "id": 475235,
+      "name": "Filip J",
+      "match_points": 6,
+      "omwp": 0.405,
+      "gwp": 0.33,
+      "ogwp": 0.44367011,
+      "rank": 181
+    },
+    {
+      "id": 52001,
+      "name": "Denise K",
+      "match_points": 6,
+      "omwp": 0.39398809,
+      "gwp": 0.4,
+      "ogwp": 0.40011877,
+      "rank": 182
+    },
+    {
+      "id": 13529,
+      "name": "Davide C",
+      "match_points": 6,
+      "omwp": 0.37333333,
+      "gwp": 0.42857143,
+      "ogwp": 0.39559211,
+      "rank": 183
+    },
+    {
+      "id": 35652,
+      "name": "Ianis V",
+      "match_points": 4,
+      "omwp": 0.6,
+      "gwp": 0.38461538,
+      "ogwp": 0.55992481,
+      "rank": 184
+    },
+    {
+      "id": 26984,
+      "name": "Marty G",
+      "match_points": 4,
+      "omwp": 0.4925,
+      "gwp": 0.35714286,
+      "ogwp": 0.48714286,
+      "rank": 185
+    },
+    {
+      "id": 27079,
+      "name": "J P",
+      "match_points": 4,
+      "omwp": 0.44166667,
+      "gwp": 0.37254902,
+      "ogwp": 0.46251044,
+      "rank": 186
+    },
+    {
+      "id": 746,
+      "name": "pyro F",
+      "match_points": 4,
+      "omwp": 0.43,
+      "gwp": 0.33,
+      "ogwp": 0.45127866,
+      "rank": 187
+    },
+    {
+      "id": 229489,
+      "name": "Manuela D",
+      "match_points": 4,
+      "omwp": 0.42071429,
+      "gwp": 0.33,
+      "ogwp": 0.44316316,
+      "rank": 188
+    },
+    {
+      "id": 41754,
+      "name": "Lucas R",
+      "match_points": 4,
+      "omwp": 0.40160714,
+      "gwp": 0.34920635,
+      "ogwp": 0.40330008,
+      "rank": 189
+    },
+    {
+      "id": 10213,
+      "name": "Mary W",
+      "match_points": 4,
+      "omwp": 0.39142857,
+      "gwp": 0.33,
+      "ogwp": 0.4122283,
+      "rank": 190
+    },
+    {
+      "id": 54947,
+      "name": "Jessica H",
+      "match_points": 3,
+      "omwp": 0.57291667,
+      "gwp": 0.33,
+      "ogwp": 0.56547619,
+      "rank": 191
+    },
+    {
+      "id": 40455,
+      "name": "Daniel P",
+      "match_points": 3,
+      "omwp": 0.54166667,
+      "gwp": 0.33,
+      "ogwp": 0.57039474,
+      "rank": 192
+    },
+    {
+      "id": 30521,
+      "name": "Kilian H",
+      "match_points": 3,
+      "omwp": 0.52,
+      "gwp": 0.33,
+      "ogwp": 0.51677489,
+      "rank": 193
+    },
+    {
+      "id": 60572,
+      "name": "Alexander H",
+      "match_points": 3,
+      "omwp": 0.507,
+      "gwp": 0.33333333,
+      "ogwp": 0.48003342,
+      "rank": 194
+    },
+    {
+      "id": 14326,
+      "name": "Gregor K",
+      "match_points": 3,
+      "omwp": 0.47416667,
+      "gwp": 0.33,
+      "ogwp": 0.44895089,
+      "rank": 195
+    },
+    {
+      "id": 43950,
+      "name": "Cornelia W",
+      "match_points": 3,
+      "omwp": 0.47270833,
+      "gwp": 0.33,
+      "ogwp": 0.47381579,
+      "rank": 196
+    },
+    {
+      "id": 30509,
+      "name": "Martin K",
+      "match_points": 3,
+      "omwp": 0.4575,
+      "gwp": 0.45454545,
+      "ogwp": 0.41885965,
+      "rank": 197
+    },
+    {
+      "id": 14061,
+      "name": "Kathrin G",
+      "match_points": 3,
+      "omwp": 0.41928571,
+      "gwp": 0.33,
+      "ogwp": 0.44612245,
+      "rank": 198
+    },
+    {
+      "id": 527628,
+      "name": "Teemu G",
+      "match_points": 3,
+      "omwp": 0.3625,
+      "gwp": 0.33,
+      "ogwp": 0.40869048,
+      "rank": 199
+    },
+    {
+      "id": 149497,
+      "name": "Tomas K",
+      "match_points": 1,
+      "omwp": 0.47916667,
+      "gwp": 0.36363636,
+      "ogwp": 0.44894958,
+      "rank": 200
+    },
+    {
+      "id": 35663,
+      "name": "Marcel K",
+      "match_points": 0,
+      "omwp": 0.51255953,
+      "gwp": 0.33,
+      "ogwp": 0.52840643,
+      "rank": 201
+    },
+    {
+      "id": 11736,
+      "name": "smovingman N",
+      "match_points": 0,
+      "omwp": 0.485,
+      "gwp": 0.33,
+      "ogwp": 0.51526544,
+      "rank": 202
+    },
+    {
+      "id": 14197,
+      "name": "Clemens S",
+      "match_points": 0,
+      "omwp": 0.45722222,
+      "gwp": 0.33,
+      "ogwp": 0.4468254,
+      "rank": 203
+    },
+    {
+      "id": 65939,
+      "name": "Markus K",
+      "match_points": 0,
+      "omwp": 0.41583333,
+      "gwp": 0.33,
+      "ogwp": 0.43264006,
+      "rank": 204
+    },
+    {
+      "id": 68679,
+      "name": "Michael l",
+      "match_points": 0,
+      "omwp": 0.36111111,
+      "gwp": 0.33,
+      "ogwp": 0.42209691,
+      "rank": 205
+    }
+  ],
+  "opponentsMap": {
+    "746": [
+      528939,
+      35086,
+      43958,
+      44730,
+      41754,
+      77476
+    ],
+    "6550": [
+      68679,
+      32786,
+      30892,
+      32736,
+      54720,
+      84765,
+      78638,
+      27229
+    ],
+    "7010": [
+      54947,
+      34978,
+      35751,
+      41737,
+      30841,
+      13390,
+      35654,
+      11150
+    ],
+    "7049": [
+      43951,
+      35751,
+      32909,
+      55883,
+      461506,
+      54219,
+      38072,
+      14316
+    ],
+    "7212": [
+      38655,
+      30775,
+      66003,
+      14289,
+      35654,
+      9208,
+      20769
+    ],
+    "7295": [
+      41880,
+      71898,
+      41864,
+      226067,
+      45750,
+      42765,
+      42035,
+      41965
+    ],
+    "7581": [
+      36404,
+      35652,
+      292442,
+      35007,
+      41891,
+      27229,
+      41754,
+      86269
+    ],
+    "9208": [
+      35652,
+      36418,
+      54712,
+      14555,
+      30892,
+      66003,
+      7212,
+      15719
+    ],
+    "9366": [
+      149497,
+      41864,
+      35007,
+      35654,
+      43958,
+      36881,
+      184536,
+      19839
+    ],
+    "10213": [
+      34978,
+      292442,
+      43950,
+      71524,
+      13398,
+      15430,
+      229489
+    ],
+    "10808": [
+      86269,
+      404357,
+      54686,
+      46871,
+      13390,
+      11319,
+      528939,
+      30812
+    ],
+    "10870": [
+      35086,
+      54219,
+      30841,
+      461506,
+      42035,
+      42117,
+      483878,
+      27669
+    ],
+    "10913": [
+      78638,
+      30892,
+      32793,
+      42117,
+      41737,
+      54686,
+      66003,
+      36398
+    ],
+    "11020": [
+      42765,
+      30715,
+      69493,
+      62296,
+      31318,
+      43958,
+      32793,
+      90599
+    ],
+    "11048": [
+      35407,
+      81808,
+      42045,
+      74102,
+      214831,
+      34978
+    ],
+    "11140": [
+      35663,
+      61368,
+      36404,
+      35407,
+      42116,
+      32909,
+      32736,
+      32786
+    ],
+    "11150": [
+      71524,
+      483878,
+      60164,
+      75471,
+      32793,
+      61368,
+      25033,
+      7010
+    ],
+    "11226": [
+      475235,
+      75471,
+      40455,
+      38936,
+      16072,
+      15719,
+      36271,
+      71898
+    ],
+    "11254": [
+      84765,
+      30841,
+      38936,
+      54720,
+      81808,
+      46871,
+      14555,
+      50634
+    ],
+    "11319": [
+      90599,
+      68938,
+      149497,
+      26984,
+      46871,
+      10808,
+      30715,
+      66003
+    ],
+    "11607": [
+      75471,
+      38072,
+      43951,
+      54947,
+      31609,
+      292442,
+      35086,
+      21709
+    ],
+    "11736": [
+      36271,
+      38061,
+      84765
+    ],
+    "11800": [
+      36418,
+      27673,
+      71519,
+      18448,
+      35147,
+      54720,
+      84765,
+      41754
+    ],
+    "11910": [
+      32909,
+      52366,
+      226067,
+      13521,
+      54790
+    ],
+    "13390": [
+      43950,
+      40455,
+      81808,
+      90599,
+      10808,
+      7010,
+      226067,
+      68938
+    ],
+    "13398": [
+      52366,
+      62296,
+      80894,
+      32909,
+      10213,
+      184536,
+      38655,
+      43958
+    ],
+    "13521": [
+      74102,
+      90599,
+      483878,
+      11910,
+      36881,
+      14395,
+      64744,
+      52635
+    ],
+    "13529": [
+      36881,
+      50634,
+      58896,
+      80894,
+      78638,
+      229489,
+      475235,
+      527628
+    ],
+    "13840": [
+      81808,
+      84765,
+      36881,
+      54219,
+      27229,
+      34893
+    ],
+    "13928": [
+      59611,
+      39665,
+      36418,
+      30892,
+      42674,
+      41737,
+      41880,
+      30715
+    ],
+    "14061": [
+      32793,
+      37909,
+      229334,
+      184536,
+      86269,
+      527628,
+      52001
+    ],
+    "14068": [
+      527628,
+      30812,
+      36271,
+      14366,
+      32909,
+      90599,
+      20769,
+      16072
+    ],
+    "14121": [
+      56340,
+      80894,
+      77476,
+      15747,
+      34978,
+      36271,
+      229334,
+      467644
+    ],
+    "14154": [
+      65939,
+      54686,
+      55883,
+      38072,
+      35751,
+      214831,
+      22345,
+      38179
+    ],
+    "14163": [
+      61368,
+      41754,
+      30812,
+      41891,
+      32938,
+      42116
+    ],
+    "14181": [
+      44730,
+      27830,
+      36092,
+      56340,
+      32736,
+      55883,
+      467644,
+      27673
+    ],
+    "14197": [
+      55883,
+      77476,
+      52001
+    ],
+    "14218": [
+      40455,
+      41880,
+      71524,
+      58896,
+      35086,
+      27673,
+      38179,
+      14308
+    ],
+    "14247": [
+      292442,
+      30920,
+      74102,
+      42674,
+      14308
+    ],
+    "14289": [
+      504643,
+      30521,
+      528939,
+      71898,
+      7212,
+      31609,
+      31318,
+      34893
+    ],
+    "14300": [
+      62296,
+      36881,
+      64744,
+      45750,
+      75471,
+      27669
+    ],
+    "14308": [
+      43958,
+      60572,
+      340389,
+      14247,
+      52635,
+      34893,
+      14218
+    ],
+    "14316": [
+      54720,
+      32793,
+      42117,
+      14335,
+      14395,
+      461506,
+      52635,
+      7049
+    ],
+    "14326": [
+      39665,
+      42045,
+      65939,
+      32938
+    ],
+    "14335": [
+      71519,
+      54720,
+      71898,
+      14316,
+      69493,
+      340389,
+      50634,
+      32736
+    ],
+    "14366": [
+      34893,
+      52001,
+      340389,
+      14068,
+      15719,
+      71898,
+      27673,
+      26809
+    ],
+    "14384": [
+      340389,
+      226067,
+      527628,
+      77476,
+      32840,
+      404357,
+      15217,
+      43951
+    ],
+    "14395": [
+      461506,
+      55883,
+      30920,
+      504643,
+      14316,
+      13521,
+      15411,
+      42674
+    ],
+    "14417": [
+      39212,
+      56340,
+      41965,
+      292442,
+      504643,
+      30920,
+      55883,
+      54219
+    ],
+    "14555": [
+      229334,
+      528939,
+      46871,
+      9208,
+      59611,
+      68938,
+      11254,
+      42765
+    ],
+    "15136": [
+      50634,
+      340389,
+      30715,
+      34893,
+      34269,
+      38655,
+      44726,
+      27830
+    ],
+    "15217": [
+      77476,
+      41737,
+      214831,
+      69493,
+      71898,
+      35086,
+      14384,
+      23517
+    ],
+    "15334": [
+      41737,
+      68679,
+      34893,
+      40455,
+      36404,
+      35751,
+      44730,
+      475235
+    ],
+    "15411": [
+      45750,
+      467644,
+      54947,
+      16072,
+      38936,
+      32840,
+      14395,
+      44730
+    ],
+    "15430": [
+      54790,
+      45750,
+      56340,
+      42062,
+      340389,
+      10213,
+      69493,
+      15837
+    ],
+    "15719": [
+      41965,
+      44730,
+      60572,
+      35751,
+      14366,
+      11226,
+      41864,
+      9208
+    ],
+    "15747": [
+      60164,
+      65939,
+      44726,
+      14121,
+      39665,
+      41864,
+      54219,
+      38655
+    ],
+    "15837": [
+      80894,
+      60164,
+      42765,
+      229334,
+      74102,
+      38072,
+      58896,
+      15430
+    ],
+    "16072": [
+      35007,
+      38936,
+      41737,
+      15411,
+      11226,
+      42674,
+      38061,
+      14068
+    ],
+    "16152": [
+      35751,
+      229489,
+      42035,
+      44726,
+      43950,
+      60164,
+      26846,
+      32840
+    ],
+    "17306": [
+      58896,
+      66003,
+      41880,
+      43950,
+      32786,
+      42062,
+      31609,
+      29548
+    ],
+    "18162": [
+      38072,
+      30509,
+      52366,
+      35086,
+      39212,
+      29548,
+      404357,
+      56340
+    ],
+    "18448": [
+      36398,
+      38179,
+      27229,
+      11800,
+      528939,
+      27615,
+      18499,
+      54686
+    ],
+    "18499": [
+      184536,
+      34893,
+      90599,
+      214831,
+      62296,
+      39665,
+      18448,
+      81808
+    ],
+    "19202": [
+      36092,
+      78638,
+      54219,
+      31609,
+      43951,
+      32786,
+      292442,
+      461506
+    ],
+    "19484": [
+      66003,
+      42674,
+      59611,
+      467644,
+      229489,
+      54790,
+      43950,
+      41891
+    ],
+    "19774": [
+      41891,
+      43958,
+      32786,
+      41864,
+      61368,
+      42035,
+      75471,
+      21658
+    ],
+    "19835": [
+      42062,
+      64744,
+      62296,
+      37909,
+      229334,
+      35007,
+      56340,
+      404357
+    ],
+    "19839": [
+      71898,
+      54790,
+      404357,
+      36881,
+      60572,
+      38061,
+      43951,
+      9366
+    ],
+    "20500": [
+      38655,
+      475235,
+      461506,
+      36418,
+      483878,
+      467644,
+      32909,
+      292442
+    ],
+    "20745": [
+      467644,
+      36092,
+      43958,
+      39212,
+      404357,
+      44726,
+      214831,
+      30920
+    ],
+    "20769": [
+      54686,
+      54712,
+      68938,
+      35652,
+      36398,
+      50634,
+      14068,
+      7212
+    ],
+    "21658": [
+      35147,
+      35654,
+      75471,
+      404357,
+      56340,
+      64744,
+      62296,
+      19774
+    ],
+    "21709": [
+      64744,
+      214831,
+      44730,
+      30521,
+      38061,
+      36404,
+      90599,
+      11607
+    ],
+    "22345": [
+      44726,
+      42062,
+      37909,
+      42116,
+      36271,
+      41880,
+      14154,
+      35654
+    ],
+    "23165": [
+      46871,
+      27229,
+      38179,
+      68938,
+      80894,
+      27079,
+      81808,
+      54790
+    ],
+    "23517": [
+      229489,
+      41965,
+      39212,
+      32840,
+      58896,
+      32938,
+      86269,
+      15217
+    ],
+    "24971": [
+      42674,
+      71519,
+      61368,
+      32786,
+      54219,
+      36092,
+      504643,
+      52366
+    ],
+    "25033": [
+      34269,
+      44726,
+      45750,
+      27615,
+      36092,
+      52366,
+      11150,
+      62296
+    ],
+    "25045": [
+      42035,
+      42117,
+      39665,
+      36404,
+      55883,
+      504643,
+      42116,
+      36092
+    ],
+    "26809": [
+      69493,
+      59611,
+      504643,
+      30717,
+      35007,
+      229334,
+      36092,
+      14366
+    ],
+    "26846": [
+      32938,
+      52635,
+      42116,
+      52001,
+      44726,
+      44730,
+      16152
+    ],
+    "26984": [
+      52635,
+      527628,
+      50634,
+      11319,
+      38072,
+      59611
+    ],
+    "27079": [
+      38936,
+      41891,
+      35654,
+      34978,
+      77476,
+      23165
+    ],
+    "27229": [
+      38179,
+      23165,
+      18448,
+      60572,
+      13840,
+      7581,
+      30812,
+      6550
+    ],
+    "27615": [
+      42116,
+      69493,
+      66003,
+      25033,
+      38179,
+      18448
+    ],
+    "27669": [
+      54712,
+      36271,
+      38072,
+      483878,
+      41880,
+      14300,
+      41737,
+      10870
+    ],
+    "27673": [
+      214831,
+      11800,
+      52635,
+      38061,
+      41864,
+      14218,
+      14366,
+      14181
+    ],
+    "27830": [
+      42045,
+      14181,
+      34978,
+      34269,
+      42765,
+      41965,
+      52366,
+      15136
+    ],
+    "29548": [
+      54219,
+      43951,
+      34269,
+      30775,
+      60164,
+      18162,
+      42674,
+      17306
+    ],
+    "30509": [
+      60572,
+      18162,
+      42674,
+      31318
+    ],
+    "30521": [
+      41754,
+      14289,
+      38061,
+      21709
+    ],
+    "30715": [
+      38061,
+      11020,
+      15136,
+      41965,
+      52366,
+      226067,
+      11319,
+      13928
+    ],
+    "30717": [
+      404357,
+      42035,
+      78638,
+      26809,
+      41754,
+      45750,
+      42765
+    ],
+    "30775": [
+      483878,
+      71524,
+      7212,
+      29548,
+      475235,
+      31318,
+      36418
+    ],
+    "30812": [
+      226067,
+      14068,
+      14163,
+      38655,
+      66003,
+      81808,
+      27229,
+      10808
+    ],
+    "30841": [
+      68938,
+      11254,
+      10870,
+      64744,
+      7010,
+      62296,
+      32840,
+      41880
+    ],
+    "30892": [
+      52001,
+      10913,
+      6550,
+      13928,
+      9208,
+      32736
+    ],
+    "30920": [
+      37909,
+      14247,
+      14395,
+      61368,
+      35654,
+      14417,
+      32786,
+      20745
+    ],
+    "31318": [
+      35654,
+      461506,
+      54790,
+      30509,
+      11020,
+      30775,
+      14289,
+      229334
+    ],
+    "31609": [
+      42117,
+      39212,
+      467644,
+      19202,
+      11607,
+      14289,
+      17306,
+      36271
+    ],
+    "32736": [
+      41864,
+      74102,
+      184536,
+      6550,
+      14181,
+      30892,
+      11140,
+      14335
+    ],
+    "32786": [
+      32840,
+      6550,
+      19774,
+      24971,
+      17306,
+      19202,
+      30920,
+      11140
+    ],
+    "32793": [
+      14061,
+      14316,
+      10913,
+      39665,
+      11150,
+      39212,
+      11020,
+      35751
+    ],
+    "32840": [
+      32786,
+      42765,
+      475235,
+      23517,
+      14384,
+      15411,
+      30841,
+      16152
+    ],
+    "32909": [
+      11910,
+      184536,
+      7049,
+      13398,
+      14068,
+      11140,
+      20500
+    ],
+    "32938": [
+      26846,
+      42116,
+      229489,
+      14326,
+      14163,
+      23517,
+      43958,
+      38061
+    ],
+    "34269": [
+      25033,
+      86269,
+      29548,
+      27830,
+      15136
+    ],
+    "34893": [
+      14366,
+      18499,
+      15334,
+      15136,
+      226067,
+      13840,
+      14308,
+      14289
+    ],
+    "34978": [
+      10213,
+      7010,
+      27830,
+      27079,
+      14121,
+      11048,
+      42117,
+      35086
+    ],
+    "35007": [
+      16072,
+      58896,
+      9366,
+      7581,
+      26809,
+      19835,
+      80894
+    ],
+    "35086": [
+      10870,
+      229334,
+      746,
+      18162,
+      14218,
+      15217,
+      11607,
+      34978
+    ],
+    "35147": [
+      21658,
+      149497,
+      36398,
+      65939,
+      11800,
+      71519,
+      54712
+    ],
+    "35407": [
+      11048,
+      54947,
+      68679,
+      11140,
+      184536,
+      86269,
+      52001,
+      74102
+    ],
+    "35652": [
+      9208,
+      7581,
+      38655,
+      20769,
+      71519
+    ],
+    "35654": [
+      31318,
+      21658,
+      27079,
+      9366,
+      30920,
+      7212,
+      7010,
+      22345
+    ],
+    "35663": [
+      11140,
+      504643,
+      42062,
+      475235
+    ],
+    "35751": [
+      16152,
+      7049,
+      7010,
+      15719,
+      14154,
+      15334,
+      42062,
+      32793
+    ],
+    "36092": [
+      19202,
+      20745,
+      14181,
+      52635,
+      25033,
+      24971,
+      26809,
+      25045
+    ],
+    "36271": [
+      11736,
+      27669,
+      14068,
+      52366,
+      22345,
+      14121,
+      11226,
+      31609
+    ],
+    "36398": [
+      18448,
+      46871,
+      35147,
+      50634,
+      20769,
+      38179,
+      68938,
+      10913
+    ],
+    "36404": [
+      7581,
+      43950,
+      11140,
+      25045,
+      15334,
+      21709
+    ],
+    "36418": [
+      11800,
+      9208,
+      13928,
+      20500,
+      467644,
+      41891,
+      30775,
+      214831
+    ],
+    "36881": [
+      13529,
+      14300,
+      13840,
+      19839,
+      13521,
+      9366
+    ],
+    "37909": [
+      30920,
+      14061,
+      22345,
+      19835,
+      52001
+    ],
+    "38061": [
+      30715,
+      11736,
+      30521,
+      27673,
+      21709,
+      19839,
+      16072,
+      32938
+    ],
+    "38072": [
+      18162,
+      11607,
+      27669,
+      14154,
+      26984,
+      15837,
+      7049,
+      55883
+    ],
+    "38179": [
+      27229,
+      18448,
+      23165,
+      71519,
+      27615,
+      36398,
+      14218,
+      14154
+    ],
+    "38655": [
+      20500,
+      7212,
+      35652,
+      30812,
+      54686,
+      15136,
+      13398,
+      15747
+    ],
+    "38936": [
+      27079,
+      16072,
+      11254,
+      11226,
+      15411
+    ],
+    "39212": [
+      14417,
+      31609,
+      23517,
+      20745,
+      18162,
+      32793,
+      61368,
+      42035
+    ],
+    "39665": [
+      14326,
+      13928,
+      25045,
+      32793,
+      15747,
+      18499,
+      46871,
+      528939
+    ],
+    "40455": [
+      14218,
+      13390,
+      11226,
+      15334
+    ],
+    "41737": [
+      15334,
+      15217,
+      16072,
+      7010,
+      10913,
+      13928,
+      27669
+    ],
+    "41754": [
+      30521,
+      14163,
+      54720,
+      78638,
+      30717,
+      746,
+      7581,
+      11800
+    ],
+    "41864": [
+      32736,
+      9366,
+      7295,
+      19774,
+      27673,
+      15747,
+      15719,
+      226067
+    ],
+    "41880": [
+      7295,
+      14218,
+      17306,
+      81808,
+      27669,
+      22345,
+      13928,
+      30841
+    ],
+    "41891": [
+      19774,
+      27079,
+      86269,
+      14163,
+      7581,
+      36418,
+      71524,
+      19484
+    ],
+    "41965": [
+      15719,
+      23517,
+      14417,
+      30715,
+      90599,
+      27830,
+      71898,
+      7295
+    ],
+    "42035": [
+      25045,
+      30717,
+      16152,
+      60164,
+      10870,
+      19774,
+      7295,
+      39212
+    ],
+    "42045": [
+      27830,
+      14326,
+      11048,
+      42765,
+      42062
+    ],
+    "42062": [
+      19835,
+      22345,
+      35663,
+      15430,
+      42045,
+      17306,
+      35751
+    ],
+    "42116": [
+      27615,
+      32938,
+      26846,
+      22345,
+      11140,
+      14163,
+      25045,
+      42117
+    ],
+    "42117": [
+      31609,
+      25045,
+      14316,
+      10913,
+      292442,
+      10870,
+      34978,
+      42116
+    ],
+    "42674": [
+      24971,
+      19484,
+      30509,
+      14247,
+      13928,
+      16072,
+      29548,
+      14395
+    ],
+    "42765": [
+      11020,
+      32840,
+      15837,
+      42045,
+      27830,
+      7295,
+      30717,
+      14555
+    ],
+    "43950": [
+      13390,
+      36404,
+      10213,
+      17306,
+      16152,
+      43951,
+      19484,
+      71524
+    ],
+    "43951": [
+      7049,
+      29548,
+      11607,
+      86269,
+      19202,
+      43950,
+      19839,
+      14384
+    ],
+    "43958": [
+      14308,
+      19774,
+      20745,
+      746,
+      9366,
+      11020,
+      32938,
+      13398
+    ],
+    "44726": [
+      22345,
+      25033,
+      15747,
+      16152,
+      26846,
+      20745,
+      15136,
+      483878
+    ],
+    "44730": [
+      14181,
+      15719,
+      21709,
+      527628,
+      746,
+      26846,
+      15334,
+      15411
+    ],
+    "45750": [
+      15411,
+      15430,
+      25033,
+      14300,
+      7295,
+      30717
+    ],
+    "46871": [
+      23165,
+      36398,
+      14555,
+      10808,
+      11319,
+      11254,
+      39665,
+      54712
+    ],
+    "50634": [
+      15136,
+      13529,
+      26984,
+      36398,
+      84765,
+      20769,
+      14335,
+      11254
+    ],
+    "52001": [
+      30892,
+      14366,
+      14197,
+      26846,
+      37909,
+      78638,
+      35407,
+      14061
+    ],
+    "52366": [
+      13398,
+      11910,
+      18162,
+      36271,
+      30715,
+      25033,
+      27830,
+      24971
+    ],
+    "52635": [
+      26984,
+      26846,
+      27673,
+      36092,
+      64744,
+      14308,
+      14316,
+      13521
+    ],
+    "54219": [
+      29548,
+      10870,
+      19202,
+      13840,
+      24971,
+      7049,
+      15747,
+      14417
+    ],
+    "54686": [
+      20769,
+      14154,
+      10808,
+      528939,
+      38655,
+      10913,
+      71519,
+      18448
+    ],
+    "54712": [
+      27669,
+      20769,
+      9208,
+      149497,
+      68938,
+      77476,
+      35147,
+      46871
+    ],
+    "54720": [
+      14316,
+      14335,
+      41754,
+      11254,
+      6550,
+      11800,
+      59611,
+      84765
+    ],
+    "54790": [
+      15430,
+      19839,
+      31318,
+      229489,
+      11910,
+      19484,
+      461506,
+      23165
+    ],
+    "54947": [
+      7010,
+      35407,
+      15411,
+      11607
+    ],
+    "55883": [
+      14197,
+      14395,
+      14154,
+      7049,
+      25045,
+      14181,
+      14417,
+      38072
+    ],
+    "56340": [
+      14121,
+      14417,
+      15430,
+      14181,
+      21658,
+      483878,
+      19835,
+      18162
+    ],
+    "58896": [
+      17306,
+      35007,
+      13529,
+      14218,
+      23517,
+      74102,
+      15837,
+      69493
+    ],
+    "59611": [
+      13928,
+      26809,
+      19484,
+      84765,
+      14555,
+      26984,
+      54720,
+      71519
+    ],
+    "60164": [
+      15747,
+      15837,
+      11150,
+      42035,
+      29548,
+      16152
+    ],
+    "60572": [
+      30509,
+      14308,
+      15719,
+      27229,
+      19839
+    ],
+    "61368": [
+      14163,
+      11140,
+      24971,
+      30920,
+      19774,
+      11150,
+      39212,
+      75471
+    ],
+    "62296": [
+      14300,
+      13398,
+      19835,
+      11020,
+      18499,
+      30841,
+      21658,
+      25033
+    ],
+    "64744": [
+      21709,
+      19835,
+      14300,
+      30841,
+      52635,
+      21658,
+      13521,
+      504643
+    ],
+    "65939": [
+      14154,
+      15747,
+      14326,
+      35147
+    ],
+    "66003": [
+      19484,
+      17306,
+      27615,
+      7212,
+      30812,
+      9208,
+      10913,
+      11319
+    ],
+    "68679": [
+      6550,
+      15334,
+      35407
+    ],
+    "68938": [
+      30841,
+      11319,
+      20769,
+      23165,
+      54712,
+      14555,
+      36398,
+      13390
+    ],
+    "69493": [
+      26809,
+      27615,
+      11020,
+      15217,
+      14335,
+      71524,
+      15430,
+      58896
+    ],
+    "71519": [
+      14335,
+      24971,
+      11800,
+      38179,
+      35652,
+      35147,
+      54686,
+      59611
+    ],
+    "71524": [
+      11150,
+      30775,
+      14218,
+      10213,
+      527628,
+      69493,
+      41891,
+      43950
+    ],
+    "71898": [
+      19839,
+      7295,
+      14335,
+      14289,
+      15217,
+      14366,
+      41965,
+      11226
+    ],
+    "74102": [
+      13521,
+      32736,
+      14247,
+      11048,
+      15837,
+      58896,
+      527628,
+      35407
+    ],
+    "75471": [
+      11607,
+      11226,
+      21658,
+      11150,
+      14300,
+      528939,
+      19774,
+      61368
+    ],
+    "77476": [
+      15217,
+      14197,
+      14121,
+      14384,
+      27079,
+      54712,
+      746,
+      78638
+    ],
+    "78638": [
+      10913,
+      19202,
+      30717,
+      41754,
+      13529,
+      52001,
+      6550,
+      77476
+    ],
+    "80894": [
+      15837,
+      14121,
+      13398,
+      13529,
+      23165,
+      475235,
+      35007,
+      184536
+    ],
+    "81808": [
+      13840,
+      11048,
+      13390,
+      41880,
+      11254,
+      30812,
+      23165,
+      18499
+    ],
+    "84765": [
+      11254,
+      13840,
+      11736,
+      59611,
+      50634,
+      6550,
+      11800,
+      54720
+    ],
+    "86269": [
+      10808,
+      34269,
+      41891,
+      43951,
+      14061,
+      35407,
+      23517,
+      7581
+    ],
+    "90599": [
+      11319,
+      13521,
+      18499,
+      13390,
+      41965,
+      14068,
+      21709,
+      11020
+    ],
+    "149497": [
+      9366,
+      35147,
+      11319,
+      54712
+    ],
+    "184536": [
+      18499,
+      32909,
+      32736,
+      14061,
+      35407,
+      13398,
+      9366,
+      80894
+    ],
+    "214831": [
+      27673,
+      21709,
+      15217,
+      18499,
+      11048,
+      14154,
+      20745,
+      36418
+    ],
+    "226067": [
+      30812,
+      14384,
+      11910,
+      7295,
+      34893,
+      30715,
+      13390,
+      41864
+    ],
+    "229334": [
+      14555,
+      35086,
+      14061,
+      15837,
+      19835,
+      26809,
+      14121,
+      31318
+    ],
+    "229489": [
+      23517,
+      16152,
+      32938,
+      54790,
+      19484,
+      13529,
+      10213
+    ],
+    "292442": [
+      14247,
+      10213,
+      7581,
+      14417,
+      42117,
+      11607,
+      19202,
+      20500
+    ],
+    "340389": [
+      14384,
+      15136,
+      14366,
+      14308,
+      15430,
+      14335
+    ],
+    "404357": [
+      30717,
+      10808,
+      19839,
+      21658,
+      20745,
+      14384,
+      18162,
+      19835
+    ],
+    "461506": [
+      14395,
+      31318,
+      20500,
+      10870,
+      7049,
+      14316,
+      54790,
+      19202
+    ],
+    "467644": [
+      20745,
+      15411,
+      31609,
+      19484,
+      36418,
+      20500,
+      14181,
+      14121
+    ],
+    "475235": [
+      11226,
+      20500,
+      32840,
+      35663,
+      30775,
+      80894,
+      13529,
+      15334
+    ],
+    "483878": [
+      30775,
+      11150,
+      13521,
+      27669,
+      20500,
+      56340,
+      10870,
+      44726
+    ],
+    "504643": [
+      14289,
+      35663,
+      26809,
+      14395,
+      14417,
+      25045,
+      24971,
+      64744
+    ],
+    "527628": [
+      14068,
+      26984,
+      14384,
+      44730,
+      71524,
+      14061,
+      74102,
+      13529
+    ],
+    "528939": [
+      746,
+      14555,
+      14289,
+      54686,
+      18448,
+      75471,
+      10808,
+      39665
+    ]
+  },
+  "roundsPlayedMap": {
+    "746": 6,
+    "6550": 8,
+    "7010": 8,
+    "7049": 8,
+    "7212": 7,
+    "7295": 8,
+    "7581": 8,
+    "9208": 8,
+    "9366": 8,
+    "10213": 7,
+    "10808": 8,
+    "10870": 8,
+    "10913": 8,
+    "11020": 8,
+    "11048": 6,
+    "11140": 8,
+    "11150": 8,
+    "11226": 8,
+    "11254": 8,
+    "11319": 8,
+    "11607": 8,
+    "11736": 3,
+    "11800": 8,
+    "11910": 5,
+    "13390": 8,
+    "13398": 8,
+    "13521": 8,
+    "13529": 8,
+    "13840": 6,
+    "13928": 8,
+    "14061": 7,
+    "14068": 8,
+    "14121": 8,
+    "14154": 8,
+    "14163": 6,
+    "14181": 8,
+    "14197": 3,
+    "14218": 8,
+    "14247": 5,
+    "14289": 8,
+    "14300": 6,
+    "14308": 7,
+    "14316": 8,
+    "14326": 4,
+    "14335": 8,
+    "14366": 8,
+    "14384": 8,
+    "14395": 8,
+    "14417": 8,
+    "14555": 8,
+    "15136": 8,
+    "15217": 8,
+    "15334": 8,
+    "15411": 8,
+    "15430": 8,
+    "15719": 8,
+    "15747": 8,
+    "15837": 8,
+    "16072": 8,
+    "16152": 8,
+    "17306": 8,
+    "18162": 8,
+    "18448": 8,
+    "18499": 8,
+    "19202": 8,
+    "19484": 8,
+    "19774": 8,
+    "19835": 8,
+    "19839": 8,
+    "20500": 8,
+    "20745": 8,
+    "20769": 8,
+    "21658": 8,
+    "21709": 8,
+    "22345": 8,
+    "23165": 8,
+    "23517": 8,
+    "24971": 8,
+    "25033": 8,
+    "25045": 8,
+    "26809": 8,
+    "26846": 7,
+    "26984": 6,
+    "27079": 6,
+    "27229": 8,
+    "27615": 6,
+    "27669": 8,
+    "27673": 8,
+    "27830": 8,
+    "29548": 8,
+    "30509": 4,
+    "30521": 4,
+    "30715": 8,
+    "30717": 7,
+    "30775": 7,
+    "30812": 8,
+    "30841": 8,
+    "30892": 6,
+    "30920": 8,
+    "31318": 8,
+    "31609": 8,
+    "32736": 8,
+    "32786": 8,
+    "32793": 8,
+    "32840": 8,
+    "32909": 7,
+    "32938": 8,
+    "34269": 5,
+    "34893": 8,
+    "34978": 8,
+    "35007": 7,
+    "35086": 8,
+    "35147": 7,
+    "35407": 8,
+    "35652": 5,
+    "35654": 8,
+    "35663": 4,
+    "35751": 8,
+    "36092": 8,
+    "36271": 8,
+    "36398": 8,
+    "36404": 6,
+    "36418": 8,
+    "36881": 6,
+    "37909": 5,
+    "38061": 8,
+    "38072": 8,
+    "38179": 8,
+    "38655": 8,
+    "38936": 5,
+    "39212": 8,
+    "39665": 8,
+    "40455": 4,
+    "41737": 7,
+    "41754": 8,
+    "41864": 8,
+    "41880": 8,
+    "41891": 8,
+    "41965": 8,
+    "42035": 8,
+    "42045": 5,
+    "42062": 7,
+    "42116": 8,
+    "42117": 8,
+    "42674": 8,
+    "42765": 8,
+    "43950": 8,
+    "43951": 8,
+    "43958": 8,
+    "44726": 8,
+    "44730": 8,
+    "45750": 6,
+    "46871": 8,
+    "50634": 8,
+    "52001": 8,
+    "52366": 8,
+    "52635": 8,
+    "54219": 8,
+    "54686": 8,
+    "54712": 8,
+    "54720": 8,
+    "54790": 8,
+    "54947": 4,
+    "55883": 8,
+    "56340": 8,
+    "58896": 8,
+    "59611": 8,
+    "60164": 6,
+    "60572": 5,
+    "61368": 8,
+    "62296": 8,
+    "64744": 8,
+    "65939": 4,
+    "66003": 8,
+    "68679": 3,
+    "68938": 8,
+    "69493": 8,
+    "71519": 8,
+    "71524": 8,
+    "71898": 8,
+    "74102": 8,
+    "75471": 8,
+    "77476": 8,
+    "78638": 8,
+    "80894": 8,
+    "81808": 8,
+    "84765": 8,
+    "86269": 8,
+    "90599": 8,
+    "149497": 4,
+    "184536": 8,
+    "214831": 8,
+    "226067": 8,
+    "229334": 8,
+    "229489": 7,
+    "292442": 8,
+    "340389": 6,
+    "404357": 8,
+    "461506": 8,
+    "467644": 8,
+    "475235": 8,
+    "483878": 8,
+    "504643": 8,
+    "527628": 8,
+    "528939": 8
+  }
+}

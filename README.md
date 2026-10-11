@@ -110,7 +110,8 @@ Liczba rund fazy Swiss (`totalRounds`) jest ustalana na dwa sposoby:
 ### Analiza statusu bieżącego stołu
 W funkcji [`runLiveTieSimulation`](file:///c:/xampp/htdocs/lorcana-analitics/app.js#L1198) algorytm bada status meczu wybranego gracza:
 - Sprawdza flagi `status === 'COMPLETE'`, obecność zwycięzcy (`winnerId`) oraz wynik w gemach (`games_won_by_winner`).
-- **Jeśli mecz się zakończył**: ustala stałą deltę punktową (`targetFixedRoundDelta` = +3 za win, +1 za remis, +0 za loss) i odejmuje bieżącą rundę z puli pozostałych spotkań.
+- **Inteligentna synchronizacja rund (`standingsRound` vs `activeRound`)**: Jeśli oficjalna tabela z API została już wygenerowana dla bieżącej lub późniejszej rundy (`standingsRound >= activeRound`) bądź turniej jest oznaczony jako zakończony, punkty w tabeli zawierają już komplet wyników. Silnik automatycznie wie, że nie należy doliczać delty na żywo, co zapobiega zdublowaniu punktów z ostatniej rundy przy przeglądaniu turniejów historycznych!
+- **Jeśli mecz w rundzie live się zakończył**: ustala stałą deltę punktową (`targetFixedRoundDelta` = +3 za win, +1 za remis, +0 za loss) i odejmuje bieżącą rundę z puli pozostałych spotkań.
 - **Jeśli mecz wciąż trwa**: runda bieżąca jest traktowana jako aktywny, nierozstrzygnięty mecz.
 
 ### Licznik pozostałych meczów (`matchesLeft`)
@@ -352,3 +353,28 @@ Symuluje działanie algorytmu Swiss pairing dla następnej rundy ($R+1$):
    ```
 4. Wpisz **Event ID** turnieju z platformy Ravensburger Play (np. z linku do turnieju) i wybierz wielkość Cutu (np. `4` dla Top 4 lub `8` dla Top 8).
 5. Kliknij **"Odśwież / Śledź Live"** — aplikacja natychmiast pobierze strukturę turnieju, przeliczy tiebreakery i zaprezentuje optymalne strategie!
+
+---
+
+## 🧪 Testy Automatyczne i Case Study
+
+Aplikacja posiada wbudowany pakiet testów jednostkowych i symulacji scenariuszowych oparty o wbudowany silnik `node:test`:
+
+```bash
+# Uruchomienie wszystkich testów
+node --test tests/
+
+# Uruchomienie dedykowanego testu scenariusza R8 (Terry vs Crusty)
+node --test tests/scenario-terry-crusty-r8.test.js
+```
+
+### 🔬 Case Study: Turniej 1007231 (Iconic Tour CCQ, 205 graczy, 8 rund Swiss, Cut do Top 32)
+W rundzie 8 przy stole 14 spotkali się **Terry M** (15 pkt) oraz **[GPL] Crusty** (15 pkt).
+- **Rzeczywisty wynik**: Terry wygrał 2:1, zdobywając 18 pkt (miejsce 17 – awans do Top 32), a Crusty z 15 pkt zajął 44. miejsce (odpadł).
+- **Test symulacyjny remisu (`Intentional Draw` / TIE)**:
+  - Obydwoje kończą z dorobkiem **16 pkt**.
+  - OMWP Crusty'ego: **55.58%** $\longrightarrow$ **Miejsce #30** (✅ Awans do Top 32)
+  - OMWP Terry'ego: **55.21%** $\longrightarrow$ **Miejsce #31** (✅ Awans do Top 32)
+  - Próg awansu (Miejsce #32): Kryštof H (16 pkt, 53.65% OMWP)
+  - Pierwszy pod kreską (Miejsce #33): Marek S (16 pkt, 51.56% OMWP)
+  - **Wniosek**: Gdyby obaj gracze wzięli remis (ID), **obydwoje weszliby do Top 32**! Jest to podręcznikowy przykład *Obopólnego Złotego Remisu (Mutual Safe ID)*.

@@ -1,0 +1,20 @@
+# Wyłączenie listowania katalogów
+Options -Indexes
+
+# Blokada bezpośredniego dostępu HTTP do pliku token.txt, plików cache_*.json oraz konfiguracji
+<FilesMatch "^(token\.txt|cache_.*\.json|package(-lock)?\.json|\.git.*|README\.md)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order allow,deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
+
+# Nagłówki bezpieczeństwa HTTP
+<IfModule mod_headers.c>
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set X-Frame-Options "SAMEORIGIN"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
