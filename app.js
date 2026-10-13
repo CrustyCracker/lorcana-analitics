@@ -99,11 +99,17 @@ function scrollToMobileSection(sectionId, btnEl) {
 }
 
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
-    window.addEventListener('DOMContentLoaded', () => {
+    const onReady = () => {
         if (window.innerWidth < 768) {
             toggleOfficialTableSection(true);
         }
-    });
+        initDefaultEventAndAutoTrack();
+    };
+    if (document.readyState === 'loading') {
+        window.addEventListener('DOMContentLoaded', onReady);
+    } else {
+        onReady();
+    }
 }
 
 function checkTextForPolishIndicators(text) {
@@ -288,13 +294,20 @@ function setElHtml(id, html) {
 }
 
 function startTracking() {
-    const rawEventId = document.getElementById('eventId')?.value || '865248';
-    const eventId = String(rawEventId).replace(/\D/g, '') || '865248';
+    const rawEventId = document.getElementById('eventId')?.value;
+    const eventId = String(rawEventId || '').replace(/\D/g, '');
+    if (!eventId) {
+        setElText('status', "Wpisz Event ID turnieju...");
+        return;
+    }
     if (lastTrackedEventId !== null && String(lastTrackedEventId) !== String(eventId)) {
         whatIfOverrides.clear();
         updateWhatIfStatusBar();
     }
     lastTrackedEventId = eventId;
+    try {
+        localStorage.setItem('lorcana_last_event_id', eventId);
+    } catch (e) {}
     setElText('status', "Status: Pobieranie danych...");
     
     fetchData(eventId);
@@ -303,6 +316,58 @@ function startTracking() {
 }
 
 let lastAutoCutSyncedEventId = null;
+
+async function initDefaultEventAndAutoTrack() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    const eventInput = document.getElementById('eventId');
+    if (!eventInput) return;
+
+    // Obsługa wciśnięcia Enter w polu wyszukiwania turnieju
+    eventInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            startTracking();
+        }
+    });
+
+    // 1. Sprawdzamy parametr w adresie URL (?eventId=... lub ?event=...)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlEventId = urlParams.get('eventId') || urlParams.get('event');
+    if (urlEventId && /^\d+$/.test(urlEventId.trim())) {
+        const cleanId = urlEventId.trim();
+        eventInput.value = cleanId;
+        try { localStorage.setItem('lorcana_last_event_id', cleanId); } catch (e) {}
+        startTracking();
+        return;
+    }
+
+    // 2. Tymczasowo podstawiamy ostatni turniej zapamiętany lokalnie w przeglądarce (jeśli istnieje)
+    let localEventId = null;
+    try {
+        localEventId = localStorage.getItem('lorcana_last_event_id');
+    } catch (e) {}
+    if (localEventId && /^\d+$/.test(localEventId.trim())) {
+        eventInput.value = localEventId.trim();
+    }
+
+    // 3. Pobieramy z serwera turniej, który ostatnio wpisał jakikolwiek użytkownik (last_event.txt)
+    try {
+        const res = await fetch(`api.php?action=get_last_event&t=${Date.now()}`);
+        const data = await res.json();
+        if (data && data.lastEventId) {
+            const serverLastEventId = String(data.lastEventId);
+            eventInput.value = serverLastEventId;
+            try { localStorage.setItem('lorcana_last_event_id', serverLastEventId); } catch (e) {}
+        }
+    } catch (err) {
+        // Fallback do wartości lokalnej
+    }
+
+    // 4. Jeśli pole ma wartość, automatycznie rozpoczynamy śledzenie
+    if (eventInput.value && /^\d+$/.test(eventInput.value.trim())) {
+        startTracking();
+    }
+}
 
 async function fetchData(eventId) {
     try {
@@ -316,6 +381,10 @@ async function fetchData(eventId) {
         }
         
         latestData = data;
+        if (data.lastEventId) {
+            try { localStorage.setItem('lorcana_last_event_id', String(data.lastEventId)); } catch (e) {}
+        }
+
         if (lastAutoCutSyncedEventId !== String(safeEventId) && data.roundsMatches) {
             const tcInfo = detectActualTopCutInfo(data.roundsMatches, data.standings?.standings || []);
             if (tcInfo.isTopCutActive && tcInfo.actualBracketSize) {
@@ -4071,6 +4140,7 @@ if (typeof module !== 'undefined' && module.exports) {
         detectActualTopCutInfo,
         buildFullTopCutBracketTree,
         getPlayerBracketPath,
-        analyzePlayerTopCutSeeding
+        analyzePlayerTopCutSeeding,
+        initDefaultEventAndAutoTrack
     };
 }

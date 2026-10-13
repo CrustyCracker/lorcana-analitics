@@ -2,7 +2,7 @@
 Options -Indexes
 
 # Blokada bezpośredniego dostępu HTTP do pliku token.txt, plików cache_*.json oraz konfiguracji
-<FilesMatch "^(token\.txt|cache_.*\.json|package(-lock)?\.json|\.git.*|README\.md)$">
+<FilesMatch "^(token\.txt|last_event\.txt|cache_.*\.json|package(-lock)?\.json|\.git.*|README\.md)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>

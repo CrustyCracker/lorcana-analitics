@@ -3,7 +3,8 @@ header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+$requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+if ($requestMethod === 'OPTIONS') {
     exit;
 }
 
@@ -12,7 +13,7 @@ $isLocalRequest = in_array($remoteIp, ['127.0.0.1', '::1'], true)
     || ($remoteIp !== '' && filter_var($remoteIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false);
 
 $tokenFile = __DIR__ . '/token.txt';
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['set_token'])) {
+if ($requestMethod === 'POST' && isset($_POST['set_token'])) {
     $expectedAdminKey = getenv('LORCANA_ADMIN_KEY');
     $providedAdminKey = $_POST['admin_key'] ?? ($_SERVER['HTTP_X_ADMIN_KEY'] ?? '');
     $isAuthorizedAdmin = $isLocalRequest || (!empty($expectedAdminKey) && hash_equals($expectedAdminKey, (string)$providedAdminKey));
@@ -48,7 +49,18 @@ if (!empty($rawToken) && !str_starts_with($rawToken, 'Token ') && !str_starts_wi
 }
 $authToken = !empty($rawToken) ? $rawToken : null;
 
-$eventId = isset($_GET['eventId']) ? filter_var($_GET['eventId'], FILTER_VALIDATE_INT) : 1074323;
+$lastEventFile = __DIR__ . '/last_event.txt';
+$defaultEventId = file_exists($lastEventFile) ? (int)trim((string)file_get_contents($lastEventFile)) : 873264;
+if ($defaultEventId <= 0) {
+    $defaultEventId = 873264;
+}
+
+if (isset($_GET['action']) && $_GET['action'] === 'get_last_event') {
+    echo json_encode(["lastEventId" => $defaultEventId]);
+    exit;
+}
+
+$eventId = isset($_GET['eventId']) ? filter_var($_GET['eventId'], FILTER_VALIDATE_INT) : $defaultEventId;
 if ($eventId === false || $eventId <= 0 || $eventId > 999999999) {
     http_response_code(400);
     echo json_encode(["error" => "Nieprawidłowy identyfikator turnieju (eventId)."]);
@@ -61,6 +73,7 @@ $cacheTime = 15;
 // Parametr nocache dozwolony wyłącznie z localhosta, aby zapobiec atakom DoS omijającym cache
 $noCache = isset($_GET['nocache']) && $isLocalRequest;
 if (!$noCache && file_exists($cacheFile) && (time() - filemtime($cacheFile) < $cacheTime)) {
+    @file_put_contents($lastEventFile, (string)$eventId, LOCK_EX);
     echo file_get_contents($cacheFile);
     exit;
 }
@@ -110,6 +123,9 @@ if (!$eventData) {
     echo json_encode(["error" => "Nie udało się połączyć z API Lorcany (HTTP {$eventRes['code']})."]);
     exit;
 }
+
+// Zapisujemy ten turniej jako ostatnio wpisany i pomyślnie pobrany turniej domyślny
+@file_put_contents($lastEventFile, (string)$eventId, LOCK_EX);
 
 $eventName = $eventData['name'] ?? 'Nieznany Event';
 $playerCount = $eventData['registered_user_count'] ?? 0;
@@ -221,6 +237,7 @@ $isCompleted = in_array($displayStatus, ['complete', 'completed', 'finished']);
 
 $result = [
     "eventId" => $eventId,
+    "lastEventId" => $eventId,
     "eventName" => $eventName,
     "playerCount" => $playerCount,
     "displayStatus" => $displayStatus,

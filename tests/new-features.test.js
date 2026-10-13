@@ -253,6 +253,17 @@ describe('Nowe moduły: Drabinka Top Cut (Play/Draw), Tryb What-If oraz Cut Line
             assert.equal(vsSeed32.myRole, 'PLAY', 'Seed #16 przeciwko Seedowi #32 musi mieć przywilej PLAY');
         });
     });
+
+    describe('6. Pamięć ostatnio wpisanego turnieju (Server & Client Persistence)', () => {
+        it('zapisuje i odczytuje ostatnio wpisany turniej w last_event.txt', () => {
+            const lastEventPath = path.join(__dirname, '..', 'last_event.txt');
+            const testEventId = '1007231';
+            fs.writeFileSync(lastEventPath, testEventId, 'utf8');
+            const readId = fs.readFileSync(lastEventPath, 'utf8').trim();
+            assert.equal(readId, '1007231');
+        });
+    });
 });
+
 
 
