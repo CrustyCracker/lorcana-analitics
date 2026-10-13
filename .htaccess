@@ -1,8 +1,8 @@
 # Wyłączenie listowania katalogów
 Options -Indexes
 
-# Blokada bezpośredniego dostępu HTTP do pliku token.txt, plików cache_*.json oraz konfiguracji
-<FilesMatch "^(token\.txt|last_event\.txt|cache_.*\.json|package(-lock)?\.json|\.git.*|README\.md)$">
+# Blokada bezpośredniego dostępu HTTP do tokenu, cache'u, sekretów, baz SQLite oraz danych webhooka
+<FilesMatch "^(token\.txt|last_event\.txt|cache_.*\.json|package(-lock)?\.json|\.git.*|README\.md|webhook_.*|marketplace_.*\.json|\.env.*|.*\.sqlite[0-9]?|.*\.db.*)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
