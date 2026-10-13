@@ -378,3 +378,13 @@ W rundzie 8 przy stole 14 spotkali się **Terry M** (15 pkt) oraz **[GPL] Crusty
   - Próg awansu (Miejsce #32): Kryštof H (16 pkt, 53.65% OMWP)
   - Pierwszy pod kreską (Miejsce #33): Marek S (16 pkt, 51.56% OMWP)
   - **Wniosek**: Gdyby obaj gracze wzięli remis (ID), **obydwoje weszliby do Top 32**! Jest to podręcznikowy przykład *Obopólnego Złotego Remisu (Mutual Safe ID)*.
+
+---
+
+## 🚀 CI/CD & Auto-Deploy (OVHcloud Git Integration)
+
+Projekt posiada w pełni skonfigurowane automatyczne wdrażanie (Auto-Deploy) po każdym `git push` do gałęzi `main`:
+- **Webhook Endpoint**: `https://webhooks-webhosting.eu.ovhapis.com/1.0/vcs/github/push/...`
+- **Rejestracja w GitHub**: Dodano webhook repozytoryjny nasłuchujący zdarzenia `push`.
+- **Bezpieczeństwo Produkcyjne**: Pliki runtime, bazy SQLite, cache oraz konfiguracja subskrypcji są ignorowane w `.gitignore` i chronione w `.htaccess`, co zapobiega konfliktom lub utracie danych podczas deployu z wymuszeniem.
+
