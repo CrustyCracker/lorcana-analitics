@@ -462,50 +462,108 @@ function getStandingMatchPoints(player) {
     return Number.isFinite(pts) ? pts : 0;
 }
 
+function getPolishStatsPlayerLabel(player) {
+    if (!player) return '—';
+    if (typeof player === 'string') return player || '—';
+    const standingObj = player.raw || player;
+    return (
+        standingObj?.user_event_status?.best_identifier ||
+        standingObj?.player?.best_identifier ||
+        player.name ||
+        standingObj?.name ||
+        '—'
+    );
+}
+
+function getStandingRankHint(player) {
+    if (!player) return Number.POSITIVE_INFINITY;
+    const rank = player.liveRank ?? player.rank ?? player.standing ?? null;
+    return Number.isFinite(rank) ? rank : Number.POSITIVE_INFINITY;
+}
+
 function averagePoints(values) {
     if (!values || values.length === 0) return null;
     const sum = values.reduce((acc, v) => acc + v, 0);
     return sum / values.length;
 }
 
+/** Top scorer (star) in a group: max points, then best rank, then name. */
+function pickStarPlayer(members) {
+    if (!members || members.length === 0) return null;
+    let best = members[0];
+    for (let i = 1; i < members.length; i++) {
+        const cand = members[i];
+        if (cand.points !== best.points) {
+            if (cand.points > best.points) best = cand;
+            continue;
+        }
+        const rankA = getStandingRankHint(cand.player);
+        const rankB = getStandingRankHint(best.player);
+        if (rankA !== rankB) {
+            if (rankA < rankB) best = cand;
+            continue;
+        }
+        if (String(cand.name).localeCompare(String(best.name)) < 0) best = cand;
+    }
+    return {
+        name: best.name,
+        points: best.points,
+        id: best.player?.player?.id ?? best.player?.id ?? null
+    };
+}
+
+function summarizePolishGroup(members) {
+    const points = members.map((m) => m.points);
+    return {
+        count: members.length,
+        avgPoints: averagePoints(points),
+        star: pickStarPlayer(members)
+    };
+}
+
 /**
  * Statystyki średnich punktów: gracze z flagą PL oraz per tag drużyny PL
- * (katalog z POLISH_TEAM_TAGS / POLISH_KNOWN_NICKS + „rat crew” z emoji szczura).
+ * (katalog z POLISH_TEAM_TAGS / POLISH_KNOWN_NICKS + osobny skład „rat crew” z 🐀).
  */
 function computePolishAvgPointsStats(standings) {
     const list = Array.isArray(standings) ? standings : [];
-    const flagPoints = [];
-    const teamPoints = new Map();
+    const flagMembers = [];
+    const teamMembers = new Map();
     for (const tag of POLISH_TEAM_TAG_CATALOG) {
-        teamPoints.set(tag, []);
+        teamMembers.set(tag, []);
     }
-    teamPoints.set(POLISH_RAT_CREW_LABEL, []);
+    teamMembers.set(POLISH_RAT_CREW_LABEL, []);
 
     for (const player of list) {
         const texts = getPlayerIdentityTexts(player);
         if (texts.length === 0) continue;
         const pts = getStandingMatchPoints(player);
+        const member = {
+            player,
+            points: pts,
+            name: getPolishStatsPlayerLabel(player)
+        };
 
         if (texts.some((t) => POLISH_FLAG_REGEX.test(t))) {
-            flagPoints.push(pts);
+            flagMembers.push(member);
         }
+        // 🐀 = osobny skład (nie mylić z tagami [GPL]/[M7] itd.)
         if (texts.some((t) => POLISH_RAT_REGEX.test(t))) {
-            teamPoints.get(POLISH_RAT_CREW_LABEL).push(pts);
+            teamMembers.get(POLISH_RAT_CREW_LABEL).push(member);
         }
         for (const tag of POLISH_TEAM_TAG_CATALOG) {
             if (texts.some((t) => textMatchesPolishTeamTag(t, tag))) {
-                teamPoints.get(tag).push(pts);
+                teamMembers.get(tag).push(member);
             }
         }
     }
 
     const teams = [];
-    for (const [tag, values] of teamPoints.entries()) {
-        if (values.length === 0) continue;
+    for (const [tag, members] of teamMembers.entries()) {
+        if (members.length === 0) continue;
         teams.push({
             tag,
-            count: values.length,
-            avgPoints: averagePoints(values)
+            ...summarizePolishGroup(members)
         });
     }
     teams.sort((a, b) => {
@@ -515,10 +573,7 @@ function computePolishAvgPointsStats(standings) {
     });
 
     return {
-        flag: {
-            count: flagPoints.length,
-            avgPoints: averagePoints(flagPoints)
-        },
+        flag: summarizePolishGroup(flagMembers),
         teams
     };
 }
@@ -526,6 +581,17 @@ function computePolishAvgPointsStats(standings) {
 function formatAvgPointsDisplay(avg) {
     if (avg == null || !Number.isFinite(avg)) return '—';
     return (Math.round(avg * 10) / 10).toFixed(1);
+}
+
+function formatStarPlayerDisplay(star) {
+    if (!star || !star.name) return '—';
+    const pts = Number.isFinite(star.points) ? `${star.points} pkt` : '';
+    return pts ? `⭐ ${star.name} (${pts})` : `⭐ ${star.name}`;
+}
+
+function polishTeamGroupLabel(tag) {
+    if (tag === POLISH_RAT_CREW_LABEL) return '🐀 rat crew';
+    return `[${tag}]`;
 }
 
 function renderPolishAvgPointsTable(standings) {
@@ -540,17 +606,16 @@ function renderPolishAvgPointsTable(standings) {
         rows.push({
             label: '🇵🇱 Flaga PL',
             count: stats.flag.count,
-            avgPoints: stats.flag.avgPoints
+            avgPoints: stats.flag.avgPoints,
+            star: stats.flag.star
         });
     }
     for (const team of stats.teams) {
-        const label = team.tag === POLISH_RAT_CREW_LABEL
-            ? '🐀 rat crew'
-            : `[${team.tag}]`;
         rows.push({
-            label,
+            label: polishTeamGroupLabel(team.tag),
             count: team.count,
-            avgPoints: team.avgPoints
+            avgPoints: team.avgPoints,
+            star: team.star
         });
     }
 
@@ -566,6 +631,7 @@ function renderPolishAvgPointsTable(standings) {
         `<td>${escapeHtml(r.label)}</td>` +
         `<td>${r.count}</td>` +
         `<td><strong>${formatAvgPointsDisplay(r.avgPoints)}</strong></td>` +
+        `<td class="polish-avg-star">${escapeHtml(formatStarPlayerDisplay(r.star))}</td>` +
         `</tr>`
     )).join('');
 }
@@ -4755,6 +4821,10 @@ if (typeof module !== 'undefined' && module.exports) {
         getPlayerIdentityTexts,
         computePolishAvgPointsStats,
         formatAvgPointsDisplay,
+        formatStarPlayerDisplay,
+        pickStarPlayer,
+        getPolishStatsPlayerLabel,
+        polishTeamGroupLabel,
         checkTextForPolishIndicators,
         isPolishPlayer,
         PAGE_SIZE,

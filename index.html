@@ -246,6 +246,14 @@
             text-align: right;
             white-space: nowrap;
         }
+        .polish-avg-table td.polish-avg-star,
+        .polish-avg-table th:nth-child(4) {
+            text-align: left;
+            max-width: 280px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         .polish-avg-table tbody tr:last-child td { border-bottom: none; }
         .polish-avg-table strong { color: var(--gold); font-family: var(--font-display); }
 
@@ -1787,6 +1795,7 @@
                         <th>Grupa</th>
                         <th>Graczy</th>
                         <th>Śr. pkt</th>
+                        <th>Star player</th>
                     </tr>
                 </thead>
                 <tbody id="polishAvgPointsBody"></tbody>
@@ -1805,7 +1814,7 @@
     <span style="font-size: 11px; color: #888;">(Dotknij gracza, by zbadać TIE / dotknij OMWP po szczegóły)</span>
 </div>
 <div class="filter-controls-row" style="margin: 0 0 10px 0;">
-    <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, szczur, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
+    <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, skład 🐀 rat crew, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
         <span style="font-size: 16px;">🇵🇱</span>
         <span id="polesFilterBtnText">Śledź tylko Polaków</span>
         <span id="polesCountBadge" class="poles-badge" style="display: none;">0 PL</span>
