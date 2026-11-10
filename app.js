@@ -522,12 +522,14 @@ function summarizePolishGroup(members) {
 }
 
 /**
- * Statystyki średnich punktów: gracze z flagą PL oraz per tag drużyny PL
+ * Statystyki średnich punktów: Polacy z/bez flagi PL oraz per tag drużyny PL
  * (katalog z POLISH_TEAM_TAGS / POLISH_KNOWN_NICKS + osobny skład „rat crew” z 🐀).
+ * „Bez flagi” = matched via nick list / heuristics (góry, szczur, team tag), bez 🇵🇱 w nicku.
  */
 function computePolishAvgPointsStats(standings) {
     const list = Array.isArray(standings) ? standings : [];
     const flagMembers = [];
+    const noFlagMembers = [];
     const teamMembers = new Map();
     for (const tag of POLISH_TEAM_TAG_CATALOG) {
         teamMembers.set(tag, []);
@@ -544,9 +546,16 @@ function computePolishAvgPointsStats(standings) {
             name: getPolishStatsPlayerLabel(player)
         };
 
-        if (texts.some((t) => POLISH_FLAG_REGEX.test(t))) {
+        const hasFlag = texts.some((t) => POLISH_FLAG_REGEX.test(t));
+        const isPolish = texts.some((t) => checkTextForPolishIndicators(t));
+
+        if (hasFlag) {
             flagMembers.push(member);
+        } else if (isPolish) {
+            // Polak bez 🇵🇱 — whitelist nicków / góry / szczur / tag teamu
+            noFlagMembers.push(member);
         }
+
         // 🐀 = osobny skład (nie mylić z tagami [GPL]/[M7] itd.)
         if (texts.some((t) => POLISH_RAT_REGEX.test(t))) {
             teamMembers.get(POLISH_RAT_CREW_LABEL).push(member);
@@ -574,6 +583,7 @@ function computePolishAvgPointsStats(standings) {
 
     return {
         flag: summarizePolishGroup(flagMembers),
+        noFlag: summarizePolishGroup(noFlagMembers),
         teams
     };
 }
@@ -602,12 +612,21 @@ function renderPolishAvgPointsTable(standings) {
     const stats = computePolishAvgPointsStats(standings);
     const rows = [];
 
+    // Comparison: Poles WITH 🇵🇱 vs Poles WITHOUT flag (still matched via nick/heuristics)
     if (stats.flag.count > 0) {
         rows.push({
-            label: '🇵🇱 Flaga PL',
+            label: '🇵🇱 Polacy z flagą',
             count: stats.flag.count,
             avgPoints: stats.flag.avgPoints,
             star: stats.flag.star
+        });
+    }
+    if (stats.noFlag.count > 0) {
+        rows.push({
+            label: 'Polacy bez flagi',
+            count: stats.noFlag.count,
+            avgPoints: stats.noFlag.avgPoints,
+            star: stats.noFlag.star
         });
     }
     for (const team of stats.teams) {
