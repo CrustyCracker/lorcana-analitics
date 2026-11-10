@@ -7,9 +7,6 @@ const {
     escapeHtml,
     escapeJsAttr,
     buildStandingsMap,
-    getMatchWhatIfKey,
-    applyWhatIfToPairings,
-    computeWhatIfEffectiveData,
     calculateCutLineBreakdown,
     getBracketSeedOrder,
     generateTopCutBracket,
@@ -21,7 +18,7 @@ const {
 const fixturePath = path.join(__dirname, 'fixtures', 'event_1007231_r8_data.json');
 const tournament1007231 = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
 
-describe('Nowe moduły: Drabinka Top Cut (Play/Draw), Tryb What-If oraz Cut Line Breakdown', () => {
+describe('Nowe moduły: Drabinka Top Cut (Play/Draw) oraz Cut Line Breakdown', () => {
 
     describe('1. Symulator Drabinki Top Cut i Przywileju Play/Draw', () => {
         it('generuje oficjalną kolejność parowań drzewka pucharowego dla Top 8 i Top 32', () => {
@@ -99,76 +96,7 @@ describe('Nowe moduły: Drabinka Top Cut (Play/Draw), Tryb What-If oraz Cut Line
         });
     });
 
-    describe('2. Tryb „What-If” (Ręczna zmiana wyników na stołach)', () => {
-        it('pozwala w historycznym turnieju 1007231 przełączyć stół #16 (Terry vs Crusty) na ID (DRAW) i potwierdza awans obu do Top 32', () => {
-            const rawStandings = tournament1007231.standings.map(p => ({
-                rank: p.rank,
-                player: { id: p.id, best_identifier: p.name },
-                match_points: p.match_points,
-                opponent_match_win_percentage: p.omwp,
-                game_win_percentage: p.gwp,
-                opponent_game_win_percentage: p.ogwp
-            }));
-
-            const terryId = 10870;
-            const crustyId = 27669;
-
-            // W rzeczywistości w R8 na stole #16 Terry M (10870) pokonał [GPL] Crusty (27669)
-            const rawPairings = [
-                {
-                    id: 999016,
-                    table_number: 16,
-                    winning_player: terryId,
-                    match_is_intentional_draw: false,
-                    match_is_unintentional_draw: false,
-                    games_won_by_winner: 2,
-                    games_won_by_loser: 1,
-                    player_match_relationships: [
-                        { player: { id: terryId, best_identifier: 'Terry M' } },
-                        { player: { id: crustyId, best_identifier: '[GPL] Crusty' } }
-                    ]
-                }
-            ];
-
-            const standingsMap = buildStandingsMap(rawStandings);
-            const matchIdx = 0;
-            const matchKey = getMatchWhatIfKey(rawPairings[matchIdx], matchIdx);
-            const overrides = new Map([[matchKey, 'DRAW']]);
-
-            // Turniej jest zakończony (isLiveRoundInProgress = false), więc computeWhatIfEffectiveData koryguje oficjalne punkty:
-            // Terry: 18 -> 16 pkt (-2), Crusty: 15 -> 16 pkt (+1)
-            const { effectiveStandings, effectivePairingsList } = computeWhatIfEffectiveData(
-                rawStandings,
-                rawPairings,
-                overrides,
-                standingsMap,
-                false
-            );
-
-            assert.equal(effectivePairingsList[matchIdx]._isWhatIf, true);
-            assert.equal(effectivePairingsList[matchIdx].match_is_intentional_draw, true);
-
-            const breakdownAfterWhatIf = calculateCutLineBreakdown(effectiveStandings, 32, 'hard');
-            const sortedAfter = [...effectiveStandings].sort((a, b) => {
-                if (b.match_points !== a.match_points) return b.match_points - a.match_points;
-                if (b.opponent_match_win_percentage !== a.opponent_match_win_percentage) {
-                    return b.opponent_match_win_percentage - a.opponent_match_win_percentage;
-                }
-                return b.game_win_percentage - a.game_win_percentage;
-            });
-
-            const terryRank = sortedAfter.findIndex(p => p.player.id === terryId) + 1;
-            const crustyRank = sortedAfter.findIndex(p => p.player.id === crustyId) + 1;
-
-            assert.equal(sortedAfter[terryRank - 1].match_points, 16);
-            assert.equal(sortedAfter[crustyRank - 1].match_points, 16);
-            assert.ok(crustyRank <= 32, `Crusty po kliknięciu What-If ID powinien być w Top 32 (miejsce #${crustyRank})`);
-            assert.ok(terryRank <= 32, `Terry po kliknięciu What-If ID powinien być w Top 32 (miejsce #${terryRank})`);
-            assert.equal(breakdownAfterWhatIf.bubblePts, 16);
-        });
-    });
-
-    describe('3. Kalkulator rozkładu koszyków punktowych (Cut Line Breakdown)', () => {
+    describe('2. Kalkulator rozkładu koszyków punktowych (Cut Line Breakdown)', () => {
         it('poprawnie wylicza statystyki kreski, Gatekeepera (#32), Snipera (#33) i koszyki punktowe dla turnieju 1007231', () => {
             const standings = tournament1007231.standings;
             const bd = calculateCutLineBreakdown(standings, 32, 'hard');

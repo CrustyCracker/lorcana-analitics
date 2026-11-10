@@ -95,6 +95,51 @@ function runTieSimulationAsync(input) {
     });
 }
 
+const CUT_SIZE_STORAGE_KEY = 'lorcana_cut_size';
+const CUT_RULE_STORAGE_KEY = 'lorcana_cut_rule';
+
+function loadCutPrefsIntoUi() {
+    const cutSizeEl = document.getElementById('cutSize');
+    const cutRuleEl = document.getElementById('cutRule');
+    if (!cutSizeEl && !cutRuleEl) return;
+    try {
+        const savedSize = localStorage.getItem(CUT_SIZE_STORAGE_KEY);
+        const savedRule = localStorage.getItem(CUT_RULE_STORAGE_KEY);
+        if (cutSizeEl && savedSize && /^\d+$/.test(savedSize)) {
+            const n = parseInt(savedSize, 10);
+            if (n >= 2 && n <= 256) cutSizeEl.value = String(n);
+        }
+        if (cutRuleEl && (savedRule === 'hard' || savedRule === 'soft')) {
+            cutRuleEl.value = savedRule;
+        }
+    } catch (e) {}
+}
+
+function saveCutPrefsFromUi() {
+    const cutSizeEl = document.getElementById('cutSize');
+    const cutRuleEl = document.getElementById('cutRule');
+    try {
+        if (cutSizeEl) {
+            const n = parseInt(cutSizeEl.value || '4', 10);
+            if (Number.isFinite(n) && n >= 2 && n <= 256) {
+                localStorage.setItem(CUT_SIZE_STORAGE_KEY, String(n));
+            }
+        }
+        if (cutRuleEl && (cutRuleEl.value === 'hard' || cutRuleEl.value === 'soft')) {
+            localStorage.setItem(CUT_RULE_STORAGE_KEY, cutRuleEl.value);
+        }
+    } catch (e) {}
+}
+
+function onCutPrefsChanged() {
+    saveCutPrefsFromUi();
+    lastProcessFingerprint = null;
+    if (latestData) {
+        processStandings(latestData);
+        if (currentSelectedPlayerId) recalculateTieForSelectedPlayer();
+    }
+}
+
 function shouldGateHeavyUi(playerCount) {
     return (Number(playerCount) || 0) >= LARGE_EVENT_PLAYER_THRESHOLD;
 }
@@ -116,13 +161,6 @@ function buildDataFingerprint(data, cutSize, cutRule) {
             unfinished++;
         }
     }
-    let whatIfSig = '';
-    if (whatIfOverrides && whatIfOverrides.size > 0) {
-        whatIfSig = [...whatIfOverrides.entries()]
-            .map(([k, v]) => `${k}=${v}`)
-            .sort()
-            .join('|');
-    }
     return [
         data?.eventId || '',
         data?.activeRound || 0,
@@ -133,8 +171,7 @@ function buildDataFingerprint(data, cutSize, cutRule) {
         completedSig,
         unfinished,
         cutSize,
-        cutRule,
-        whatIfSig
+        cutRule
     ].join('::');
 }
 
@@ -160,7 +197,6 @@ const POLISH_RAT_REGEX = /[\u{1F400}\u{1F401}]|[🐀🐁]/u;
 let filterOnlyPoles = false;
 let currentLiveStatusFilter = 'all';
 let currentPredictorScenario = 'WIN';
-let whatIfOverrides = new Map();
 let lastTrackedEventId = null;
 let pairingsSearchQuery = '';
 let liveTableSearchQuery = '';
@@ -435,8 +471,7 @@ function startTracking() {
         return;
     }
     if (lastTrackedEventId !== null && String(lastTrackedEventId) !== String(eventId)) {
-        whatIfOverrides.clear();
-        updateWhatIfStatusBar();
+        // event changed — cut prefs stay (user choice)
     }
     lastTrackedEventId = eventId;
     try {
@@ -455,6 +490,8 @@ async function initDefaultEventAndAutoTrack() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     const eventInput = document.getElementById('eventId');
     if (!eventInput) return;
+
+    loadCutPrefsIntoUi();
 
     // Obsługa wciśnięcia Enter w polu wyszukiwania turnieju
     eventInput.addEventListener('keydown', (e) => {
@@ -704,166 +741,6 @@ function extractPairingsList(raw) {
 }
 
 // -------------------------------------------------------------
-// TRYB „WHAT-IF” (RĘCZNE SYMULOWANIE WYNIKÓW STOŁÓW LIVE)
-// -------------------------------------------------------------
-
-function getMatchWhatIfKey(match, fallbackIdx = 0) {
-    const tbl = match?.table_number ?? match?.tableNumber ?? match?.id;
-    if (tbl !== undefined && tbl !== null) return `T_${tbl}`;
-    return `IDX_${fallbackIdx}`;
-}
-
-function getSingleMatchOutcomePoints(match, standingsMap) {
-    const p1 = resolvePlayer(getMatchParticipant(match, 1), standingsMap);
-    const p2 = resolvePlayer(getMatchParticipant(match, 2), standingsMap);
-    const id1 = p1?.id;
-    const id2 = p2?.id;
-    const { score1, score2, hasScore, winnerId } = getMatchScores(match);
-    const status = (match.status || match.state || "").toUpperCase();
-    const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
-    const isDraw = match.match_is_intentional_draw || match.match_is_unintentional_draw || status === "DRAW";
-
-    let pts1 = 0;
-    let pts2 = 0;
-    if (isComplete) {
-        if (isDraw) {
-            pts1 = 1;
-            pts2 = 1;
-        } else if (score1 > score2 || (winnerId && id1 && String(id1) === String(winnerId))) {
-            pts1 = 3;
-            pts2 = 0;
-        } else if (score2 > score1 || (winnerId && id2 && String(id2) === String(winnerId))) {
-            pts1 = 0;
-            pts2 = 3;
-        }
-    }
-    return { id1, id2, pts1, pts2, isComplete, isDraw };
-}
-
-function applyWhatIfToPairings(pairingsList, overridesMap, standingsMap) {
-    if (!pairingsList || !Array.isArray(pairingsList)) return [];
-    if (!overridesMap || overridesMap.size === 0) return pairingsList;
-
-    return pairingsList.map((m, idx) => {
-        const key = getMatchWhatIfKey(m, idx);
-        const outcome = overridesMap.get(key);
-        if (!outcome) return m;
-
-        const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
-        const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
-
-        const clone = { ...m, _isWhatIf: true, _whatIfOutcome: outcome, status: 'COMPLETE', state: 'COMPLETE' };
-        if (outcome === 'DRAW') {
-            clone.match_is_intentional_draw = true;
-            clone.match_is_unintentional_draw = false;
-            clone.winning_player = null;
-            clone.winner_id = null;
-            clone.games_won_by_winner = 1;
-            clone.games_won_by_loser = 1;
-            clone.team_1_score = 1;
-            clone.team_2_score = 1;
-        } else if (outcome === 'P1_WIN') {
-            clone.match_is_intentional_draw = false;
-            clone.match_is_unintentional_draw = false;
-            clone.winning_player = p1?.id ?? 1;
-            clone.winner_id = p1?.id ?? 1;
-            clone.games_won_by_winner = 2;
-            clone.games_won_by_loser = 0;
-            clone.team_1_score = 2;
-            clone.team_2_score = 0;
-        } else if (outcome === 'P2_WIN') {
-            clone.match_is_intentional_draw = false;
-            clone.match_is_unintentional_draw = false;
-            clone.winning_player = p2?.id ?? 2;
-            clone.winner_id = p2?.id ?? 2;
-            clone.games_won_by_winner = 2;
-            clone.games_won_by_loser = 0;
-            clone.team_1_score = 0;
-            clone.team_2_score = 2;
-        }
-        return clone;
-    });
-}
-
-function computeWhatIfEffectiveData(standings, rawPairingsList, overridesMap, standingsMap, isLiveRoundInProgress) {
-    const effectivePairingsList = applyWhatIfToPairings(rawPairingsList, overridesMap, standingsMap);
-    if (!overridesMap || overridesMap.size === 0 || isLiveRoundInProgress) {
-        return { effectiveStandings: standings, effectivePairingsList };
-    }
-
-    // Gdy runda jest już oficjalnie zamknięta (!isLiveRoundInProgress), oficjalne match_points zawierają już wynik z rawPairingsList.
-    // Aby umożliwić graczowi symulację „Co by było, gdyby w ostatniej rundzie padł inny wynik na stole #X”,
-    // korygujemy punkty o różnicę (nowe punkty What-If minus oryginalne punkty z meczu).
-    const pointAdjustments = new Map();
-    rawPairingsList.forEach((rawMatch, idx) => {
-        const key = getMatchWhatIfKey(rawMatch, idx);
-        if (!overridesMap.has(key)) return;
-        const orig = getSingleMatchOutcomePoints(rawMatch, standingsMap);
-        const sim = getSingleMatchOutcomePoints(effectivePairingsList[idx], standingsMap);
-        if (orig.id1 != null) {
-            pointAdjustments.set(String(orig.id1), (pointAdjustments.get(String(orig.id1)) || 0) + (sim.pts1 - orig.pts1));
-        }
-        if (orig.id2 != null) {
-            pointAdjustments.set(String(orig.id2), (pointAdjustments.get(String(orig.id2)) || 0) + (sim.pts2 - orig.pts2));
-        }
-    });
-
-    const effectiveStandings = standings.map(p => {
-        const adj = pointAdjustments.get(String(p.player?.id || p.id)) || 0;
-        if (adj === 0) return p;
-        return {
-            ...p,
-            match_points: Math.max(0, (p.match_points || 0) + adj)
-        };
-    });
-
-    return { effectiveStandings, effectivePairingsList };
-}
-
-function setWhatIfOverride(matchKey, outcome) {
-    if (!matchKey) return;
-    if (!outcome || whatIfOverrides.get(matchKey) === outcome) {
-        whatIfOverrides.delete(matchKey);
-    } else {
-        whatIfOverrides.set(matchKey, outcome);
-    }
-    updateWhatIfStatusBar();
-    lastProcessFingerprint = null;
-    if (latestData) {
-        processPairings(latestData);
-        processStandings(latestData);
-        if (currentSelectedPlayerId) {
-            recalculateTieForSelectedPlayer();
-        }
-    }
-}
-
-function clearAllWhatIfOverrides() {
-    whatIfOverrides.clear();
-    updateWhatIfStatusBar();
-    lastProcessFingerprint = null;
-    if (latestData) {
-        processPairings(latestData);
-        processStandings(latestData);
-        if (currentSelectedPlayerId) {
-            recalculateTieForSelectedPlayer();
-        }
-    }
-}
-
-function updateWhatIfStatusBar() {
-    const bar = document.getElementById('whatIfStatusBar');
-    const countEl = document.getElementById('whatIfCountDisplay');
-    if (!bar) return;
-    if (whatIfOverrides.size > 0) {
-        bar.style.display = 'flex';
-        if (countEl) countEl.innerText = String(whatIfOverrides.size);
-    } else {
-        bar.style.display = 'none';
-    }
-}
-
-// -------------------------------------------------------------
 // TABELA MECZÓW LIVE
 // -------------------------------------------------------------
 
@@ -872,11 +749,10 @@ function processPairings(data) {
     const rawPairingsList = extractPairingsList(data.pairings);
     const standingsList = data.standings?.standings || [];
     const standingsMap = buildStandingsMap(standingsList);
-    const pairingsList = applyWhatIfToPairings(rawPairingsList, whatIfOverrides, standingsMap);
+    const pairingsList = rawPairingsList;
 
     cachedPairings = pairingsList;
     cachedStandingsMap = standingsMap;
-    updateWhatIfStatusBar();
 
     let completedCount = 0;
     pairingsList.forEach(match => {
@@ -891,8 +767,7 @@ function processPairings(data) {
     if (pairingsList.length === 0) {
         setElText('matchesProgress', "0 zakończonych");
     } else {
-        const whatIfNote = whatIfOverrides.size > 0 ? ` (w tym ${whatIfOverrides.size} What-If)` : "";
-        setElText('matchesProgress', `${completedCount}/${pairingsList.length} wpisane${whatIfNote}`);
+        setElText('matchesProgress', `${completedCount}/${pairingsList.length} wpisane`);
     }
 
     renderPairingsTable();
@@ -931,7 +806,7 @@ function renderPairingsTable() {
         let emptyMsg = "Oczekiwanie na wygenerowanie parowań dla tej rundy...";
         if (pairingsSearchQuery) emptyMsg = "Brak stołów lub graczy pasujących do wyszukiwania.";
         else if (filterOnlyPoles) emptyMsg = "Brak meczów z udziałem polskich graczy w tej rundzie.";
-        tbody.innerHTML = `<tr><td colspan="6" style="color: #888; padding: 20px;">${emptyMsg}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="5" style="color: #888; padding: 20px;">${emptyMsg}</td></tr>`;
         renderPagination('pairingsPagination', 0, 1, 'changePairingsPage');
         return;
     }
@@ -949,8 +824,6 @@ function renderPairingsTable() {
         const globalIdx = origIdx;
         const tr = document.createElement('tr');
         const tableNum = match.table_number || match.tableNumber || (globalIdx + 1);
-        const matchKey = getMatchWhatIfKey(match, globalIdx);
-        const activeOverride = whatIfOverrides.get(matchKey) || null;
         
         const raw1 = getMatchParticipant(match, 1);
         const raw2 = getMatchParticipant(match, 2);
@@ -980,9 +853,6 @@ function renderPairingsTable() {
         if (isBye) {
             statusBadge = `<span class="badge badge-bye">BYE</span>`;
             displayScore = `2 : 0`;
-        } else if (match._isWhatIf) {
-            statusBadge = `<span class="badge badge-whatif" title="Wynik ustawiony ręcznie w trybie What-If">🎛️ What-If</span>`;
-            displayScore = isDraw ? `<span style="color:#f1c40f;">REMIS (ID)</span>` : `${score1} : ${score2}`;
         } else if (isComplete) {
             statusBadge = `<span class="badge badge-complete">Koniec</span>`;
             
@@ -1001,23 +871,9 @@ function renderPairingsTable() {
         const p1Style = p1Won ? 'color: #2ecc71; font-weight: bold;' : '';
         const p2Style = p2Won ? 'color: #2ecc71; font-weight: bold;' : '';
 
-        if (match._isWhatIf) {
-            tr.style.background = "rgba(155, 89, 182, 0.14)";
-        }
-
-        const safeKeyAttr = escapeJsAttr(matchKey);
         const safeName1 = escapeHtml(name1);
         const safeName2 = escapeHtml(name2);
         const safeTableNum = escapeHtml(tableNum);
-
-        const whatIfControlsHtml = isBye ? `-` : `
-            <div class="whatif-btn-group">
-                <button type="button" class="whatif-btn ${activeOverride === 'P1_WIN' ? 'active-w1' : ''}" title="Symuluj wygraną Gracza 1" onclick="setWhatIfOverride('${safeKeyAttr}', 'P1_WIN')">1</button>
-                <button type="button" class="whatif-btn ${activeOverride === 'DRAW' ? 'active-tie' : ''}" title="Symuluj remis (ID)" onclick="setWhatIfOverride('${safeKeyAttr}', 'DRAW')">ID</button>
-                <button type="button" class="whatif-btn ${activeOverride === 'P2_WIN' ? 'active-w2' : ''}" title="Symuluj wygraną Gracza 2" onclick="setWhatIfOverride('${safeKeyAttr}', 'P2_WIN')">2</button>
-                ${activeOverride ? `<button type="button" class="whatif-btn whatif-reset-mini" title="Cofnij zmianę dla tego stołu" onclick="setWhatIfOverride('${safeKeyAttr}', null)">✕</button>` : ''}
-            </div>
-        `;
 
         tr.innerHTML = `
             <td><strong>#${safeTableNum}</strong></td>
@@ -1025,7 +881,6 @@ function renderPairingsTable() {
             <td class="score-box">${displayScore}</td>
             <td class="player-cell-truncate" style="${p2Style}" title="${safeName2}">${safeName2}</td>
             <td>${statusBadge}</td>
-            <td>${whatIfControlsHtml}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -1124,13 +979,8 @@ function processStandings(data) {
 
     const rawPairingsList = extractPairingsList(data.pairings);
     const standingsMap = buildStandingsMap(rawStandings);
-    const { effectiveStandings: standings, effectivePairingsList: pairingsList } = computeWhatIfEffectiveData(
-        rawStandings,
-        rawPairingsList,
-        whatIfOverrides,
-        standingsMap,
-        isLiveRoundInProgress
-    );
+    const standings = rawStandings;
+    const pairingsList = rawPairingsList;
 
     // 1. Zbieramy delty punktowe z zakończonych meczów w bieżącej rundzie (tylko gdy runda na żywo jest w toku)
     const liveScoreDeltas = new Map();
@@ -1517,7 +1367,7 @@ function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch
         } else {
             let matchStatePill = "";
             if (simResults.isCurrentMatchFinished) {
-                matchStatePill = `<span style="color: #2ecc71;">✅ Twój mecz w R${activeRound} jest zakończony${myMatch?._isWhatIf ? ' (What-If)' : ''}.</span>`;
+                matchStatePill = `<span style="color: #2ecc71;">✅ Twój mecz w R${activeRound} jest zakończony.</span>`;
             } else if (myMatch) {
                 const safeTbl = escapeHtml(myMatch.table_number || myMatch.tableNumber || '?');
                 const safeOpp = escapeHtml(myOpponent?.name || 'BYE');
@@ -1556,19 +1406,6 @@ function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch
     updateRecommendationBanner(simResults, myMatch, targetPlayer, myOpponent, activeRound, totalRounds);
     renderPlayDrawSeedingPanel(targetPlayer, myOpponent, simResults.isCurrentMatchFinished, cachedLiveStandings, cutSize);
 
-    const rawPairingsList = extractPairingsList(latestData?.pairings);
-    const standingsMap = buildStandingsMap(latestData?.standings?.standings || []);
-    const isCompleted = Boolean(latestData?.isCompleted || latestData?.displayStatus === 'complete');
-    const isLiveRoundInProgress = Boolean(activeRound > (latestData?.standingsRound || 0) && !isCompleted);
-    const { effectivePairingsList: pairingsList } = computeWhatIfEffectiveData(
-        latestData?.standings?.standings || [],
-        rawPairingsList,
-        whatIfOverrides,
-        standingsMap,
-        isLiveRoundInProgress
-    );
-    renderBubbleNeighborsWhatIf(targetPlayer, pairingsList, standingsMap, cutSize);
-
     const playerCount = latestData?.playerCount || (latestData?.standings?.standings?.length || 0);
     if (!shouldGateHeavyUi(playerCount)) {
         renderTopCutBracketPanel(cachedLiveStandings, cutSize);
@@ -1595,13 +1432,8 @@ function recalculateTieForSelectedPlayer() {
 
     const rawPairingsList = extractPairingsList(latestData.pairings);
     const standingsMap = buildStandingsMap(rawStandings);
-    const { effectiveStandings: standings, effectivePairingsList: pairingsList } = computeWhatIfEffectiveData(
-        rawStandings,
-        rawPairingsList,
-        whatIfOverrides,
-        standingsMap,
-        isLiveRoundInProgress
-    );
+    const standings = rawStandings;
+    const pairingsList = rawPairingsList;
 
     const targetPlayer = standings.find(p => String(p.player?.id || p.id) === String(currentSelectedPlayerId));
     if (!targetPlayer) return;
@@ -4049,92 +3881,6 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
 // SZYBKI SYMULATOR „WHAT-IF” DLA SĄSIEDNICH STOŁÓW BUBBLE
 // -------------------------------------------------------------
 
-function renderBubbleNeighborsWhatIf(targetPlayer, pairingsList, standingsMap, cutSize) {
-    const panel = document.getElementById('bubbleNeighborsWhatIfPanel');
-    const listEl = document.getElementById('bubbleNeighborsList');
-    if (!panel || !listEl) return;
-
-    if (!pairingsList || pairingsList.length === 0 || !cachedLiveStandings || cachedLiveStandings.length === 0) {
-        panel.style.display = 'none';
-        return;
-    }
-
-    const bubbleIdx = Math.min(Math.max(1, cutSize) - 1, cachedLiveStandings.length - 1);
-    const bubblePts = cachedLiveStandings[bubbleIdx]?.livePoints ?? cachedLiveStandings[bubbleIdx]?.match_points ?? 0;
-    const targetPts = targetPlayer.livePoints ?? targetPlayer.match_points ?? bubblePts;
-
-    // Wybieramy stoły wokół progu Bubble oraz koszyka punktowego wybranego gracza
-    const scoredMatches = [];
-    pairingsList.forEach((m, idx) => {
-        const raw2 = getMatchParticipant(m, 2);
-        const isBye = m.is_bye || m.bye || !raw2 || m.round_type === 'BYE';
-        if (isBye) return;
-
-        const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
-        const p2 = resolvePlayer(raw2, standingsMap);
-        if (!p1 || !p2) return;
-
-        const s1 = p1.raw || cachedLiveStandings.find(s => String(s.player?.id || s.id) === String(p1.id));
-        const s2 = p2.raw || cachedLiveStandings.find(s => String(s.player?.id || s.id) === String(p2.id));
-        const pts1 = s1 ? (s1.livePoints ?? s1.match_points ?? 0) : 0;
-        const pts2 = s2 ? (s2.livePoints ?? s2.match_points ?? 0) : 0;
-        const maxPts = Math.max(pts1, pts2);
-
-        const { hasScore, winnerId } = getMatchScores(m);
-        const statusRaw = (m.status || m.state || "").toUpperCase();
-        const isComplete = statusRaw === "COMPLETE" || statusRaw === "FINISHED" || statusRaw === "COMPLETED" || winnerId != null || hasScore;
-
-        const key = getMatchWhatIfKey(m, idx);
-        const activeOverride = whatIfOverrides.get(key) || null;
-
-        // Priorytet mają stoły jeszcze trwające lub ręcznie zmienione przez użytkownika blisko progu Bubble
-        const distFromTarget = Math.min(Math.abs(maxPts - targetPts), Math.abs(maxPts - bubblePts));
-        const priority = (activeOverride ? -100 : (isComplete ? 50 : 0)) + distFromTarget;
-
-        scoredMatches.push({
-            match: m,
-            idx,
-            key,
-            tableNum: m.table_number || m.tableNumber || (idx + 1),
-            p1,
-            p2,
-            pts1,
-            pts2,
-            activeOverride,
-            isComplete,
-            priority
-        });
-    });
-
-    scoredMatches.sort((a, b) => a.priority - b.priority || a.tableNum - b.tableNum);
-    const topNeighbors = scoredMatches.slice(0, 6);
-
-    if (topNeighbors.length === 0) {
-        panel.style.display = 'none';
-        return;
-    }
-
-    panel.style.display = 'block';
-    listEl.innerHTML = topNeighbors.map(item => {
-        const ov = item.activeOverride;
-        const safeKey = escapeJsAttr(item.key);
-        return `
-            <div class="candidate-card" style="${ov ? 'border-color: #f39c12; background: rgba(243, 156, 18, 0.12);' : ''}">
-                <div style="flex: 1; padding-right: 8px;">
-                    <div class="candidate-name" style="font-size: 13px;">Stół #${escapeHtml(item.tableNum)}: ${escapeHtml(item.p1.name)} <span style="color:#888;">vs</span> ${escapeHtml(item.p2.name)}</div>
-                    <div class="candidate-sub">Pkt: <strong>${item.pts1}</strong> vs <strong>${item.pts2}</strong> ${ov ? `<span style="color:#f39c12; font-weight:bold;">(What-If: ${escapeHtml(ov)})</span>` : (item.isComplete ? '(Zakończony)' : '(W grze)')}</div>
-                </div>
-                <div class="whatif-btn-group">
-                    <button type="button" class="whatif-btn ${ov === 'P1_WIN' ? 'active-w1' : ''}" onclick="setWhatIfOverride('${safeKey}', 'P1_WIN')" title="Wygrywa ${escapeHtml(item.p1.name)}">1</button>
-                    <button type="button" class="whatif-btn ${ov === 'DRAW' ? 'active-tie' : ''}" onclick="setWhatIfOverride('${safeKey}', 'DRAW')" title="Remis (ID)">ID</button>
-                    <button type="button" class="whatif-btn ${ov === 'P2_WIN' ? 'active-w2' : ''}" onclick="setWhatIfOverride('${safeKey}', 'P2_WIN')" title="Wygrywa ${escapeHtml(item.p2.name)}">2</button>
-                    ${ov ? `<button type="button" class="whatif-btn whatif-reset-mini" onclick="setWhatIfOverride('${safeKey}', null)" title="Resetuj stół">✕</button>` : ''}
-                </div>
-            </div>
-        `;
-    }).join('');
-}
-
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         escapeHtml,
@@ -4154,9 +3900,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getMatchScores,
         getDefaultTotalRounds,
         getPlayerHistoricalMatches,
-        getMatchWhatIfKey,
-        applyWhatIfToPairings,
-        computeWhatIfEffectiveData,
+
         calculateCutLineBreakdown,
         getBracketSeedOrder,
         getBracketStageLabel,

@@ -1225,6 +1225,22 @@
                 grid-column: span 2;
             }
         }
+    
+        /* Primary: Can I Tie stays visually dominant near top */
+        #tieModule[data-primary="true"] {
+            border: 1px solid rgba(52, 152, 219, 0.55);
+            box-shadow: 0 0 0 1px rgba(52, 152, 219, 0.15), 0 10px 28px rgba(0,0,0,0.25);
+            margin-top: 12px;
+        }
+        #tieModule[data-primary="true"] > h3 {
+            font-size: 1.15rem;
+        }
+        .secondary-section-note {
+            font-size: 11px;
+            color: #64748b;
+            margin: -4px 0 10px 0;
+        }
+
     </style>
 </head>
 <body>
@@ -1234,8 +1250,8 @@
     
     <div class="controls-grid">
         <input type="number" id="eventId" placeholder="Wpisz Event ID (np. 1007231)" autocomplete="off" title="ID turnieju z Ravensburger Play Hub. Wciśnij Enter, aby śledzić">
-        <input type="number" id="cutSize" value="4" placeholder="Cut (np. 4)">
-        <select id="cutRule" class="full-width full-width-mobile">
+        <input type="number" id="cutSize" value="4" placeholder="Cut (np. 4)" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
+        <select id="cutRule" class="full-width full-width-mobile" onchange="onCutPrefsChanged()">
             <option value="hard" selected>Twardy Cut (Sztywne Top X) [ME 2]</option>
             <option value="soft">Miękki Cut (Top X + równe punkty) [ME 1]</option>
         </select>
@@ -1254,6 +1270,8 @@
     <div id="status">Gotowy do pobierania...</div>
 </div>
 
+
+
 <div class="panel" id="statsPanel" style="display: none;">
     <h3 id="eventNameDisplay">Nazwa Turnieju</h3>
     <div class="stats-grid">
@@ -1267,73 +1285,119 @@
     </div>
 </div>
 
-<!-- PASEK STATUSU WHAT-IF -->
-<div id="whatIfStatusBar" class="whatif-banner" style="display: none;">
-    <div>
-        🎛️ <strong>Tryb symulacji „What-If” jest aktywny!</strong> Ręcznie ustawiono wyniki na <strong id="whatIfCountDisplay">0</strong> stołach. Wszystkie tabele, progi OMW% i szanse na Cut uwzględniają Twoje zmiany.
+
+
+<!-- PRIMARY: CAN I TAKE A TIE + BEST STRATEGY -->
+<div class="panel tie-panel" id="tieModule" data-primary="true">
+    <h3 style="color: #3498db; margin-bottom: 12px;">🤝 Can I take a TIE? (Live Simulator & Mutual Agreement)</h3>
+    <p style="font-size: 13px; color: #aaa; margin: 0 0 10px 0;">
+        Wpisz swój nick lub kliknij siebie w tabeli LIVE. Algorytm na bieżąco monitoruje zakończone stoły i oblicza matematyczną szansę wejścia do Cutu.
+    </p>
+
+    <div class="autocomplete-wrapper">
+        <input type="text" id="playerSearchInput" placeholder="Wyszukaj gracza (np. Amanda, Rose, Kelly)..." autocomplete="off" oninput="onPlayerSearchInput()">
+        <div id="playerSuggestions" class="suggestions-dropdown"></div>
     </div>
-    <button type="button" class="whatif-btn whatif-reset-mini" style="height: 32px; padding: 4px 12px; font-size: 12px;" onclick="clearAllWhatIfOverrides()">↺ Resetuj wszystkie What-If</button>
+
+    <div id="tieResultArea" style="display: none;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+            <div>
+                Wybrany gracz: <strong id="selectedPlayerName" style="color: #fff; font-size: 16px;">-</strong>
+                <span id="selectedPlayerTable" style="color: #3498db; font-size: 13px; margin-left: 8px;"></span>
+            </div>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <div id="selectedPlayerBaseStats" style="font-size: 13px; color: #888;"></div>
+                <button type="button" class="btn-secondary" style="width: auto; height: 32px; padding: 4px 10px; font-size: 12px; background: #2a3346; color: #3498db; border: 1px solid #3498db; border-radius: 4px; cursor: pointer;" onclick="openOmwpInspector(currentSelectedPlayerId)">🔍 Inspektor OMWP</button>
+            </div>
+        </div>
+
+        <div id="tieRoundContext" style="margin-top: 10px; font-size: 13px; color: #cbd5e1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"></div>
+
+        <div id="tieRecommendationBanner" class="recommendation-box rec-risk">
+            Wybierz gracza, aby wyliczyć rekomendację live.
+        </div>
+
+
+        <!-- DEDYKOWANA PODPOWIEDŹ: CZY 2 REMISY Z RZĘDU DAJĄ TOP CUT? -->
+        <div id="doubleTiePromptPanel" class="double-tie-panel" style="display: none;">
+            <div class="double-tie-header">
+                <div class="double-tie-title" id="doubleTiePromptTitle">🤝 Czy 2 remisy z rzędu dają Top Cut?</div>
+                <div class="verdict-badge" id="doubleTieVerdictBadge">-</div>
+            </div>
+            <div id="doubleTiePromptDesc" style="font-size: 13px; color: #cbd5e1; line-height: 1.5;"></div>
+            <div id="doubleTieOpponentNote" style="font-size: 12px; color: #f39c12; margin-top: 6px;"></div>
+        </div>
+
+        <!-- ŚCIEŻKI AWANSU / SCENARIUSZE WIELORUNDOWE -->
+        <div id="multiRoundScenariosWrapper" style="margin-top: 15px; display: none;">
+            <div style="font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
+                🛣️ Ścieżki Awansu (Kombinacje wyników do końca turnieju)
+            </div>
+            <div class="scenario-grid" id="multiRoundScenarioGrid"></div>
+        </div>
+
+        <!-- BIEŻĄCY STÓŁ -->
+        <div id="currentMatchScenariosWrapper">
+            <div style="margin-top: 18px; font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
+                ⚡ Scenariusze dla obecnego meczu (Runda <span id="tieCurrentRoundNum">-</span>)
+            </div>
+            <div class="simulation-grid">
+                <div class="sim-card">
+                    <div class="sim-title">Jeśli padnie REMIS (ID)</div>
+                    <div class="sim-chance" id="chanceTieDisplay" style="color: #f1c40f;">-%</div>
+                    <div class="sim-pts" id="ptsTieDisplay">Pkt: -</div>
+                    <div class="sim-sub" id="oppTieChanceDisplay">Rywal po TIE: -%</div>
+                </div>
+                <div class="sim-card">
+                    <div class="sim-title">Jeśli WYGRASZ (WIN)</div>
+                    <div class="sim-chance" id="chanceWinDisplay" style="color: #2ecc71;">-%</div>
+                    <div class="sim-pts" id="ptsWinDisplay">Pkt: -</div>
+                </div>
+                <div class="sim-card">
+                    <div class="sim-title">Jeśli PRZEGRASZ (LOSS)</div>
+                    <div class="sim-chance" id="chanceLossDisplay" style="color: #e74c3c;">-%</div>
+                    <div class="sim-pts" id="ptsLossDisplay">Pkt: -</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- NOWY MODUŁ: PLAY/DRAW & SEEDING W TOP CUT DLA WYBRANEGO GRACZA -->
+        <div id="playDrawSeedingPanel" class="double-tie-panel" style="display: none; border-left-color: #f1c40f; margin-top: 15px;">
+            <div class="double-tie-header">
+                <div class="double-tie-title">🎲 Rozstawienie (Seeding) i Przywilej Play/Draw w Top Cut</div>
+                <div id="playDrawCurrentBadge" class="play-draw-pill pill-play">-</div>
+            </div>
+            <div id="playDrawSeedingBody" style="font-size: 13px; color: #cbd5e1; line-height: 1.5;"></div>
+        </div>
+
+        <!-- DEDYKOWANA SEKCJA: SYMULATOR PAROWAŃ NA NASTĘPNĄ RUNDĘ -->
+        <div id="nextRoundPairingsPanel" class="pairings-predictor-panel" style="display: none; margin-top: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
+                <div>
+                    <span style="font-size: 15px; font-weight: bold; color: #fff;">🔮 Symulator Parowań: Z kim zagram w Rundzie <span id="predictorNextRoundNum">-</span>?</span>
+                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                        Model Swiss z wykluczeniem wcześniejszych rywali (no-rematches) oraz analizą trwających stołów.
+                    </div>
+                </div>
+            </div>
+            
+            <div class="scenario-toggle-bar">
+                <button id="scenarioBtnWin" class="scenario-toggle-btn active" onclick="switchPredictorScenario('WIN')">🟢 Jeśli WYGRASZ (<span id="predictorWinPts">-</span> pkt)</button>
+                <button id="scenarioBtnTie" class="scenario-toggle-btn" onclick="switchPredictorScenario('TIE')">🟡 Jeśli REMIS (<span id="predictorTiePts">-</span> pkt)</button>
+                <button id="scenarioBtnLoss" class="scenario-toggle-btn" onclick="switchPredictorScenario('LOSS')">🔴 Jeśli PRZEGRASZ (<span id="predictorLossPts">-</span> pkt)</button>
+            </div>
+
+            <div id="predictorSummaryText" style="font-size: 12px; color: #cbd5e1; margin: 12px 0 8px 0; font-weight: 500;"></div>
+
+            <div id="predictorCandidatesList" class="candidate-grid"></div>
+        </div>
+    </div>
 </div>
 
-<!-- SEKCJA: PAROWANIA NA ŻYWO -->
-<div class="section-header" id="pairingsSection">
-    <div class="section-header-row">
-        <h3>⚔️ Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>) <span id="pairingsPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-        <span id="matchesProgress" style="font-size: 12px; color: #aaa;">-</span>
-    </div>
-</div>
-<div class="quick-search-row">
-    <input type="text" id="pairingsSearchInput" class="quick-search-input" placeholder="🔎 Szukaj gracza lub numeru stołu (np. #12, Crusty)..." autocomplete="off" oninput="onPairingsSearchInput()">
-    <button type="button" id="pairingsSearchClearBtn" class="quick-search-clear" onclick="clearPairingsSearch()">✕ Wyczyść</button>
-</div>
-<div class="table-responsive">
-    <table>
-        <thead>
-            <tr>
-                <th style="width: 50px;">Stół</th>
-                <th>Gracz 1</th>
-                <th style="width: 80px;">Wynik</th>
-                <th>Gracz 2</th>
-                <th style="width: 90px;">Status</th>
-                <th style="width: 150px;" title="Kliknij 1 / ID / 2, aby zasymulować wynik stołu i przeliczyć tabelę LIVE">🎛️ Symuluj (What-If)</th>
-            </tr>
-        </thead>
-        <tbody id="pairingsBody">
-            <tr><td colspan="6" style="color: #666; padding: 20px;">Brak danych live.</td></tr>
-        </tbody>
-    </table>
-</div>
-<div id="pairingsPagination" class="pagination-bar" style="display: none;"></div>
 
-<!-- SEKCJA 1: TABELA OFICJALNA RAVENSBURGER (STAN PO RUNDZIE X) -->
-<div class="section-header" id="officialStandingsSection">
-    <div class="section-header-row">
-        <h3 style="color: #888;">📋 Oficjalna Tabela Ravensburger (Po R<span id="officialRoundNum">-</span>) <span id="officialPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-        <button type="button" id="toggleOfficialTableBtn" class="collapse-toggle-btn" onclick="toggleOfficialTableSection()">Ukryj ▲</button>
-    </div>
-</div>
-<div id="officialStandingsWrapper">
-    <div class="table-responsive">
-        <table>
-            <thead>
-                <tr>
-                    <th style="width: 45px;">Msc</th>
-                    <th>Gracz</th>
-                    <th>Pkt</th>
-                    <th>Bilans</th>
-                    <th>Tiebreakery (OMW / GW / OGW)</th>
-                    <th>Status</th>
-                </tr>
-            </thead>
-            <tbody id="officialStandingsBody">
-                <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
-            </tbody>
-        </table>
-    </div>
-    <div id="officialPagination" class="pagination-bar" style="display: none;"></div>
-</div>
 
-<!-- SEKCJA 2: TABELA LIVE ZE STRATEGIĄ I WYNIKAMI NA ŻYWO -->
+<!-- SECONDARY: LIVE STANDINGS -->
+<p class="secondary-section-note">Poniżej: kontekst turnieju (tabela LIVE, mecze, drabinka). Główna rada TIE jest wyżej.</p>
 <div class="section-header" id="liveStandingsSection">
     <h3 style="color: #3498db;">🔥 Klasyfikacja LIVE & Strategia Awansu (Z uwzględnieniem zakończonych stołów) <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
     <span style="font-size: 11px; color: #888;">(Dotknij gracza, by zbadać TIE / dotknij OMWP po szczegóły)</span>
@@ -1383,125 +1447,68 @@
 </div>
 <div id="livePagination" class="pagination-bar" style="display: none;"></div>
 
-<!-- SEKCJA 3: MODUŁ CAN I TAKE A TIE -->
-<div class="panel tie-panel" id="tieModule">
-    <h3 style="color: #3498db; margin-bottom: 12px;">🤝 Can I take a TIE? (Live Simulator & Mutual Agreement)</h3>
-    <p style="font-size: 13px; color: #aaa; margin: 0 0 10px 0;">
-        Wpisz swój nick lub kliknij siebie w tabeli LIVE. Algorytm na bieżąco monitoruje zakończone stoły i oblicza matematyczną szansę wejścia do Cutu.
-    </p>
 
-    <div class="autocomplete-wrapper">
-        <input type="text" id="playerSearchInput" placeholder="Wyszukaj gracza (np. Amanda, Rose, Kelly)..." autocomplete="off" oninput="onPlayerSearchInput()">
-        <div id="playerSuggestions" class="suggestions-dropdown"></div>
-    </div>
 
-    <div id="tieResultArea" style="display: none;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-            <div>
-                Wybrany gracz: <strong id="selectedPlayerName" style="color: #fff; font-size: 16px;">-</strong>
-                <span id="selectedPlayerTable" style="color: #3498db; font-size: 13px; margin-left: 8px;"></span>
-            </div>
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <div id="selectedPlayerBaseStats" style="font-size: 13px; color: #888;"></div>
-                <button type="button" class="btn-secondary" style="width: auto; height: 32px; padding: 4px 10px; font-size: 12px; background: #2a3346; color: #3498db; border: 1px solid #3498db; border-radius: 4px; cursor: pointer;" onclick="openOmwpInspector(currentSelectedPlayerId)">🔍 Inspektor OMWP</button>
-            </div>
-        </div>
-
-        <div id="tieRoundContext" style="margin-top: 10px; font-size: 13px; color: #cbd5e1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;"></div>
-
-        <!-- DEDYKOWANA PODPOWIEDŹ: CZY 2 REMISY Z RZĘDU DAJĄ TOP CUT? -->
-        <div id="doubleTiePromptPanel" class="double-tie-panel" style="display: none;">
-            <div class="double-tie-header">
-                <div class="double-tie-title" id="doubleTiePromptTitle">🤝 Czy 2 remisy z rzędu dają Top Cut?</div>
-                <div class="verdict-badge" id="doubleTieVerdictBadge">-</div>
-            </div>
-            <div id="doubleTiePromptDesc" style="font-size: 13px; color: #cbd5e1; line-height: 1.5;"></div>
-            <div id="doubleTieOpponentNote" style="font-size: 12px; color: #f39c12; margin-top: 6px;"></div>
-        </div>
-
-        <!-- ŚCIEŻKI AWANSU / SCENARIUSZE WIELORUNDOWE -->
-        <div id="multiRoundScenariosWrapper" style="margin-top: 15px; display: none;">
-            <div style="font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
-                🛣️ Ścieżki Awansu (Kombinacje wyników do końca turnieju)
-            </div>
-            <div class="scenario-grid" id="multiRoundScenarioGrid"></div>
-        </div>
-
-        <!-- BIEŻĄCY STÓŁ -->
-        <div id="currentMatchScenariosWrapper">
-            <div style="margin-top: 18px; font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
-                ⚡ Scenariusze dla obecnego meczu (Runda <span id="tieCurrentRoundNum">-</span>)
-            </div>
-            <div class="simulation-grid">
-                <div class="sim-card">
-                    <div class="sim-title">Jeśli padnie REMIS (ID)</div>
-                    <div class="sim-chance" id="chanceTieDisplay" style="color: #f1c40f;">-%</div>
-                    <div class="sim-pts" id="ptsTieDisplay">Pkt: -</div>
-                    <div class="sim-sub" id="oppTieChanceDisplay">Rywal po TIE: -%</div>
-                </div>
-                <div class="sim-card">
-                    <div class="sim-title">Jeśli WYGRASZ (WIN)</div>
-                    <div class="sim-chance" id="chanceWinDisplay" style="color: #2ecc71;">-%</div>
-                    <div class="sim-pts" id="ptsWinDisplay">Pkt: -</div>
-                </div>
-                <div class="sim-card">
-                    <div class="sim-title">Jeśli PRZEGRASZ (LOSS)</div>
-                    <div class="sim-chance" id="chanceLossDisplay" style="color: #e74c3c;">-%</div>
-                    <div class="sim-pts" id="ptsLossDisplay">Pkt: -</div>
-                </div>
-            </div>
-        </div>
-
-        <div id="tieRecommendationBanner" class="recommendation-box rec-risk">
-            Wybierz gracza, aby wyliczyć rekomendację live.
-        </div>
-
-        <!-- NOWY MODUŁ: PLAY/DRAW & SEEDING W TOP CUT DLA WYBRANEGO GRACZA -->
-        <div id="playDrawSeedingPanel" class="double-tie-panel" style="display: none; border-left-color: #f1c40f; margin-top: 15px;">
-            <div class="double-tie-header">
-                <div class="double-tie-title">🎲 Rozstawienie (Seeding) i Przywilej Play/Draw w Top Cut</div>
-                <div id="playDrawCurrentBadge" class="play-draw-pill pill-play">-</div>
-            </div>
-            <div id="playDrawSeedingBody" style="font-size: 13px; color: #cbd5e1; line-height: 1.5;"></div>
-        </div>
-
-        <!-- NOWY MODUŁ: SZYBKI WHAT-IF SĄSIEDNICH STOŁÓW BUBBLE -->
-        <div id="bubbleNeighborsWhatIfPanel" class="pairings-predictor-panel" style="display: none; border-left-color: #f39c12; margin-top: 15px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px;">
-                <div>
-                    <span style="font-size: 15px; font-weight: bold; color: #fff;">🎛️ Sąsiednie Stoły Bubble (Szybki symulator „What-If”)</span>
-                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
-                        Przeklikaj wyniki na kluczowych stołach wokół progu Cutu, aby od razu zobaczyć jak zmienią się Twoje szanse!
-                    </div>
-                </div>
-                <button type="button" class="whatif-btn whatif-reset-mini" onclick="clearAllWhatIfOverrides()">↺ Resetuj What-If</button>
-            </div>
-            <div id="bubbleNeighborsList" class="candidate-grid"></div>
-        </div>
-
-        <!-- DEDYKOWANA SEKCJA: SYMULATOR PAROWAŃ NA NASTĘPNĄ RUNDĘ -->
-        <div id="nextRoundPairingsPanel" class="pairings-predictor-panel" style="display: none; margin-top: 15px;">
-            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
-                <div>
-                    <span style="font-size: 15px; font-weight: bold; color: #fff;">🔮 Symulator Parowań: Z kim zagram w Rundzie <span id="predictorNextRoundNum">-</span>?</span>
-                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
-                        Model Swiss z wykluczeniem wcześniejszych rywali (no-rematches) oraz analizą trwających stołów.
-                    </div>
-                </div>
-            </div>
-            
-            <div class="scenario-toggle-bar">
-                <button id="scenarioBtnWin" class="scenario-toggle-btn active" onclick="switchPredictorScenario('WIN')">🟢 Jeśli WYGRASZ (<span id="predictorWinPts">-</span> pkt)</button>
-                <button id="scenarioBtnTie" class="scenario-toggle-btn" onclick="switchPredictorScenario('TIE')">🟡 Jeśli REMIS (<span id="predictorTiePts">-</span> pkt)</button>
-                <button id="scenarioBtnLoss" class="scenario-toggle-btn" onclick="switchPredictorScenario('LOSS')">🔴 Jeśli PRZEGRASZ (<span id="predictorLossPts">-</span> pkt)</button>
-            </div>
-
-            <div id="predictorSummaryText" style="font-size: 12px; color: #cbd5e1; margin: 12px 0 8px 0; font-weight: 500;"></div>
-
-            <div id="predictorCandidatesList" class="candidate-grid"></div>
-        </div>
+<!-- SEKCJA: PAROWANIA NA ŻYWO -->
+<div class="section-header" id="pairingsSection">
+    <div class="section-header-row">
+        <h3>⚔️ Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>) <span id="pairingsPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+        <span id="matchesProgress" style="font-size: 12px; color: #aaa;">-</span>
     </div>
 </div>
+<div class="quick-search-row">
+    <input type="text" id="pairingsSearchInput" class="quick-search-input" placeholder="🔎 Szukaj gracza lub numeru stołu (np. #12, Crusty)..." autocomplete="off" oninput="onPairingsSearchInput()">
+    <button type="button" id="pairingsSearchClearBtn" class="quick-search-clear" onclick="clearPairingsSearch()">✕ Wyczyść</button>
+</div>
+<div class="table-responsive">
+    <table>
+        <thead>
+            <tr>
+                <th style="width: 50px;">Stół</th>
+                <th>Gracz 1</th>
+                <th style="width: 80px;">Wynik</th>
+                <th>Gracz 2</th>
+                <th style="width: 90px;">Status</th>
+            </tr>
+        </thead>
+        <tbody id="pairingsBody">
+            <tr><td colspan="5" style="color: #666; padding: 20px;">Brak danych live.</td></tr>
+        </tbody>
+    </table>
+</div>
+<div id="pairingsPagination" class="pagination-bar" style="display: none;"></div>
+
+
+
+<!-- SEKCJA 1: TABELA OFICJALNA RAVENSBURGER (STAN PO RUNDZIE X) -->
+<div class="section-header" id="officialStandingsSection">
+    <div class="section-header-row">
+        <h3 style="color: #888;">📋 Oficjalna Tabela Ravensburger (Po R<span id="officialRoundNum">-</span>) <span id="officialPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+        <button type="button" id="toggleOfficialTableBtn" class="collapse-toggle-btn" onclick="toggleOfficialTableSection()">Ukryj ▲</button>
+    </div>
+</div>
+<div id="officialStandingsWrapper">
+    <div class="table-responsive">
+        <table>
+            <thead>
+                <tr>
+                    <th style="width: 45px;">Msc</th>
+                    <th>Gracz</th>
+                    <th>Pkt</th>
+                    <th>Bilans</th>
+                    <th>Tiebreakery (OMW / GW / OGW)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody id="officialStandingsBody">
+                <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
+            </tbody>
+        </table>
+    </div>
+    <div id="officialPagination" class="pagination-bar" style="display: none;"></div>
+</div>
+
+
 
 <!-- SEKCJA 4: SYMULATOR DRABINKI TOP CUT (BRACKET & PLAY/DRAW PREDICTOR) -->
 <div class="panel bracket-panel" id="topCutBracketPanel" style="display: none;">
@@ -1520,6 +1527,8 @@
     <div id="bracketSelectedPlayerBanner" style="display: none; margin-top: 10px;"></div>
     <div id="topCutBracketGrid" class="bracket-tree-wrapper"></div>
 </div>
+
+
 
 <!-- MODAL: INSPEKTOR TIEBREAKERÓW OMWP -->
 <div id="omwpInspectorModal" class="modal-overlay" style="display: none;" onclick="closeOmwpInspector(event)">
@@ -1585,6 +1594,8 @@
     </div>
 </div>
 
+
+
 <!-- DOLNY PASEK NAWIGACJI MOBILNEJ (STICKY APP BAR) -->
 <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Szybka nawigacja mobilna">
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('pairingsSection', this)">
@@ -1608,6 +1619,8 @@
         <span>Odśwież</span>
     </button>
 </nav>
+
+
 
 <script src="tie-sim-core.js"></script>
 <script src="app.js"></script>
