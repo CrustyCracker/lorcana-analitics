@@ -315,6 +315,100 @@ const POLISH_FLAG_REGEX = /[\u{1F1F5}\u{1F1F1}]|🇵🇱/u;
 const POLISH_MOUNTAIN_REGEX = /[\u{1F3D4}\u{26F0}\u{1F5FB}]|[🏔⛰🗻]/u;
 const POLISH_RAT_REGEX = /[\u{1F400}\u{1F401}]|[🐀🐁]/u;
 
+/** Ręczna lista nicków PL (dokładne display + znormalizowane / core nick). Nie usuwać istniejących. */
+const POLISH_KNOWN_NICKS = [
+    "[M7] damaneks 🇵🇱 🏔️",
+    "[M7] Emanuel 🇵🇱 🗻",
+    "[M7] Leviniuch",
+    "[M7] stankol 🇵🇱⛰️",
+    "[M7] Czaro",
+    "[M7] Gr4b4rz",
+    "[M7] Greyvall",
+    "Gamus",
+    "Koster",
+    "Farfocja",
+    "wojtekkow",
+    "[GPL] Crusty 🇵🇱 🏔️",
+    "[OSA] Zavada 🇵🇱 🐝",
+    "[OSA] Erlod  🇵🇱 🏔️",
+    "[OSA] Voj4k",
+    "[OSA] helisa",
+    "Kunikosia",
+    "Vanos",
+    "[GPL] EvilBunny 🇵🇱🏔️",
+    "[EX] Wodnik",
+    "[EX] Figure",
+    "MaksG",
+    "Lisu192 🇵🇱",
+    "AgaAlis",
+    "[IDK] Yao",
+    "Luq1989",
+    "🐀Bayo jayo",
+    "🐀IamDearDeer🦌🐀",
+    "[IDK] timhalf",
+    "[LV] Mayxs",
+    "[LV] Olawa",
+    "🐀Sheitene🐀",
+    "NightRaven 🇵🇱🏔️",
+    "🐀Zergulek🐀",
+    "[GPL] J4kubb 🇵🇱 🏔️",
+    "[IDK] simograj  🇵🇱 🏔️",
+    "[IDK] Hitorit 🇵🇱🏔",
+    "🐀ZZZ_Karation☕🐀",
+    "[LV] Chrapek",
+    "[LV] Artemizu",
+    "daavcio",
+    "exeq",
+    "Asia",
+    "🐀Terry 🥖🐀",
+    "Rogal",
+    "Ingvar-ᛁᚾᚷᚡᚨᚱ",
+    "Szumek",
+    "🐀Slonce 🌚🐀",
+    "🐀 Aliar 🐀",
+    "[LV] Yoza",
+    "cziter",
+    "[OSA] Moluk🇵🇱🏔️",
+    "[OSA] Staś🇵🇱🐝",
+    "[LV] Esus 😜",
+    "Bags",
+    "[OSA] Rico 🇵🇱 🏔️",
+    "Rybisznurek",
+    "karzel6",
+    "🐀Liryq🐀🇵🇱🏔️",
+    "🐀Bart_April🐀",
+    "🐀Ada_April🐀",
+    "Nati",
+    "Granit",
+    "Nimble_hamster_8174",
+    "MichalTrz",
+    "Northern",
+    "MacMagica",
+    "Drago",
+    "Gaby"
+];
+
+function normalizePolishNickKey(text) {
+    return String(text || '')
+        .normalize('NFKC')
+        .replace(/\uFE0F/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .toLowerCase();
+}
+
+function extractPolishNickCore(text) {
+    let s = String(text || '').normalize('NFKC');
+    s = s.replace(/^\s*\[[^\]]+\]\s*/u, '');
+    s = s.replace(/[\u{1F1E0}-\u{1F1FF}\u{1F300}-\u{1F5FF}\u{1F600}-\u{1F64F}\u{1F680}-\u{1F6FF}\u{1F900}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+    s = s.replace(/\uFE0F/g, '');
+    return s.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+const POLISH_KNOWN_NICK_KEYS = new Set(POLISH_KNOWN_NICKS.map(normalizePolishNickKey).filter(Boolean));
+const POLISH_KNOWN_NICK_CORES = new Set(POLISH_KNOWN_NICKS.map(extractPolishNickCore).filter((c) => c && c.length >= 2));
+
+
 let filterOnlyPoles = false;
 let currentLiveStatusFilter = 'all';
 let currentPredictorScenario = 'WIN';
@@ -408,6 +502,11 @@ function checkTextForPolishIndicators(text) {
     if (POLISH_FLAG_REGEX.test(text)) return true;
     if (POLISH_MOUNTAIN_REGEX.test(text)) return true;
     if (POLISH_RAT_REGEX.test(text)) return true;
+
+    const nickKey = normalizePolishNickKey(text);
+    if (nickKey && POLISH_KNOWN_NICK_KEYS.has(nickKey)) return true;
+    const nickCore = extractPolishNickCore(text);
+    if (nickCore && POLISH_KNOWN_NICK_CORES.has(nickCore)) return true;
 
     for (const tag of POLISH_TEAM_TAGS) {
         const regex = new RegExp('(?:^|[\\s_\\|\\-\\\[\\(\\{/])' + tag + '(?=[\\s_\\|\\-\\\\]\\)\\}:/]|$|\\b)', 'i');
@@ -4184,6 +4283,11 @@ if (typeof module !== 'undefined' && module.exports) {
         getAdaptiveSimCount,
         shouldGateHeavyUi,
         LARGE_EVENT_PLAYER_THRESHOLD,
+        POLISH_KNOWN_NICKS,
+        normalizePolishNickKey,
+        extractPolishNickCore,
+        checkTextForPolishIndicators,
+        isPolishPlayer,
         PAGE_SIZE,
         LIVE_ROW_HEIGHT,
         LIVE_VIEWPORT_ROWS,
