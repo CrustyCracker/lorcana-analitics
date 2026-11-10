@@ -115,6 +115,77 @@ function fetchUrlWithStatus($url, $token = null, $allowLocalSslFallback = false)
     return ['body' => $output, 'code' => $httpCode];
 }
 
+/**
+ * Pobiera WSZYSTKIE mecze rundy (paginacja Hydraproxy).
+ * Wcześniej page_size=150 + page=1 ucinało pairings już od ~300 graczy.
+ */
+function fetchAllPaginatedMatches($roundId, $token = null, $allowLocalSslFallback = false) {
+    $safeRoundId = (int)$roundId;
+    $pageSize = 150;
+    $page = 1;
+    $maxPages = 50; // 50 * 150 = 7500 meczów — zapas na DLC ~4k graczy
+    $allResults = [];
+    $lastPayload = null;
+
+    while ($page <= $maxPages) {
+        $url = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safeRoundId}/matches/paginated/?page={$page}&page_size={$pageSize}&avoid_cache=false";
+        $res = fetchUrlWithStatus($url, $token, $allowLocalSslFallback);
+        $data = json_decode($res['body'], true);
+        if (!is_array($data)) {
+            break;
+        }
+        $lastPayload = $data;
+
+        if (isset($data['results']) && is_array($data['results'])) {
+            $chunk = $data['results'];
+        } elseif (isset($data['data']) && is_array($data['data'])) {
+            $chunk = $data['data'];
+        } elseif (array_keys($data) === range(0, count($data) - 1)) {
+            // Niespaginowana lista meczów
+            return [
+                'results' => $data,
+                'count' => count($data),
+                'next' => null,
+                'previous' => null
+            ];
+        } else {
+            break;
+        }
+
+        if (count($chunk) === 0) {
+            break;
+        }
+
+        foreach ($chunk as $row) {
+            $allResults[] = $row;
+        }
+
+        $totalCount = isset($data['count']) ? (int)$data['count'] : null;
+        $hasNext = !empty($data['next']);
+        if ($totalCount !== null && count($allResults) >= $totalCount) {
+            break;
+        }
+        if (!$hasNext && count($chunk) < $pageSize) {
+            break;
+        }
+        if (!$hasNext && $totalCount === null) {
+            break;
+        }
+        $page++;
+    }
+
+    if ($lastPayload === null) {
+        return null;
+    }
+
+    $out = $lastPayload;
+    $out['results'] = $allResults;
+    $out['count'] = count($allResults);
+    $out['next'] = null;
+    $out['previous'] = null;
+    return $out;
+}
+
 $eventUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/events/{$eventId}/";
 $eventRes = fetchUrlWithStatus($eventUrl, null, $isLocalRequest);
 $eventData = json_decode($eventRes['body'], true);
@@ -198,10 +269,7 @@ if ($standingsRoundId) {
 
 $pairingsData = null;
 if ($pairingsRoundId) {
-    $safePairingsRoundId = (int)$pairingsRoundId;
-    $matchesPaginatedUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safePairingsRoundId}/matches/paginated/?page=1&page_size=150&avoid_cache=false";
-    $resMatches = fetchUrlWithStatus($matchesPaginatedUrl, $authToken, $isLocalRequest);
-    $pairingsData = json_decode($resMatches['body'], true);
+    $pairingsData = fetchAllPaginatedMatches($pairingsRoundId, $authToken, $isLocalRequest);
 }
 
 $roundsMatches = [];
@@ -217,9 +285,7 @@ if (!empty($eligibleRounds)) {
                 'matches' => $pairingsData['results'] ?? $pairingsData['data'] ?? $pairingsData
             ];
         } else {
-            $mUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safeRoundId}/matches/paginated/?page=1&page_size=150&avoid_cache=false";
-            $mRes = fetchUrlWithStatus($mUrl, $authToken, $isLocalRequest);
-            $mData = json_decode($mRes['body'], true);
+            $mData = fetchAllPaginatedMatches($safeRoundId, $authToken, $isLocalRequest);
             if ($mData) {
                 $roundsMatches[$rNum] = [
                     'round_number' => $rNum,

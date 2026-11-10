@@ -4,6 +4,9 @@ let currentSelectedPlayerId = null;
 let simulatedResultsCache = new Map();
 
 const PAGE_SIZE = 32;
+/** Powyżej tego N wyłączamy ciężkie panele UI (bracket); rada TIE działa zawsze. */
+const LARGE_EVENT_PLAYER_THRESHOLD = 400;
+let lastProcessFingerprint = null;
 let currentPages = {
     pairings: 1,
     official: 1,
@@ -14,6 +17,67 @@ let cachedOfficialStandings = [];
 let cachedLiveStandings = [];
 let cachedStandingsMap = new Map();
 let cachedCutContext = { cutSize: 4, cutRule: 'hard', activeRound: 1, totalRounds: 1 };
+
+function getAdaptiveSimCount(playerCount) {
+    const n = Number(playerCount) || 0;
+    if (n > 800) return 100;
+    if (n > 200) return 200;
+    return 600;
+}
+
+function shouldGateHeavyUi(playerCount) {
+    return (Number(playerCount) || 0) >= LARGE_EVENT_PLAYER_THRESHOLD;
+}
+
+function buildDataFingerprint(data, cutSize, cutRule) {
+    const standings = data?.standings?.standings || [];
+    const pairings = extractPairingsList(data?.pairings);
+    let completedSig = 0;
+    let unfinished = 0;
+    for (let i = 0; i < pairings.length; i++) {
+        const m = pairings[i];
+        const { score1, score2, hasScore, winnerId } = getMatchScores(m);
+        const status = String(m.status || m.state || '').toUpperCase();
+        const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === 'DRAW';
+        const isComplete = status === 'COMPLETE' || status === 'FINISHED' || status === 'COMPLETED' || winnerId != null || hasScore || isDraw;
+        if (isComplete) {
+            completedSig = (completedSig * 33 + (Number(winnerId) || 0) + (score1 || 0) * 7 + (score2 || 0) * 11 + (isDraw ? 99 : 0) + i) | 0;
+        } else {
+            unfinished++;
+        }
+    }
+    let whatIfSig = '';
+    if (whatIfOverrides && whatIfOverrides.size > 0) {
+        whatIfSig = [...whatIfOverrides.entries()]
+            .map(([k, v]) => `${k}=${v}`)
+            .sort()
+            .join('|');
+    }
+    return [
+        data?.eventId || '',
+        data?.activeRound || 0,
+        data?.standingsRound || 0,
+        data?.playerCount || 0,
+        standings.length,
+        pairings.length,
+        completedSig,
+        unfinished,
+        cutSize,
+        cutRule,
+        whatIfSig
+    ].join('::');
+}
+
+function buildOpponentLookup(pairingsList, standingsMap) {
+    const map = new Map();
+    for (const m of pairingsList) {
+        const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+        const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+        if (p1?.id) map.set(String(p1.id), p2 || null);
+        if (p2?.id) map.set(String(p2.id), p1 || null);
+    }
+    return map;
+}
 
 // -------------------------------------------------------------
 // FILTR: POLSCY GRACZE (FLAGA PL, GÓRY, SZCZUR, DRUŻYNY)
@@ -398,6 +462,15 @@ async function fetchData(eventId) {
 
         const statsPanel = document.getElementById('statsPanel');
         if (statsPanel) statsPanel.style.display = "block";
+
+        const cutSize = parseInt(document.getElementById('cutSize')?.value || '4');
+        const cutRule = document.getElementById('cutRule')?.value || 'hard';
+        const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
+        if (fingerprint === lastProcessFingerprint) {
+            setElText('status', "Bez zmian: " + new Date().toLocaleTimeString());
+            return;
+        }
+        lastProcessFingerprint = fingerprint;
         
         processPairings(data);
         processStandings(data);
@@ -685,6 +758,7 @@ function setWhatIfOverride(matchKey, outcome) {
         whatIfOverrides.set(matchKey, outcome);
     }
     updateWhatIfStatusBar();
+    lastProcessFingerprint = null;
     if (latestData) {
         processPairings(latestData);
         processStandings(latestData);
@@ -697,6 +771,7 @@ function setWhatIfOverride(matchKey, outcome) {
 function clearAllWhatIfOverrides() {
     whatIfOverrides.clear();
     updateWhatIfStatusBar();
+    lastProcessFingerprint = null;
     if (latestData) {
         processPairings(latestData);
         processStandings(latestData);
@@ -1066,31 +1141,22 @@ function processStandings(data) {
         drawCardEl.title = `${drawStats.drawMatches} z ${drawStats.totalMatches} meczów zakończyło się remisem`;
     }
 
-    // 4. Przeliczamy symulacje Monte Carlo dla strategii w tabeli LIVE
+    // 4. Bez MC dla całej sali — wcześniej N×600 sims na main thread padało przy ~700.
+    // Symulacja TIE liczy się wyłącznie w recalculateTieForSelectedPlayer (wybrany gracz).
     simulatedResultsCache.clear();
-    standings.forEach(p => {
-        let myOpponent = null;
-        for (const m of pairingsList) {
-            const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
-            const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
-            if (p1 && String(p1.id) === String(p.player.id)) {
-                myOpponent = p2;
-                break;
-            } else if (p2 && String(p2.id) === String(p.player.id)) {
-                myOpponent = p1;
-                break;
-            }
-        }
-        
-        const simRes = runLiveTieSimulation(p, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress);
-        simulatedResultsCache.set(String(p.player.id), { sim: simRes, opp: myOpponent });
-    });
 
-    // 5. Renderujemy obie tabele, analizę kreski (Cut Line Breakdown) oraz drabinkę Top Cut
+    // 5. Renderujemy tabele / cut-line; ciężki bracket tylko poniżej progu dużego eventu
     renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRound, totalRounds);
     renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, totalRounds);
     renderOfficialStandingsTable(rawStandings, cutSize, cutRule);
-    renderTopCutBracketPanel(liveStandings, cutSize);
+    if (!shouldGateHeavyUi(data.playerCount || liveStandings.length)) {
+        renderTopCutBracketPanel(liveStandings, cutSize);
+    } else {
+        const bracketPanel = document.getElementById('topCutBracketPanel');
+        if (bracketPanel) {
+            bracketPanel.style.display = 'none';
+        }
+    }
     updatePolesFilterUI();
 }
 
@@ -1170,7 +1236,7 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
         const inCut = (displayRank <= ctx.cutSize);
         const { ptsNeededText, strategyText, rowClass } = derivePlayerStrategy(sim, inCut);
         
-        const cutBadgeHtml = getCutStatusBadge(player, sim, inCut, ctx.cutSize, sim?.matchesLeft ?? 0);
+        const cutBadgeHtml = getCutStatusBadge(player, sim, inCut, ctx.cutSize, sim?.matchesLeft);
 
         // Zaznaczenie dodanych punktów live (np. 1 + 3)
         let pointsDisplay = `<strong>${player.livePoints}</strong>`;
@@ -1374,6 +1440,8 @@ function recalculateTieForSelectedPlayer() {
     
     let myMatch = null;
     let myOpponent = null;
+    const oppLookup = buildOpponentLookup(pairingsList, standingsMap);
+    myOpponent = oppLookup.get(String(currentSelectedPlayerId)) || null;
 
     for (const m of pairingsList) {
         const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
@@ -1391,9 +1459,15 @@ function recalculateTieForSelectedPlayer() {
 
     let bubbleIndex = Math.min(cutSize - 1, standings.length - 1);
     let bubbleScore = standings[bubbleIndex]?.match_points || 0;
+    // Preferuj projected bubble z LIVE (livePoints), gdy dostępne
+    if (cachedLiveStandings && cachedLiveStandings.length > 0) {
+        const liveBubbleIdx = Math.min(cutSize - 1, cachedLiveStandings.length - 1);
+        bubbleScore = cachedLiveStandings[liveBubbleIdx]?.livePoints ?? bubbleScore;
+    }
     let projectedFinalBubble = Math.ceil((bubbleScore / Math.max(1, activeRound)) * totalRounds);
 
     const simResults = runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress);
+    simulatedResultsCache.set(String(currentSelectedPlayerId), { sim: simResults, opp: myOpponent });
 
     const formattedName = formatStandingsPlayerName(targetPlayer);
     setElText('selectedPlayerName', formattedName);
@@ -1464,11 +1538,18 @@ function recalculateTieForSelectedPlayer() {
     // 7. Sąsiednie stoły Bubble (Szybki What-If)
     renderBubbleNeighborsWhatIf(targetPlayer, pairingsList, standingsMap, cutSize);
 
-    // 8. Odświeżenie podświetlenia w Drabince Top Cut
-    renderTopCutBracketPanel(cachedLiveStandings, cutSize);
-
-    // 9. Symulator parowań na następną rundę
+    // 8–9. Ciężkie panele: przy dużym N wyłącz bracket; predictor zostaje (O(N), on-demand)
+    const playerCount = latestData.playerCount || standings.length;
+    if (!shouldGateHeavyUi(playerCount)) {
+        renderTopCutBracketPanel(cachedLiveStandings, cutSize);
+    } else {
+        const bracketPanel = document.getElementById('topCutBracketPanel');
+        if (bracketPanel) bracketPanel.style.display = 'none';
+    }
     recalculateNextRoundPairingsPredictor(simResults, targetPlayer, activeRound, totalRounds);
+
+    // Odśwież wiersz LIVE wybranego gracza (badge/strategia z prawdziwego MC, nie heurystyki)
+    renderLiveStandingsTable();
 }
 
 function renderDoubleTiePrompt(sim, targetPlayer, myOpponent, totalRounds) {
@@ -1690,8 +1771,9 @@ function renderMultiRoundScenarios(sim) {
     `).join('');
 }
 
-function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, currentRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress = true) {
-    const SIM_COUNT = 600;
+function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, currentRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress = true, simCountOverride = null) {
+    const playerCount = Array.isArray(standings) ? standings.length : 0;
+    const SIM_COUNT = Math.max(20, Number(simCountOverride) || getAdaptiveSimCount(playerCount));
     const targetId = targetPlayer.player.id;
     const opponentId = myOpponent?.id || null;
 
@@ -2248,7 +2330,15 @@ function updateRecommendationBanner(sim, myMatch, targetPlayer, myOpponent, acti
 // -------------------------------------------------------------
 
 function derivePlayerStrategy(sim, inCut) {
-    if (!sim || sim.matchesLeft === 0) {
+    // Bez MC (reszta tabeli): lekka heurystyka rankingowa — nie udawaj końca Swiss
+    if (!sim) {
+        return {
+            ptsNeededText: "—",
+            strategyText: inCut ? "W strefie Cut" : "Poza Cut (wybierz gracza)",
+            rowClass: inCut ? "safe" : "dead"
+        };
+    }
+    if (sim.matchesLeft === 0) {
         return {
             ptsNeededText: "Koniec",
             strategyText: inCut ? "Awans w Cut" : "Odpada",
@@ -2318,7 +2408,13 @@ function setLiveStatusFilter(filterType) {
 function getCutStatusCategory(player, sim, cutSize) {
     const rank = player.liveRank || 999;
     const inCut = (rank <= cutSize);
-    if (!sim || sim.matchesLeft === 0) {
+    if (!sim) {
+        const bubbleBand = Math.max(4, Math.floor(cutSize * 0.25));
+        if (rank <= cutSize) return 'cut';
+        if (rank <= cutSize + bubbleBand) return 'bubble';
+        return 'dead';
+    }
+    if (sim.matchesLeft === 0) {
         return inCut ? 'cut' : 'dead';
     }
     if (sim.matchesLeft >= 3) {
@@ -2338,7 +2434,22 @@ function getCutStatusCategory(player, sim, cutSize) {
 }
 
 function getCutStatusBadge(player, sim, inCut, cutSize, matchesLeft) {
-    if (!sim || matchesLeft === 0) {
+    // Bez pełnego MC: badge z rankingu LIVE (tania heurystyka zamiast N×sims)
+    if (!sim) {
+        const rank = player.liveRank || 999;
+        const bubbleBand = Math.max(4, Math.floor(cutSize * 0.25));
+        if (rank <= Math.max(1, Math.floor(cutSize * 0.5))) {
+            return `<span class="cut-badge badge-locked" title="Heurystyka rankingu LIVE (bez MC) — górna połowa Cut">🔒 W CUT</span>`;
+        }
+        if (rank <= cutSize) {
+            return `<span class="cut-badge badge-bubble" title="Heurystyka rankingu LIVE — dolna część Cut / bubble">🟡 BUBBLE</span>`;
+        }
+        if (rank <= cutSize + bubbleBand) {
+            return `<span class="cut-badge badge-bubble" title="Heurystyka rankingu LIVE — tuż pod kreską">🟡 BUBBLE</span>`;
+        }
+        return `<span class="cut-badge badge-eliminated" title="Heurystyka rankingu LIVE — poza zasięgiem Cut">💀 ODPADA</span>`;
+    }
+    if (matchesLeft === 0) {
         return inCut 
             ? `<span class="cut-badge badge-locked" title="Gracz jest w strefie Top Cut">🔒 W CUT</span>`
             : `<span class="cut-badge badge-eliminated" title="Poza strefą Cut">💀 ODPADA</span>`;
@@ -2678,6 +2789,9 @@ function recalculateNextRoundPairingsPredictor(sim, targetPlayer, activeRound, t
         return;
     }
 
+    // Przy bardzo dużych polach ogranicz listę kandydatów (UI), rachunek i tak jest O(N)
+    const gateHeavy = shouldGateHeavyUi(latestData.playerCount || 0);
+
     panel.style.display = 'block';
     setElText('predictorNextRoundNum', activeRound + 1);
 
@@ -2763,7 +2877,7 @@ function recalculateNextRoundPairingsPredictor(sim, targetPlayer, activeRound, t
     });
 
     candidates.sort((a, b) => b.prob - a.prob);
-    const topCandidates = candidates.slice(0, 8);
+    const topCandidates = candidates.slice(0, gateHeavy ? 5 : 8);
 
     if (summaryEl) {
         const scenarioLabel = currentPredictorScenario === 'WIN' ? 'WYGRANEJ' : (currentPredictorScenario === 'TIE' ? 'REMISIE' : 'PORAŻCE');
@@ -4120,6 +4234,9 @@ if (typeof module !== 'undefined' && module.exports) {
         escapeHtml,
         escapeJsAttr,
         runLiveTieSimulation,
+        getAdaptiveSimCount,
+        shouldGateHeavyUi,
+        LARGE_EVENT_PLAYER_THRESHOLD,
         derivePlayerStrategy,
         getCutStatusCategory,
         getCutStatusBadge,
