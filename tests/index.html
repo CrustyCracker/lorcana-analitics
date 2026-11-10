@@ -293,7 +293,48 @@
         .badge-bye { background: #7f8c8d; color: #fff; }
         .score-box { font-weight: bold; font-size: 15px; letter-spacing: 2px; }
         
-        #status { font-size: 12px; color: var(--text-mute); margin-top: 10px; }
+        #status {
+            font-size: 12px;
+            color: var(--text-mute);
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            min-height: 1.5em;
+            line-height: 1.35;
+        }
+        #status.is-loading { color: var(--gold-bright); }
+        #status.is-error { color: #f0a8a0; }
+        #status .load-status-text { color: inherit; }
+        .load-spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(232, 184, 74, 0.22);
+            border-top-color: var(--gold-bright);
+            border-radius: 50%;
+            animation: load-spin 0.7s linear infinite;
+            flex-shrink: 0;
+        }
+        @keyframes load-spin {
+            to { transform: rotate(360deg); }
+        }
+        .load-timing-pill {
+            display: inline-block;
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--gold);
+            background: rgba(212, 160, 23, 0.12);
+            border: 1px solid rgba(212, 160, 23, 0.35);
+            border-radius: 4px;
+            padding: 1px 7px;
+            white-space: nowrap;
+        }
+        .btn-load:disabled {
+            opacity: 0.55;
+            cursor: wait;
+            filter: none;
+        }
 
         .tie-panel {
             background: var(--navy-850);
@@ -1035,6 +1076,49 @@
         .bracket-eliminated-row {
             opacity: 0.52;
         }
+        /* Predicted / speculative bracket fills — muted vs real results */
+        .bracket-predicted-row {
+            opacity: 0.52;
+            color: #94a3b8;
+            font-weight: 500;
+        }
+        .bracket-predicted-row.bracket-high-seed {
+            background: rgba(46, 204, 113, 0.04);
+            border-left-color: rgba(46, 204, 113, 0.32);
+        }
+        .bracket-predicted-row.bracket-low-seed {
+            background: rgba(241, 196, 15, 0.03);
+            border-left-color: rgba(241, 196, 15, 0.28);
+        }
+        .bracket-predicted-row .bracket-seed-badge {
+            background: #252b3a;
+            color: #94a3b8;
+            font-weight: 600;
+        }
+        .bracket-predicted-row .play-draw-pill {
+            opacity: 0.62;
+        }
+        .bracket-pred-badge {
+            display: inline-block;
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.35px;
+            text-transform: uppercase;
+            color: #7dd3fc;
+            background: rgba(56, 189, 248, 0.08);
+            border: 1px solid rgba(56, 189, 248, 0.28);
+            border-radius: 3px;
+            padding: 0 5px;
+            margin-left: 5px;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+        .bracket-match-card.predicted-match {
+            opacity: 0.78;
+            border-style: dashed;
+            border-color: #3d465c;
+            box-shadow: none;
+        }
         .bracket-selected-player-row {
             outline: 1px solid #d4a017;
             background: rgba(56, 189, 248, 0.15) !important;
@@ -1071,6 +1155,19 @@
             padding: 16px 14px;
             text-align: center;
             box-shadow: 0 0 20px rgba(241, 196, 15, 0.2);
+        }
+        .bracket-champion-card.predicted {
+            opacity: 0.58;
+            border-color: rgba(125, 211, 252, 0.4);
+            border-style: dashed;
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.07) 0%, rgba(71, 85, 105, 0.14) 100%);
+            box-shadow: none;
+            color: #94a3b8;
+        }
+        .bracket-champion-card.predicted .bracket-seed-badge {
+            background: #252b3a;
+            color: #94a3b8;
+            font-weight: 600;
         }
         .play-draw-pill {
             font-size: 10px;
@@ -1519,7 +1616,7 @@
             <div class="field-hint" id="roundsOverrideHint">Domyślnie: wartość z PlayHub. Możesz nadpisać ręcznie.</div>
         </div>
 
-        <div id="status" data-control="status">Gotowy do pobierania...</div>
+        <div id="status" data-control="status" aria-live="polite" aria-busy="false"><span class="load-status-text">Gotowy do pobierania...</span></div>
     </div>
 </div>
 

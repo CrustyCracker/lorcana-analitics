@@ -821,11 +821,67 @@ function setElHtml(id, html) {
     if (el) el.innerHTML = html;
 }
 
+function nowPerfMs() {
+    return (typeof performance !== 'undefined' ? performance.now() : Date.now());
+}
+
+/** Readable load duration: ms under 1s, otherwise seconds. */
+function formatLoadDuration(ms) {
+    const n = Number(ms);
+    if (!Number.isFinite(n) || n < 0) return '';
+    if (n < 1000) return `${Math.round(n)} ms`;
+    const s = n / 1000;
+    return `${s < 10 ? s.toFixed(2) : s.toFixed(1)} s`;
+}
+
+let dataLoadSeq = 0;
+
+function setLoadButtonBusy(busy) {
+    const btn = document.querySelector('button.btn-load');
+    if (!btn) return;
+    btn.disabled = Boolean(busy);
+    btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+}
+
+function setStatusLoadBusy(message) {
+    const el = document.getElementById('status');
+    if (!el) return;
+    el.classList.add('is-loading');
+    el.classList.remove('is-error');
+    el.setAttribute('aria-busy', 'true');
+    el.innerHTML = `<span class="load-spinner" aria-hidden="true"></span><span class="load-status-text">${escapeHtml(message || 'Ładowanie…')}</span>`;
+    setLoadButtonBusy(true);
+}
+
+function setStatusLoadIdle(message, elapsedMs, opts = {}) {
+    const el = document.getElementById('status');
+    if (!el) return;
+    el.classList.remove('is-loading');
+    el.classList.toggle('is-error', Boolean(opts.error));
+    el.setAttribute('aria-busy', 'false');
+    const hasTiming = elapsedMs != null && Number.isFinite(Number(elapsedMs));
+    const timing = hasTiming
+        ? `<span class="load-timing-pill" title="Czas pobrania i przetworzenia danych">⏱ ${escapeHtml(formatLoadDuration(elapsedMs))}</span>`
+        : '';
+    el.innerHTML = `<span class="load-status-text">${escapeHtml(message || '')}</span>${timing}`;
+    setLoadButtonBusy(false);
+}
+
+function resolveLoadElapsedMs(opts = {}) {
+    if (opts.loadStartedAt != null && Number.isFinite(Number(opts.loadStartedAt))) {
+        return nowPerfMs() - Number(opts.loadStartedAt);
+    }
+    if (opts.loadMs != null && Number.isFinite(Number(opts.loadMs))) {
+        return Number(opts.loadMs);
+    }
+    return null;
+}
+
 function startTracking() {
     const rawEventId = document.getElementById('eventId')?.value;
     const eventId = String(rawEventId || '').replace(/\D/g, '');
     if (!eventId) {
-        setElText('status', "Wpisz Event ID turnieju...");
+        setStatusLoadIdle('Wpisz Event ID turnieju...');
         return;
     }
     if (lastTrackedEventId !== null && String(lastTrackedEventId) !== String(eventId)) {
@@ -835,8 +891,7 @@ function startTracking() {
     try {
         localStorage.setItem('lorcana_last_event_id', eventId);
     } catch (e) {}
-    setElText('status', "Status: Pobieranie danych...");
-    
+
     fetchData(eventId);
     if (trackingInterval) clearInterval(trackingInterval);
     trackingInterval = setInterval(() => fetchData(eventId), 20000);
@@ -857,7 +912,7 @@ function loadDemo2k12() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
     if (!isTestsPage()) {
         console.warn('[demo] loadDemo2k12 dostępne tylko na /tests');
-        setElText('status', 'Demo dostępne tylko na stronie /tests');
+        setStatusLoadIdle('Demo dostępne tylko na stronie /tests', null, { error: true });
         return;
     }
 
@@ -865,7 +920,7 @@ function loadDemo2k12() {
         ? LorcanaDemoFixture.createDemo2kRound12
         : null;
     if (!factory) {
-        setElText('status', 'Brak generatora demo (scripts/stress-fixture.js).');
+        setStatusLoadIdle('Brak generatora demo (scripts/stress-fixture.js).', null, { error: true });
         return;
     }
 
@@ -874,13 +929,15 @@ function loadDemo2k12() {
         trackingInterval = null;
     }
 
-    setElText('status', 'Generowanie demo 2k / 12 rund…');
-    const tGen0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    const loadSeq = ++dataLoadSeq;
+    const tGen0 = nowPerfMs();
+    setStatusLoadBusy('Generowanie demo 2k / 12 rund…');
 
-    // Odłóż ciężką generację, żeby UI zdążył pokazać status
+    // Odłóż ciężką generację, żeby UI zdążył pokazać spinner
     const run = () => {
+        if (loadSeq !== dataLoadSeq) return;
         const data = factory();
-        const genMs = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - tGen0));
+        const genMs = Math.round(nowPerfMs() - tGen0);
 
         const cutEl = document.getElementById('cutSize');
         if (cutEl) {
@@ -908,7 +965,9 @@ function loadDemo2k12() {
         const uiHint = data.demoMeta?.uiHint || 'Po R11, R12 właśnie wystartowała';
         applyLoadedTournamentData(data, {
             statusPrefix: `Demo 2k: ${uiHint} · mecze R${data.activeRound}: ${liveOpen}/${liveN} IN_PROGRESS (gen ${genMs} ms)`,
-            autoSelectBubble: true
+            autoSelectBubble: true,
+            loadStartedAt: tGen0,
+            loadSeq
         });
     };
 
@@ -923,8 +982,11 @@ function loadDemo2k12() {
  * Wspólna ścieżka po fetch API / demo: process + opcjonalny auto-wybór bubble.
  */
 function applyLoadedTournamentData(data, opts = {}) {
+    const loadMs = resolveLoadElapsedMs(opts);
+    if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
+
     if (!data || data.error) {
-        setElText('status', 'BŁĄD: ' + (data?.error || 'brak danych'));
+        setStatusLoadIdle('BŁĄD: ' + (data?.error || 'brak danych'), loadMs, { error: true });
         return;
     }
 
@@ -958,9 +1020,12 @@ function applyLoadedTournamentData(data, opts = {}) {
         recalculateTieForSelectedPlayer();
     }
 
+    if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
+
     const prefix = opts.statusPrefix || 'Zaktualizowano';
     const bubbleNote = bubbleId != null ? ` | bubble #${cutSize} id=${bubbleId}` : '';
-    setElText('status', `${prefix}${bubbleNote} · ${new Date().toLocaleTimeString()}`);
+    const finalMs = resolveLoadElapsedMs(opts);
+    setStatusLoadIdle(`${prefix}${bubbleNote} · ${new Date().toLocaleTimeString()}`, finalMs);
 }
 
 let lastAutoCutSyncedEventId = null;
@@ -1038,17 +1103,22 @@ async function initDefaultEventAndAutoTrack() {
 }
 
 async function fetchData(eventId) {
+    const loadSeq = ++dataLoadSeq;
+    const t0 = nowPerfMs();
+    setStatusLoadBusy('Pobieranie danych…');
     try {
         const safeEventId = encodeURIComponent(String(eventId).replace(/\D/g, ''));
         const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
         const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}&t=${Date.now()}`);
         const data = await response.json();
-        
+
+        if (loadSeq !== dataLoadSeq) return;
+
         if (data.error) {
-            setElText('status', "BŁĄD: " + data.error);
+            setStatusLoadIdle('BŁĄD: ' + data.error, nowPerfMs() - t0, { error: true });
             return;
         }
-        
+
         if (data.lastEventId) {
             try { localStorage.setItem('lorcana_last_event_id', String(data.lastEventId)); } catch (e) {}
         }
@@ -1068,14 +1138,20 @@ async function fetchData(eventId) {
         const cutRule = document.getElementById('cutRule')?.value || 'hard';
         const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
         if (fingerprint === lastProcessFingerprint) {
-            setElText('status', "Bez zmian: " + new Date().toLocaleTimeString());
+            if (loadSeq !== dataLoadSeq) return;
+            setStatusLoadIdle('Bez zmian · ' + new Date().toLocaleTimeString(), nowPerfMs() - t0);
             return;
         }
 
-        applyLoadedTournamentData(data, { statusPrefix: 'Zaktualizowano' });
+        applyLoadedTournamentData(data, {
+            statusPrefix: 'Zaktualizowano',
+            loadStartedAt: t0,
+            loadSeq
+        });
     } catch (error) {
         console.error("Błąd pobierania danych:", error);
-        setElText('status', "Błąd komunikacji z serwerem.");
+        if (loadSeq !== dataLoadSeq) return;
+        setStatusLoadIdle('Błąd komunikacji z serwerem.', nowPerfMs() - t0, { error: true });
     }
 }
 
@@ -2018,9 +2094,15 @@ function recalculateTieForSelectedPlayer() {
         applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch, activeRound, totalRounds, cutSize, elapsed);
         const statusEl = document.getElementById('status');
         if (statusEl && latestData?.demoMeta) {
-            const prev = statusEl.textContent || '';
-            const cleaned = prev.replace(/\s*·\s*TIE\s+\d+\s*ms/i, '');
-            setElText('status', `${cleaned} · TIE ${elapsed} ms`);
+            const textEl = statusEl.querySelector('.load-status-text');
+            if (textEl) {
+                const cleaned = (textEl.textContent || '').replace(/\s*·\s*TIE\s+\d+\s*ms/i, '');
+                textEl.textContent = `${cleaned} · TIE ${elapsed} ms`;
+            } else {
+                const prev = statusEl.textContent || '';
+                const cleaned = prev.replace(/\s*·\s*TIE\s+\d+\s*ms/i, '');
+                setElText('status', `${cleaned} · TIE ${elapsed} ms`);
+            }
         }
     }).catch((err) => {
         console.error('Błąd symulacji TIE:', err);
@@ -4252,9 +4334,15 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
     if (selectedBannerEl) {
         if (selectedPath) {
             const pathSummaryParts = selectedPath.stages.map(st => {
+                const isPredictedOpp = !st.confirmedOpponent && Boolean(st.projectedOpponent);
                 const opp = st.confirmedOpponent || st.projectedOpponent;
                 const roleIcon = opp ? (opp.myRole === 'PLAY' ? '🟢 PLAY' : '🟡 DRAW') : '';
-                const oppText = opp ? `#${opp.seed} ${escapeHtml(opp.name)} (${roleIcon})` : 'TBD';
+                const predBadge = isPredictedOpp
+                    ? ` <span class="bracket-pred-badge" title="Przeciwnik spekulacyjny (projekcja awansu)">pred.</span>`
+                    : '';
+                const oppText = opp
+                    ? `<span style="${isPredictedOpp ? 'color:#94a3b8; opacity:0.85;' : ''}">#${opp.seed} ${escapeHtml(opp.name)}${predBadge} (${roleIcon})</span>`
+                    : 'TBD';
                 return `<span style="white-space:nowrap;"><strong>${escapeHtml(st.stageLabel)}:</strong> vs ${oppText}</span>`;
             });
             selectedBannerEl.style.display = 'block';
@@ -4289,6 +4377,7 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
     const renderSlotRow = (slotPlayer, feeder, side, match) => {
         const showProjected = bracketDisplayMode === 'projected';
         const isConfirmed = Boolean(slotPlayer && slotPlayer.isConfirmed);
+        const isPredicted = Boolean(slotPlayer) && !isConfirmed;
         const displayPlayer = (isConfirmed || showProjected) ? slotPlayer : null;
 
         const isWinner = match.isCompleted && match.winnerSlot === side;
@@ -4299,13 +4388,17 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
         const rowSeedClass = hasPlayDraw ? 'bracket-high-seed' : 'bracket-low-seed';
         const winnerClass = isWinner ? 'bracket-winner-row' : (isEliminated ? 'bracket-eliminated-row' : '');
         const selectedRowClass = isSelectedPlayer ? 'bracket-selected-player-row' : '';
+        const predictedRowClass = (isPredicted && displayPlayer) ? 'bracket-predicted-row' : '';
 
         if (!displayPlayer) {
             const feederSeeds = feeder ? feeder.contenders.slice(0, 2).map(c => `#${c.seed}`).join(' / ') : 'TBD';
             const feederLabel = feeder ? `Zwycięzca M#${feeder.matchNumber} (${feederSeeds})` : 'TBD';
             return `
-                <div class="bracket-player-row ${rowSeedClass}" style="cursor: default; opacity: 0.75;">
-                    <div style="color: #94a3b8; font-style: italic; font-size: 11.5px;">${escapeHtml(feederLabel)}</div>
+                <div class="bracket-player-row ${rowSeedClass} bracket-predicted-row" style="cursor: default;">
+                    <div style="color: #94a3b8; font-style: italic; font-size: 11.5px;">
+                        ${escapeHtml(feederLabel)}
+                        <span class="bracket-pred-badge" title="Miejsce w drabince jeszcze nie potwierdzone">pred.</span>
+                    </div>
                     <span class="play-draw-pill ${hasPlayDraw ? 'pill-play' : 'pill-draw'}">${hasPlayDraw ? '🟢 PLAY' : '🟡 DRAW'}</span>
                 </div>
             `;
@@ -4316,20 +4409,20 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
             ? `<span class="bracket-score-pill ${isWinner ? 'win' : ''}">${scoreVal}</span>`
             : '';
 
-        const projTag = !isConfirmed
-            ? `<span style="font-size: 9.5px; color: #38bdf8; margin-left: 3px; font-weight: 600;" title="Projekcja awansu wyższego seedu">(Proj.)</span>`
+        const predBadge = isPredicted
+            ? `<span class="bracket-pred-badge" title="Projekcja awansu (wyższy seed) — nie potwierdzony wynik">pred.</span>`
             : '';
 
-        const metaSub = match.stageIndex === 0
+        const swissMeta = match.stageIndex === 0
             ? `<span style="font-size: 10.5px; color: #94a3b8; margin-left: 3px;">(${displayPlayer.points}p, ${displayPlayer.omwp}%)</span>`
-            : projTag;
+            : '';
 
         return `
-            <div class="bracket-player-row ${rowSeedClass} ${winnerClass} ${selectedRowClass}" onclick="selectPlayerForTie('${escapeJsAttr(displayPlayer.id)}')">
+            <div class="bracket-player-row ${rowSeedClass} ${winnerClass} ${selectedRowClass} ${predictedRowClass}" onclick="selectPlayerForTie('${escapeJsAttr(displayPlayer.id)}')"${isPredicted ? ' title="Projekcja — możliwy awans, nie wynik"' : ''}>
                 <div style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1;">
                     <span class="bracket-seed-badge">#${displayPlayer.seed}</span>
                     <span>${escapeHtml(displayPlayer.name)}</span>
-                    ${metaSub}
+                    ${swissMeta}${predBadge}
                 </div>
                 <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
                     <span class="play-draw-pill ${hasPlayDraw ? 'pill-play' : 'pill-draw'}" title="${hasPlayDraw ? 'Wyższy seed po Swiss — wybiera PLAY/DRAW' : 'Niższy seed po Swiss — na DRAW'}">
@@ -4349,11 +4442,18 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
 
         const matchesHtml = rObj.matches.map(m => {
             const isSelectedPathMatch = selectedStageMatchKeys.has(`${m.stageIndex}_${m.matchIndex}`);
+            const hasPredictedSlot = Boolean(
+                (m.slotA && !m.slotA.isConfirmed) ||
+                (m.slotB && !m.slotB.isConfirmed)
+            );
+            const isPredictedMatch = !m.isCompleted && !m.isInProgress && (m.stageIndex > 0 || hasPredictedSlot);
             let matchStatusTag = '';
             if (m.isCompleted) {
                 matchStatusTag = `<span style="color:#2ecc71;">✅ Zakończony</span>`;
             } else if (m.isInProgress && tree.isTopCutActive) {
                 matchStatusTag = `<span style="color:#f39c12;">⏳ Stół #${escapeHtml(m.tableNumber)}</span>`;
+            } else if (isPredictedMatch) {
+                matchStatusTag = `<span class="bracket-pred-badge" title="Spekulacyjna para / awans wg seedu">pred.</span>`;
             } else if (m.stageIndex === 0) {
                 matchStatusTag = `<span>Ćwiartka ${m.quadrantNum} • #${m.highSeed} vs #${m.lowSeed}</span>`;
             } else {
@@ -4361,7 +4461,7 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
             }
 
             return `
-                <div class="bracket-match-card ${isSelectedPathMatch ? 'selected-in-bracket' : ''}">
+                <div class="bracket-match-card ${isSelectedPathMatch ? 'selected-in-bracket' : ''} ${isPredictedMatch ? 'predicted-match' : ''}">
                     <div class="bracket-match-header">
                         <span>Mecz #${m.matchNumber} ${m.stageIndex === 0 ? `(Stół #${escapeHtml(m.tableNumber)})` : ''}</span>
                         ${matchStatusTag}
@@ -4390,21 +4490,23 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
     const isRealChamp = Boolean(tree.champion);
     const championColHtml = `
         <div class="bracket-round-col" style="width: 230px;">
-            <div class="bracket-round-header" style="border-top-color: #2ecc71;">
-                <span class="bracket-round-title">${isRealChamp ? '🏆 Zwycięzca' : '👑 Faworyt Drabinki'}</span>
+            <div class="bracket-round-header" style="border-top-color: ${isRealChamp ? '#2ecc71' : 'rgba(125, 211, 252, 0.55)'};">
+                <span class="bracket-round-title">${isRealChamp ? '🏆 Zwycięzca' : '👑 Faworyt (pred.)'}</span>
                 <span class="bracket-round-sub">Top 1</span>
             </div>
             <div class="bracket-round-matches">
-                <div class="bracket-champion-card" ${champ ? `style="cursor:pointer;" onclick="selectPlayerForTie('${escapeJsAttr(champ.id)}')"` : ''}>
-                    <div style="font-size: 28px; margin-bottom: 6px;">🏆</div>
-                    <div style="font-size: 11px; color: #fde68a; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">
-                        ${isRealChamp ? 'Mistrz Turnieju' : 'Projektowany Triumfator'}
+                <div class="bracket-champion-card ${isRealChamp ? '' : 'predicted'}" ${champ ? `style="cursor:pointer;" onclick="selectPlayerForTie('${escapeJsAttr(champ.id)}')"` : ''}>
+                    <div style="font-size: 28px; margin-bottom: 6px;${isRealChamp ? '' : ' opacity:0.7;'}">🏆</div>
+                    <div style="font-size: 11px; color: ${isRealChamp ? '#fde68a' : '#7dd3fc'}; text-transform: uppercase; font-weight: 800; letter-spacing: 0.5px;">
+                        ${isRealChamp
+                            ? 'Mistrz Turnieju'
+                            : `<span class="bracket-pred-badge" title="Spekulacja wg seedu — nie oficjalny wynik">pred.</span> Projektowany triumfator`}
                     </div>
                     ${champ ? `
-                        <div style="font-size: 15px; font-weight: 800; color: #fff; margin-top: 6px;">
+                        <div style="font-size: 15px; font-weight: ${isRealChamp ? '800' : '600'}; color: ${isRealChamp ? '#fff' : '#cbd5e1'}; margin-top: 6px;">
                             <span class="bracket-seed-badge">#${champ.seed}</span> ${escapeHtml(champ.name)}
                         </div>
-                        <div style="font-size: 11px; color: #cbd5e1; margin-top: 4px;">
+                        <div style="font-size: 11px; color: #94a3b8; margin-top: 4px;">
                             Swiss: ${champ.points} pkt • OMW: ${champ.omwp}%
                         </div>
                     ` : `
@@ -4428,6 +4530,7 @@ if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         escapeHtml,
         escapeJsAttr,
+        formatLoadDuration,
         runLiveTieSimulation,
         prepareTieSimulationContext,
         getAdaptiveSimCount,
