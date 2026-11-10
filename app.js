@@ -27,6 +27,9 @@ let liveVirtRaf = null;
 let liveVirtLastWindowKey = '';
 let cachedStandingsMap = new Map();
 let cachedCutContext = { cutSize: 4, cutRule: 'hard', activeRound: 1, totalRounds: 1 };
+/** Lazy index: playerId → [{round, match}] for OMWP inspector (avoids O(rounds×matches) per open). */
+let cachedPlayerMatchIndex = null;
+let cachedPlayerMatchIndexEventKey = null;
 
 function getTieSimCore() {
     if (typeof LorcanaTieSim !== 'undefined' && LorcanaTieSim) return LorcanaTieSim;
@@ -266,7 +269,7 @@ function shouldGateHeavyUi(playerCount) {
 
 function buildDataFingerprint(data, cutSize, cutRule) {
     const standings = data?.standings?.standings || [];
-    const pairings = extractPairingsList(data?.pairings);
+    const pairings = getActivePairingsList(data);
     let completedSig = 0;
     let unfinished = 0;
     for (let i = 0; i < pairings.length; i++) {
@@ -293,7 +296,8 @@ function buildDataFingerprint(data, cutSize, cutRule) {
         unfinished,
         cutSize,
         cutRule,
-        effectiveRounds
+        effectiveRounds,
+        data?._slimVersion || 0
     ].join('::');
 }
 
@@ -1004,14 +1008,26 @@ function computeLiveStandingsList(rawStandings, pairingsList, options = {}) {
         }
     }
 
-    const liveStandings = (rawStandings || []).map(p => {
+    const src = rawStandings || [];
+    const liveStandings = new Array(src.length);
+    for (let i = 0; i < src.length; i++) {
+        const p = src[i];
         const delta = liveScoreDeltas.get(String(p.player.id)) || 0;
-        return {
-            ...p,
+        liveStandings[i] = {
+            id: p.id,
+            player: p.player,
+            user_event_status: p.user_event_status,
+            match_points: p.match_points,
+            record: p.record,
+            match_record: p.match_record,
+            rank: p.rank,
+            opponent_match_win_percentage: p.opponent_match_win_percentage,
+            game_win_percentage: p.game_win_percentage,
+            opponent_game_win_percentage: p.opponent_game_win_percentage,
             livePoints: (p.match_points || 0) + delta,
             delta
         };
-    });
+    }
 
     liveStandings.sort((a, b) => {
         if (b.livePoints !== a.livePoints) return b.livePoints - a.livePoints;
@@ -1079,6 +1095,8 @@ function formatLoadDuration(ms) {
 }
 
 let dataLoadSeq = 0;
+/** Last ETag per eventId — enables HTTP 304 (skip transfer+JSON parse). */
+let lastFetchEtags = new Map();
 
 function setLoadButtonBusy(busy) {
     const btn = document.querySelector('button.btn-load');
@@ -1225,7 +1243,7 @@ function loadDemo2k12() {
         currentSelectedPlayerId = null;
         simulatedResultsCache = new Map();
 
-        const liveN = data.demoMeta?.liveMatchCount ?? extractPairingsList(data.pairings).length;
+        const liveN = data.demoMeta?.liveMatchCount ?? getActivePairingsList(data).length;
         const liveOpen = data.demoMeta?.liveInProgressCount ?? liveN;
         const uiHint = data.demoMeta?.uiHint || 'Po R11, R12 właśnie wystartowała';
         applyLoadedTournamentData(data, {
@@ -1385,12 +1403,38 @@ async function fetchData(eventId, opts = {}) {
         }, LORCANA_FETCH_ABORT_MS);
     }
     try {
-        const safeEventId = encodeURIComponent(String(eventId).replace(/\D/g, ''));
+        const rawEventId = String(eventId).replace(/\D/g, '');
+        const safeEventId = encodeURIComponent(rawEventId);
         const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
         // Default: server disk cache (SWR). Optional force → ?refresh=1 (slow live PlayHub).
         const refreshQ = forceRefresh ? '&refresh=1' : '';
-        const fetchOpts = controller ? { signal: controller.signal } : {};
+        const headers = {};
+        const prevEtag = !forceRefresh ? lastFetchEtags.get(rawEventId) : null;
+        if (prevEtag) headers['If-None-Match'] = prevEtag;
+        const fetchOpts = {
+            headers,
+            ...(controller ? { signal: controller.signal } : {})
+        };
         const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}${refreshQ}&t=${Date.now()}`, fetchOpts);
+        const newEtag = response.headers.get('ETag');
+        if (newEtag) lastFetchEtags.set(rawEventId, newEtag);
+
+        // 304: snapshot unchanged — skip JSON download/parse and UI recompute.
+        if (response.status === 304) {
+            if (loadSeq !== dataLoadSeq) return;
+            const ageHdr = response.headers.get('X-Lorcana-Cache-Age');
+            const ttlHdr = response.headers.get('X-Lorcana-Cache-TTL');
+            const statusHdr = response.headers.get('X-Lorcana-Cache') || 'HIT';
+            setStatusLoadIdle('Bez zmian · ' + new Date().toLocaleTimeString(), nowPerfMs() - t0, {
+                cacheMeta: {
+                    status: statusHdr,
+                    ageSeconds: ageHdr != null ? Number(ageHdr) : null,
+                    ttlSeconds: ttlHdr != null ? Number(ttlHdr) : null
+                }
+            });
+            return;
+        }
+
         const data = await response.json();
 
         if (loadSeq !== dataLoadSeq) return;
@@ -1593,34 +1637,58 @@ function extractPairingsList(raw) {
     return [];
 }
 
+/**
+ * Active-round pairings. Slim API payloads omit duplicated pairings.results and
+ * point at roundsMatches[activeRound] via sourceRound — keep TIE/LIVE deltas correct.
+ */
+function getActivePairingsList(data) {
+    if (!data) return [];
+    const direct = extractPairingsList(data.pairings);
+    if (direct.length > 0) return direct;
+
+    const sourceRound = Number(
+        data.pairings?.sourceRound ?? data.activeRound ?? 0
+    );
+    if (sourceRound > 0 && data.roundsMatches && typeof data.roundsMatches === 'object') {
+        const rData = data.roundsMatches[sourceRound] || data.roundsMatches[String(sourceRound)];
+        const fromRound = extractPairingsList(rData?.matches);
+        if (fromRound.length > 0) return fromRound;
+    }
+    return [];
+}
+
 // -------------------------------------------------------------
 // TABELA MECZÓW LIVE
 // -------------------------------------------------------------
 
 function processPairings(data) {
     setElText('pairingsRoundNum', data.activeRound || "-");
-    const rawPairingsList = extractPairingsList(data.pairings);
+    const pairingsList = getActivePairingsList(data);
     const standingsList = data.standings?.standings || [];
     const standingsMap = buildStandingsMap(standingsList);
-    const pairingsList = rawPairingsList;
 
     cachedPairings = pairingsList;
     cachedStandingsMap = standingsMap;
+    // Invalidate OMWP history index — rebuilt lazily on inspector open.
+    cachedPlayerMatchIndex = null;
+    cachedPlayerMatchIndexEventKey = null;
 
     let completedCount = 0;
-    pairingsList.forEach(match => {
+    const n = pairingsList.length;
+    for (let i = 0; i < n; i++) {
+        const match = pairingsList[i];
         const raw2 = getMatchParticipant(match, 2);
-        const isBye = match.is_bye || match.bye || !raw2 || match.round_type === 'BYE';
+        const isBye = match.is_bye || match.bye || match.match_is_bye || !raw2 || match.round_type === 'BYE';
         const { hasScore, winnerId } = getMatchScores(match);
         const statusRaw = (match.status || match.state || "").toUpperCase();
         const isComplete = statusRaw === "COMPLETE" || statusRaw === "FINISHED" || statusRaw === "COMPLETED" || winnerId != null || hasScore;
         if (isBye || isComplete) completedCount++;
-    });
+    }
 
-    if (pairingsList.length === 0) {
+    if (n === 0) {
         setElText('matchesProgress', "0 zakończonych");
     } else {
-        setElText('matchesProgress', `${completedCount}/${pairingsList.length} wpisane`);
+        setElText('matchesProgress', `${completedCount}/${n} wpisane`);
     }
 
     renderPairingsTable();
@@ -1671,7 +1739,7 @@ function renderPairingsTable() {
     const start = (currentPages.pairings - 1) * PAGE_SIZE;
     const pageItems = list.slice(start, start + PAGE_SIZE);
 
-    tbody.innerHTML = "";
+    const frag = document.createDocumentFragment();
 
     pageItems.forEach(({ match, origIdx }) => {
         const globalIdx = origIdx;
@@ -1735,8 +1803,11 @@ function renderPairingsTable() {
             <td class="player-cell-truncate" style="${p2Style}" title="${safeName2}">${safeName2}</td>
             <td>${statusBadge}</td>
         `;
-        tbody.appendChild(tr);
+        frag.appendChild(tr);
     });
+
+    tbody.innerHTML = '';
+    tbody.appendChild(frag);
 
     renderPagination('pairingsPagination', totalItems, currentPages.pairings, 'changePairingsPage');
 }
@@ -1830,15 +1901,19 @@ function processStandings(data) {
     
     if (!rawStandings || rawStandings.length === 0) return;
 
-    const rawPairingsList = extractPairingsList(data.pairings);
-    const standingsMap = buildStandingsMap(rawStandings);
+    const pairingsList = getActivePairingsList(data);
+    // Reuse map from processPairings when it was just built for the same payload.
+    const standingsMap = (cachedStandingsMap && cachedStandingsMap.size > 0)
+        ? cachedStandingsMap
+        : buildStandingsMap(rawStandings);
+    cachedStandingsMap = standingsMap;
     const standings = rawStandings;
-    const pairingsList = rawPairingsList;
 
     // 1. Zbieramy delty punktowe z zakończonych meczów w bieżącej rundzie (tylko gdy runda na żywo jest w toku)
     const liveScoreDeltas = new Map();
     if (isLiveRoundInProgress) {
-        pairingsList.forEach(m => {
+        for (let i = 0; i < pairingsList.length; i++) {
+            const m = pairingsList[i];
             const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
             const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
             const id1 = p1?.id;
@@ -1849,30 +1924,40 @@ function processStandings(data) {
             const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
             const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
 
-            if (isComplete) {
-                if (isDraw) {
-                    if (id1) liveScoreDeltas.set(String(id1), 1);
-                    if (id2) liveScoreDeltas.set(String(id2), 1);
-                } else if (score1 > score2 || (winnerId && id1 && String(id1) === String(winnerId))) {
-                    if (id1) liveScoreDeltas.set(String(id1), 3);
-                    if (id2) liveScoreDeltas.set(String(id2), 0);
-                } else if (score2 > score1 || (winnerId && id2 && String(id2) === String(winnerId))) {
-                    if (id1) liveScoreDeltas.set(String(id1), 0);
-                    if (id2) liveScoreDeltas.set(String(id2), 3);
-                }
+            if (!isComplete) continue;
+            if (isDraw) {
+                if (id1) liveScoreDeltas.set(String(id1), 1);
+                if (id2) liveScoreDeltas.set(String(id2), 1);
+            } else if (score1 > score2 || (winnerId && id1 && String(id1) === String(winnerId))) {
+                if (id1) liveScoreDeltas.set(String(id1), 3);
+                if (id2) liveScoreDeltas.set(String(id2), 0);
+            } else if (score2 > score1 || (winnerId && id2 && String(id2) === String(winnerId))) {
+                if (id1) liveScoreDeltas.set(String(id1), 0);
+                if (id2) liveScoreDeltas.set(String(id2), 3);
             }
-        });
+        }
     }
 
-    // 2. Budujemy tablicę LIVE STANDINGS (bazowe punkty + punkty z zakończonych meczów bieżącej rundy)
-    const liveStandings = standings.map(p => {
+    // 2. LIVE STANDINGS — shallow row (no object spread of full standing)
+    const liveStandings = new Array(standings.length);
+    for (let i = 0; i < standings.length; i++) {
+        const p = standings[i];
         const delta = liveScoreDeltas.get(String(p.player.id)) || 0;
-        return {
-            ...p,
-            livePoints: p.match_points + delta,
-            delta: delta
+        liveStandings[i] = {
+            id: p.id,
+            player: p.player,
+            user_event_status: p.user_event_status,
+            match_points: p.match_points,
+            record: p.record,
+            match_record: p.match_record,
+            rank: p.rank,
+            opponent_match_win_percentage: p.opponent_match_win_percentage,
+            game_win_percentage: p.game_win_percentage,
+            opponent_game_win_percentage: p.opponent_game_win_percentage,
+            livePoints: (p.match_points || 0) + delta,
+            delta
         };
-    });
+    }
 
     // Sortujemy tabelę LIVE według zasad tiebreakerów Lorcany (Match Points -> OMW% -> GW% -> OGW%)
     liveStandings.sort((a, b) => {
@@ -1906,7 +1991,6 @@ function processStandings(data) {
     setElText('bubbleScore', currentBubbleScore);
     setElText('projectedBubbleScore', projectedFinalBubble);
     setElText('playersInCut', playersInCut);
-    renderPolishAvgPointsTable(liveStandings);
 
     const drawStats = calculateTournamentDrawStats(data, pairingsList);
     setElText('tournamentDrawsInfo', `${drawStats.drawMatches} (${drawStats.pct}%)`);
@@ -1919,19 +2003,28 @@ function processStandings(data) {
     // Symulacja TIE liczy się wyłącznie w recalculateTieForSelectedPlayer (wybrany gracz).
     simulatedResultsCache.clear();
 
-    // 5. Renderujemy tabele / cut-line; ciężki bracket tylko poniżej progu dużego eventu
-    renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRound, totalRounds);
+    // 5. LIVE first (virtualized) — defer secondary panels to next frame (fewer jank cycles).
     renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, totalRounds);
-    renderOfficialStandingsTable(rawStandings, cutSize, cutRule);
-    if (!shouldGateHeavyUi(data.playerCount || liveStandings.length)) {
-        renderTopCutBracketPanel(liveStandings, cutSize);
-    } else {
-        const bracketPanel = document.getElementById('topCutBracketPanel');
-        if (bracketPanel) {
-            bracketPanel.style.display = 'none';
-        }
-    }
     updatePolesFilterUI();
+
+    const playerCount = data.playerCount || liveStandings.length;
+    const deferSecondary = typeof requestAnimationFrame === 'function'
+        ? requestAnimationFrame
+        : (fn) => setTimeout(fn, 0);
+
+    deferSecondary(() => {
+        renderPolishAvgPointsTable(liveStandings);
+        renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRound, totalRounds);
+        renderOfficialStandingsTable(rawStandings, cutSize, cutRule);
+        if (!shouldGateHeavyUi(playerCount)) {
+            renderTopCutBracketPanel(liveStandings, cutSize);
+        } else {
+            const bracketPanel = document.getElementById('topCutBracketPanel');
+            if (bracketPanel) {
+                bracketPanel.style.display = 'none';
+            }
+        }
+    });
 }
 
 // -------------------------------------------------------------
@@ -3205,98 +3298,119 @@ function getCutStatusBadge(player, sim, inCut, cutSize, matchesLeft) {
 // HISTORIA MECZÓW I INSPEKTOR TIEBREAKERÓW OMWP
 // -------------------------------------------------------------
 
-function getPlayerHistoricalMatches(playerId, data) {
-    const history = [];
-    if (!data) return history;
-    const standingsMap = buildStandingsMap(data.standings?.standings || []);
-    const pIdStr = String(playerId);
-    
-    if (data.roundsMatches && typeof data.roundsMatches === 'object') {
-        const roundsKeys = Object.keys(data.roundsMatches).map(Number).sort((a,b) => a - b);
+function getPlayerMatchIndexKey(data) {
+    if (!data) return '';
+    return [
+        data.eventId || '',
+        data.activeRound || 0,
+        data.standingsRound || 0,
+        data._slimVersion || 0,
+        Object.keys(data.roundsMatches || {}).length
+    ].join(':');
+}
+
+/**
+ * Build playerId → [{round, match, p1Id, p2Id}] once per snapshot.
+ * OMWP inspector then does O(rounds_for_player) instead of O(all matches).
+ */
+function ensurePlayerMatchIndex(data, standingsMap) {
+    const key = getPlayerMatchIndexKey(data);
+    if (cachedPlayerMatchIndex && cachedPlayerMatchIndexEventKey === key) {
+        return cachedPlayerMatchIndex;
+    }
+    const index = new Map();
+    const add = (playerId, entry) => {
+        if (playerId == null) return;
+        const k = String(playerId);
+        let arr = index.get(k);
+        if (!arr) {
+            arr = [];
+            index.set(k, arr);
+        }
+        arr.push(entry);
+    };
+
+    if (data?.roundsMatches && typeof data.roundsMatches === 'object') {
+        const roundsKeys = Object.keys(data.roundsMatches).map(Number).sort((a, b) => a - b);
         for (const rNum of roundsKeys) {
             const rData = data.roundsMatches[rNum] || data.roundsMatches[String(rNum)];
             if (!rData) continue;
             const matches = extractPairingsList(rData.matches);
-            for (const m of matches) {
+            for (let i = 0; i < matches.length; i++) {
+                const m = matches[i];
                 const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
                 const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
-                const id1 = p1 ? String(p1.id) : null;
-                const id2 = p2 ? String(p2.id) : null;
-                
-                if (id1 === pIdStr || id2 === pIdStr) {
-                    const isP1 = (id1 === pIdStr);
-                    const opp = isP1 ? p2 : p1;
-                    const scores = getMatchScores(m);
-                    const status = (m.status || m.state || "").toUpperCase();
-                    const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
-                    const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || scores.winnerId != null || scores.hasScore;
-                    
-                    let outcome = "W TOKU";
-                    let myScore = isP1 ? scores.score1 : scores.score2;
-                    let oppScore = isP1 ? scores.score2 : scores.score1;
-                    
-                    if (isComplete) {
-                        if (isDraw) outcome = "TIE";
-                        else if (scores.winnerId != null) {
-                            outcome = (String(scores.winnerId) === pIdStr) ? "WIN" : "LOSS";
-                        } else if (myScore > oppScore) {
-                            outcome = "WIN";
-                        } else if (oppScore > myScore) {
-                            outcome = "LOSS";
-                        }
-                    }
-                    
-                    history.push({
-                        round: rNum,
-                        match: m,
-                        table: m.table_number || m.tableNumber || "?",
-                        opponent: opp,
-                        myScore,
-                        oppScore,
-                        outcome,
-                        isComplete
-                    });
-                    break;
-                }
+                const entry = { round: rNum, match: m, p1, p2 };
+                if (p1?.id != null) add(p1.id, entry);
+                if (p2?.id != null) add(p2.id, entry);
             }
         }
     } else {
-        const currentMatches = extractPairingsList(data.pairings);
-        for (const m of currentMatches) {
+        const currentMatches = getActivePairingsList(data);
+        for (let i = 0; i < currentMatches.length; i++) {
+            const m = currentMatches[i];
             const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
             const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
-            const id1 = p1 ? String(p1.id) : null;
-            const id2 = p2 ? String(p2.id) : null;
-            if (id1 === pIdStr || id2 === pIdStr) {
-                const isP1 = (id1 === pIdStr);
-                const opp = isP1 ? p2 : p1;
-                const scores = getMatchScores(m);
-                const status = (m.status || m.state || "").toUpperCase();
-                const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
-                const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || scores.winnerId != null || scores.hasScore;
-                
-                let outcome = "W TOKU";
-                if (isComplete) {
-                    if (isDraw) outcome = "TIE";
-                    else if (scores.winnerId != null) outcome = (String(scores.winnerId) === pIdStr) ? "WIN" : "LOSS";
-                    else if (scores.score1 > scores.score2) outcome = isP1 ? "WIN" : "LOSS";
-                    else if (scores.score2 > scores.score1) outcome = isP1 ? "LOSS" : "WIN";
-                }
-
-                history.push({
-                    round: data.activeRound || 1,
-                    match: m,
-                    table: m.table_number || m.tableNumber || "?",
-                    opponent: opp,
-                    myScore: isP1 ? scores.score1 : scores.score2,
-                    oppScore: isP1 ? scores.score2 : scores.score1,
-                    outcome,
-                    isComplete
-                });
-                break;
-            }
+            const entry = { round: data?.activeRound || 0, match: m, p1, p2 };
+            if (p1?.id != null) add(p1.id, entry);
+            if (p2?.id != null) add(p2.id, entry);
         }
     }
+
+    cachedPlayerMatchIndex = index;
+    cachedPlayerMatchIndexEventKey = key;
+    return index;
+}
+
+function getPlayerHistoricalMatches(playerId, data) {
+    const history = [];
+    if (!data) return history;
+    const standingsMap = (cachedStandingsMap && cachedStandingsMap.size > 0)
+        ? cachedStandingsMap
+        : buildStandingsMap(data.standings?.standings || []);
+    const pIdStr = String(playerId);
+    const index = ensurePlayerMatchIndex(data, standingsMap);
+    const entries = index.get(pIdStr) || [];
+
+    for (let i = 0; i < entries.length; i++) {
+        const { round: rNum, match: m, p1, p2 } = entries[i];
+        const id1 = p1 ? String(p1.id) : null;
+        const id2 = p2 ? String(p2.id) : null;
+        if (id1 !== pIdStr && id2 !== pIdStr) continue;
+        const isP1 = (id1 === pIdStr);
+        const opp = isP1 ? p2 : p1;
+        const scores = getMatchScores(m);
+        const status = (m.status || m.state || "").toUpperCase();
+        const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
+        const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || scores.winnerId != null || scores.hasScore;
+
+        let outcome = "W TOKU";
+        let myScore = isP1 ? scores.score1 : scores.score2;
+        let oppScore = isP1 ? scores.score2 : scores.score1;
+
+        if (isComplete) {
+            if (isDraw) outcome = "TIE";
+            else if (scores.winnerId != null) {
+                outcome = (String(scores.winnerId) === pIdStr) ? "WIN" : "LOSS";
+            } else if (myScore > oppScore) {
+                outcome = "WIN";
+            } else if (oppScore > myScore) {
+                outcome = "LOSS";
+            }
+        }
+
+        history.push({
+            round: rNum,
+            match: m,
+            table: m.table_number || m.tableNumber || "?",
+            opponent: opp,
+            myScore,
+            oppScore,
+            outcome,
+            isComplete
+        });
+    }
+
     return history;
 }
 
@@ -3320,9 +3434,11 @@ function openOmwpInspector(playerId) {
     setElText('omwpCurrentOgwp', officialOgwp + "%");
 
     const history = getPlayerHistoricalMatches(playerId, latestData);
-    const standingsMap = buildStandingsMap(standings);
+    const standingsMap = (cachedStandingsMap && cachedStandingsMap.size > 0)
+        ? cachedStandingsMap
+        : buildStandingsMap(standings);
     const totalRounds = getEffectiveTotalRounds(latestData);
-    const activePairingsList = extractPairingsList(latestData.pairings);
+    const activePairingsList = getActivePairingsList(latestData);
 
     const tbody = document.getElementById('omwpOpponentsBody');
     if (!tbody) return;
@@ -4902,6 +5018,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getCutStatusBadge,
         buildStandingsMap,
         extractPairingsList,
+        getActivePairingsList,
         resolvePlayer,
         getMatchParticipant,
         getMatchScores,

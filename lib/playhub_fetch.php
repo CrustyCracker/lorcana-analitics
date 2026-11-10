@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/playhub_cache.php';
+require_once __DIR__ . '/playhub_slim.php';
 
 /** Rozmiar strony Hydraproxy — większy = mniej round-tripów przy cold-load 2k–4k. */
 if (!defined('LORCANA_MATCH_PAGE_SIZE')) {
@@ -565,6 +566,9 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
         'pairings' => $pairingsData,
         'roundsMatches' => $roundsMatches
     ];
+
+    // Strip profile/media bloat before disk + wire — keeps TIE fields intact.
+    $payload = lorcana_slim_event_payload($payload);
 
     return ['ok' => true, 'payload' => $payload];
 }
