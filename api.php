@@ -3,8 +3,9 @@
  * Lorcana Analytics API — serves PlayHub event snapshots.
  *
  * Default: stale-while-revalidate from disk cache (fast).
- * Optional: ?refresh=1 / ?force=1 for synchronous PlayHub fetch.
- * Background refresh: refresh_cache.php (CLI or cron HTTP).
+ * If a cache file exists → ALWAYS return HIT/STALE immediately (never block on PlayHub).
+ * MISS (sync PlayHub) only when no cache file exists, or ?refresh=1 / ?force=1.
+ * Background refresh: deferred after response, and/or refresh_cache.php cron.
  */
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
@@ -96,9 +97,9 @@ $forceRefresh = $forceRefresh || $noCacheLocal;
 lorcana_track_event($eventId);
 
 /**
- * Emit payload JSON with cache headers + _cache meta.
+ * Build JSON body + cache headers. Returns body string (does not echo).
  */
-function lorcana_api_emit(array $payload, $status, $age, $ttl, $mtime) {
+function lorcana_api_build_body(array $payload, $status, $age, $ttl, $mtime) {
     $meta = lorcana_cache_meta($status, $age, $ttl, $mtime);
     $out = lorcana_attach_cache_meta($payload, $meta);
     header('X-Lorcana-Cache: ' . $status);
@@ -111,46 +112,102 @@ function lorcana_api_emit(array $payload, $status, $age, $ttl, $mtime) {
     if ($mtime) {
         header('X-Lorcana-Cache-At: ' . gmdate('c', (int)$mtime));
     }
-    echo json_encode($out);
+    return json_encode($out);
 }
 
-// --- Default path: serve disk cache (HIT / STALE), cold miss → sync fetch ---
+/**
+ * Send body and close the client connection so SWR revalidate cannot block the browser.
+ */
+function lorcana_api_finish_response($body) {
+    $body = (string)$body;
+    header('Content-Length: ' . strlen($body));
+    header('Connection: close');
+    echo $body;
+
+    ignore_user_abort(true);
+
+    if (function_exists('fastcgi_finish_request')) {
+        @fastcgi_finish_request();
+        return;
+    }
+    if (function_exists('litespeed_finish_request')) {
+        @litespeed_finish_request();
+        return;
+    }
+
+    while (ob_get_level() > 0) {
+        @ob_end_flush();
+    }
+    @flush();
+}
+
+/**
+ * Kick a non-blocking refresh for one event (CLI spawn when possible).
+ * Falls back to in-process refresh after the HTTP response is finished.
+ */
+function lorcana_api_revalidate_async($eventId, $authToken, $allowLocalSslFallback) {
+    $eventId = (int)$eventId;
+    $script = LORCANA_CACHE_ROOT . DIRECTORY_SEPARATOR . 'refresh_cache.php';
+    $php = defined('PHP_BINARY') && PHP_BINARY ? PHP_BINARY : 'php';
+
+    // Detached CLI is the only reliable non-block on Apache/mod_php (XAMPP).
+    if (is_file($script) && !empty($php)) {
+        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+            $cmd = 'start /B "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --event=' . $eventId;
+            @pclose(@popen($cmd, 'r'));
+            return 'spawn_win';
+        }
+        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --event=' . $eventId
+            . ' > /dev/null 2>&1 &';
+        @exec($cmd);
+        return 'spawn_unix';
+    }
+
+    @set_time_limit(90);
+    lorcana_refresh_event_cache($eventId, [
+        'force' => false,
+        'blocking' => false,
+        'allowLocalSslFallback' => $allowLocalSslFallback,
+        'authToken' => $authToken,
+    ]);
+    return 'inline';
+}
+
+// --- SWR path: cache file exists → NEVER block on PlayHub (HIT or STALE) ---
 if (!$forceRefresh) {
     $cached = lorcana_read_cache($eventId);
-    if ($cached['exists'] && is_array($cached['data']) && $cached['raw'] !== '') {
+    if ($cached['exists'] && $cached['raw'] !== '' && is_array($cached['data'])) {
         $ttl = lorcana_cache_ttl_seconds($cached['data']);
         $age = $cached['age'] ?? 0;
         $status = ($age < $ttl) ? 'HIT' : 'STALE';
         lorcana_set_last_event_id($eventId);
-        lorcana_api_emit($cached['data'], $status, $age, $ttl, $cached['mtime']);
 
-        // Stale-while-revalidate: after responding, try a non-blocking refresh
-        // (poller is preferred; this covers XAMPP without a running loop).
+        $body = lorcana_api_build_body($cached['data'], $status, $age, $ttl, $cached['mtime']);
+        lorcana_api_finish_response($body);
+
+        // Revalidate only when soft-TTL expired — after the client already has the snapshot.
         if ($status === 'STALE') {
-            ignore_user_abort(true);
-            if (function_exists('fastcgi_finish_request')) {
-                @fastcgi_finish_request();
-            } elseif (function_exists('litespeed_finish_request')) {
-                @litespeed_finish_request();
-            } else {
-                while (ob_get_level() > 0) {
-                    @ob_end_flush();
-                }
-                @flush();
-            }
-            @set_time_limit(90);
-            lorcana_refresh_event_cache($eventId, [
-                'force' => false,
-                'blocking' => false,
-                'allowLocalSslFallback' => $isLocalRequest,
-                'authToken' => $authToken,
-            ]);
+            lorcana_api_revalidate_async($eventId, $authToken, $isLocalRequest);
+        }
+        exit;
+    }
+
+    // File present but unreadable/corrupt: still do not block on PlayHub for default GETs.
+    if ($cached['exists']) {
+        http_response_code(503);
+        $err = json_encode([
+            'error' => 'Cache snapshot damaged; try Shift+click refresh or wait for poller.',
+            '_cache' => lorcana_cache_meta('ERROR', $cached['age'], null, $cached['mtime']),
+        ]);
+        lorcana_api_finish_response($err);
+        if ($cached['age'] === null || $cached['age'] > 5) {
+            lorcana_api_revalidate_async($eventId, $authToken, $isLocalRequest);
         }
         exit;
     }
 }
 
-// Force refresh or cold miss: synchronous PlayHub fetch
+// Force refresh or true cold miss (no cache file): synchronous PlayHub fetch
 $refreshed = lorcana_refresh_event_cache($eventId, [
     'force' => true,
     'blocking' => true,
@@ -162,7 +219,9 @@ if (!empty($refreshed['ok']) && !empty($refreshed['payload'])) {
     $payload = $refreshed['payload'];
     $mtime = @filemtime(lorcana_cache_file($eventId)) ?: time();
     $ttl = lorcana_cache_ttl_seconds($payload);
-    lorcana_api_emit($payload, 'MISS', 0, $ttl, $mtime);
+    // Only label MISS when this was a cold fill (no prior file). Forced refresh stays MISS too (explicit).
+    $body = lorcana_api_build_body($payload, 'MISS', 0, $ttl, $mtime);
+    lorcana_api_finish_response($body);
     exit;
 }
 
@@ -170,7 +229,8 @@ if (!empty($refreshed['ok']) && !empty($refreshed['payload'])) {
 $cached = lorcana_read_cache($eventId);
 if ($cached['exists'] && is_array($cached['data'])) {
     $ttl = lorcana_cache_ttl_seconds($cached['data']);
-    lorcana_api_emit($cached['data'], 'STALE', $cached['age'], $ttl, $cached['mtime']);
+    $body = lorcana_api_build_body($cached['data'], 'STALE', $cached['age'], $ttl, $cached['mtime']);
+    lorcana_api_finish_response($body);
     exit;
 }
 

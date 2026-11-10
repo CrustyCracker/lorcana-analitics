@@ -99,20 +99,26 @@ function lorcana_atomic_write_json($path, $data) {
     }
     $tmp = $path . '.tmp.' . getmypid() . '.' . bin2hex(random_bytes(4));
     if (@file_put_contents($tmp, $json, LOCK_EX) === false) {
+        // Last resort: overwrite in place (file never disappears).
         return @file_put_contents($path, $json, LOCK_EX) !== false;
     }
-    if (!@rename($tmp, $path)) {
-        // Windows: rename over existing can fail — unlink then retry
-        @unlink($path);
-        $ok = @rename($tmp, $path);
-        if (!$ok) {
-            @file_put_contents($path, $json, LOCK_EX);
-            @unlink($tmp);
-            return file_exists($path);
-        }
+
+    // Prefer replace that never unlinks the live file first.
+    // Windows cannot rename-over-existing; unlink+rename created a HIT/MISS race.
+    // copy($tmp, $path, true) overwrites destination while keeping the path present.
+    if (@copy($tmp, $path)) {
+        @unlink($tmp);
+        return true;
     }
+
+    // Unix fallback: atomic rename into place when destination is absent / replaceable
+    if (@rename($tmp, $path)) {
+        return true;
+    }
+
+    $ok = @file_put_contents($path, $json, LOCK_EX) !== false;
     @unlink($tmp);
-    return true;
+    return $ok;
 }
 
 /**
