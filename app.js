@@ -842,12 +842,24 @@ function startTracking() {
     trackingInterval = setInterval(() => fetchData(eventId), 20000);
 }
 
+function isTestsPage() {
+    if (typeof document !== 'undefined' && document.body?.dataset?.page === 'tests') return true;
+    if (typeof location === 'undefined') return false;
+    const path = String(location.pathname || '').replace(/\\/g, '/').toLowerCase();
+    return /\/tests(?:\.html|\/|$)/.test(path) || path.endsWith('/tests');
+}
+
 /**
  * Lokalne demo ~2000 graczy / Swiss 12 (aktywna runda 12) — bez PlayHub.
- * Generuje fixture w przeglądarce, ładuje tabele i odpala Can I Tie na bubble (#64).
+ * Tylko strona /tests — nie eksponować na głównej.
  */
 function loadDemo2k12() {
     if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!isTestsPage()) {
+        console.warn('[demo] loadDemo2k12 dostępne tylko na /tests');
+        setElText('status', 'Demo dostępne tylko na stronie /tests');
+        return;
+    }
 
     const factory = (typeof LorcanaDemoFixture !== 'undefined' && LorcanaDemoFixture.createDemo2kRound12)
         ? LorcanaDemoFixture.createDemo2kRound12
@@ -965,11 +977,21 @@ async function initDefaultEventAndAutoTrack() {
         }
     });
 
-    // 0. Demo 2k / 12 rund bez PlayHub (?demo=2k lub ?demo=2k12)
     const urlParams = new URLSearchParams(window.location.search);
-    const demoParam = (urlParams.get('demo') || '').toLowerCase();
-    if (demoParam === '2k' || demoParam === '2k12' || demoParam === '2000') {
-        loadDemo2k12();
+
+    // Demo 2k tylko na stronie /tests (nie na głównej)
+    if (isTestsPage()) {
+        const demoParam = (urlParams.get('demo') || '').toLowerCase();
+        if (demoParam === '2k' || demoParam === '2k12' || demoParam === '2000') {
+            loadDemo2k12();
+            return;
+        }
+        // Na /tests bez ?demo=2k nie auto-startujemy żywego eventu
+        const testsEventId = urlParams.get('eventId') || urlParams.get('event');
+        if (testsEventId && /^\d+$/.test(testsEventId.trim())) {
+            eventInput.value = testsEventId.trim();
+            startTracking();
+        }
         return;
     }
 
@@ -994,7 +1016,8 @@ async function initDefaultEventAndAutoTrack() {
 
     // 3. Pobieramy z serwera turniej, który ostatnio wpisał jakikolwiek użytkownik (last_event.txt)
     try {
-        const res = await fetch(`api.php?action=get_last_event&t=${Date.now()}`);
+        const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
+        const res = await fetch(`${apiBase}api.php?action=get_last_event&t=${Date.now()}`);
         const data = await res.json();
         if (data && data.lastEventId) {
             const serverLastEventId = String(data.lastEventId);
@@ -1014,7 +1037,8 @@ async function initDefaultEventAndAutoTrack() {
 async function fetchData(eventId) {
     try {
         const safeEventId = encodeURIComponent(String(eventId).replace(/\D/g, ''));
-        const response = await fetch(`api.php?eventId=${safeEventId}&t=${Date.now()}`);
+        const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
+        const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}&t=${Date.now()}`);
         const data = await response.json();
         
         if (data.error) {
@@ -4448,6 +4472,7 @@ if (typeof module !== 'undefined' && module.exports) {
         clearRoundsOverride,
         syncRoundsOverrideUi,
         loadDemo2k12,
-        applyLoadedTournamentData
+        applyLoadedTournamentData,
+        isTestsPage
     };
 }

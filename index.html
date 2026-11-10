@@ -1473,24 +1473,25 @@
     <p class="hero-tag">Strategia remisu pod Top Cut — na żywo, z bieżących stołów PlayHub.</p>
 </header>
 
+<!-- Mobile order: ID → Load → Cut → Rounds → status → Can I Tie → (Poles przy LIVE) -->
 <div class="panel" id="topControlPanel">
     <div class="controls-stack">
-        <div class="field-group">
-            <label for="eventId">ID turnieju (PlayHub)</label>
-            <input type="number" id="eventId" placeholder="np. 1007231" autocomplete="off" title="ID turnieju z Ravensburger Play Hub. Wciśnij Enter, aby śledzić">
+        <div class="field-group" data-control="event-id">
+            <label for="eventId">1. ID turnieju (PlayHub)</label>
+            <input type="number" id="eventId" placeholder="np. 1007231" autocomplete="off" inputmode="numeric" title="ID turnieju z Ravensburger Play Hub. Wciśnij Enter, aby śledzić">
             <div class="field-hint">Numer eventu z linku Ravensburger Play.</div>
         </div>
 
-        <button type="button" onclick="startTracking()" class="btn-load">Odśwież / Śledź Live</button>
+        <button type="button" onclick="startTracking()" class="btn-load" data-control="load">2. Odśwież / Śledź Live</button>
 
-        <div class="controls-pair">
+        <div class="controls-pair" data-control="cut">
             <div class="field-group">
-                <label for="cutSize">Top Cut — od którego miejsca</label>
-                <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
+                <label for="cutSize">3. Top Cut — od którego miejsca</label>
+                <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" inputmode="numeric" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
                 <div class="field-hint">np. 8 = Top 8, 32 = Top 32.</div>
             </div>
             <div class="field-group">
-                <label for="cutRule">Typ Top Cut</label>
+                <label for="cutRule">4. Typ Top Cut</label>
                 <select id="cutRule" onchange="onCutPrefsChanged()">
                     <option value="hard" selected>Twardy Cut (sztywne Top X) [ME 2]</option>
                     <option value="soft">Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
@@ -1499,29 +1500,16 @@
             </div>
         </div>
 
-        <div class="field-group">
-            <label for="totalRoundsOverride">Liczba rund Swiss</label>
+        <div class="field-group" data-control="rounds">
+            <label for="totalRoundsOverride">5. Liczba rund Swiss</label>
             <div class="rounds-override-row">
-                <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Domyślnie z PlayHub. Wpisz własną liczbę, jeśli organizatorzy podali błędną.">
+                <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" inputmode="numeric" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Domyślnie z PlayHub. Wpisz własną liczbę, jeśli organizatorzy podali błędną.">
                 <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść ręczną liczbę rund i wróć do wartości z PlayHub">PlayHub</button>
             </div>
             <div class="field-hint" id="roundsOverrideHint">Domyślnie: wartość z PlayHub. Możesz nadpisać ręcznie.</div>
         </div>
 
-        <div class="demo-load-row">
-            <button type="button" class="btn-demo" onclick="loadDemo2k12()" title="Syntetyczne ~2000 graczy, Swiss 12 rund, aktywna runda 12 — bez PlayHub">Załaduj demo 2k / 12 rund</button>
-            <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
-        </div>
-
-        <div class="filter-controls-row">
-            <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, szczur, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
-                <span style="font-size: 16px;">🇵🇱</span>
-                <span id="polesFilterBtnText">Śledź tylko Polaków</span>
-                <span id="polesCountBadge" class="poles-badge" style="display: none;">0 PL</span>
-            </button>
-        </div>
-
-        <div id="status">Gotowy do pobierania...</div>
+        <div id="status" data-control="status">Gotowy do pobierania...</div>
     </div>
 </div>
 
@@ -1529,9 +1517,10 @@
 
 <!-- PRIMARY: CAN I TAKE A TIE + BEST STRATEGY -->
 <div class="panel tie-panel" id="tieModule" data-primary="true">
-    <h3>Can I take a TIE?</h3>
+    <h3>6. Can I take a TIE?</h3>
     <p style="font-size: 14px; margin: 0 0 12px 0;">
         Wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS) pod próg Cut.
+        <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
     </p>
 
     <div class="autocomplete-wrapper">
@@ -1657,6 +1646,13 @@
 <div class="section-header" id="liveStandingsSection">
     <h3>Klasyfikacja LIVE &amp; Strategia Awansu <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
     <span style="font-size: 11px; color: #888;">(Dotknij gracza, by zbadać TIE / dotknij OMWP po szczegóły)</span>
+</div>
+<div class="filter-controls-row" style="margin: 0 0 10px 0;">
+    <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, szczur, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
+        <span style="font-size: 16px;">🇵🇱</span>
+        <span id="polesFilterBtnText">Śledź tylko Polaków</span>
+        <span id="polesCountBadge" class="poles-badge" style="display: none;">0 PL</span>
+    </button>
 </div>
 
 <!-- KALKULATOR ROZKŁADU KOSZYKÓW PUNKTOWYCH (CUT LINE BREAKDOWN) -->
