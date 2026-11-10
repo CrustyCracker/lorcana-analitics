@@ -5,6 +5,10 @@
 # Pliki dynamiczne i cache API
 cache/
 cache_*.json
+cache_*.lock
+cache_refresh.lock
+tracked_events.json
+cron_key.txt
 last_event.txt
 token.txt
 

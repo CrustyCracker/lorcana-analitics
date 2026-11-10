@@ -2,15 +2,21 @@
 Options -Indexes
 
 # Blokada bezpośredniego dostępu HTTP do tokenu, cache'u, sekretów, baz SQLite oraz danych webhooka
-<FilesMatch "^(token\.txt|last_event\.txt|cache_.*\.json|package(-lock)?\.json|\.git.*|README\.md|webhook_.*|marketplace_.*\.json|\.env.*|.*\.sqlite[0-9]?|.*\.db.*)$">
+<FilesMatch "^(token\.txt|last_event\.txt|cron_key\.txt|tracked_events\.json|cache_.*\.(json|lock)|cache_refresh\.lock|package(-lock)?\.json|\.git.*|README\.md|webhook_.*|marketplace_.*\.json|\.env.*|.*\.sqlite[0-9]?|.*\.db.*)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
     <IfModule !mod_authz_core.c>
-        Order allow,deny
-        Deny from all
+    Order allow,deny
+    Deny from all
     </IfModule>
 </FilesMatch>
+
+# Blokada bezpośredniego HTTP do bibliotek PHP (używane tylko przez include)
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^lib/ - [F,L]
+</IfModule>
 
 # Nagłówki bezpieczeństwa HTTP
 <IfModule mod_headers.c>

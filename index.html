@@ -319,7 +319,8 @@
         @keyframes load-spin {
             to { transform: rotate(360deg); }
         }
-        .load-timing-pill {
+        .load-timing-pill,
+        .load-cache-pill {
             display: inline-block;
             font-size: 11px;
             font-weight: 700;
@@ -329,6 +330,11 @@
             border-radius: 4px;
             padding: 1px 7px;
             white-space: nowrap;
+        }
+        .load-cache-pill {
+            color: #9ec5e8;
+            background: rgba(100, 149, 200, 0.12);
+            border-color: rgba(100, 149, 200, 0.35);
         }
         .btn-load:disabled {
             opacity: 0.55;
@@ -1579,7 +1585,7 @@
             <div class="field-hint">Numer eventu z linku Ravensburger Play.</div>
         </div>
 
-        <button type="button" onclick="startTracking()" class="btn-load" data-control="load">2. Odśwież / Śledź Live</button>
+        <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache serwera. Shift+klik: wymuś świeże dane z PlayHub.">2. Odśwież / Śledź Live</button>
 
         <div class="controls-pair" data-control="cut">
             <div class="field-group">

@@ -853,6 +853,21 @@ function setStatusLoadBusy(message) {
     setLoadButtonBusy(true);
 }
 
+function formatCacheAgeLabel(cacheMeta) {
+    if (!cacheMeta || typeof cacheMeta !== 'object') return '';
+    const age = Number(cacheMeta.ageSeconds);
+    const status = String(cacheMeta.status || '').toUpperCase();
+    if (!Number.isFinite(age) || age < 0) {
+        return status ? `cache ${status}` : '';
+    }
+    let ageTxt;
+    if (age < 60) ageTxt = `${Math.round(age)}s`;
+    else if (age < 3600) ageTxt = `${Math.round(age / 60)}m`;
+    else ageTxt = `${(age / 3600).toFixed(1)}h`;
+    const tag = status === 'HIT' || status === 'STALE' || status === 'MISS' ? status : 'CACHE';
+    return `${tag} · ${ageTxt}`;
+}
+
 function setStatusLoadIdle(message, elapsedMs, opts = {}) {
     const el = document.getElementById('status');
     if (!el) return;
@@ -863,7 +878,11 @@ function setStatusLoadIdle(message, elapsedMs, opts = {}) {
     const timing = hasTiming
         ? `<span class="load-timing-pill" title="Czas pobrania i przetworzenia danych">⏱ ${escapeHtml(formatLoadDuration(elapsedMs))}</span>`
         : '';
-    el.innerHTML = `<span class="load-status-text">${escapeHtml(message || '')}</span>${timing}`;
+    const cacheLabel = formatCacheAgeLabel(opts.cacheMeta);
+    const cachePill = cacheLabel
+        ? `<span class="load-cache-pill" title="Wiek snapshotu cache na serwerze">${escapeHtml(cacheLabel)}</span>`
+        : '';
+    el.innerHTML = `<span class="load-status-text">${escapeHtml(message || '')}</span>${timing}${cachePill}`;
     setLoadButtonBusy(false);
 }
 
@@ -877,7 +896,7 @@ function resolveLoadElapsedMs(opts = {}) {
     return null;
 }
 
-function startTracking() {
+function startTracking(ev) {
     const rawEventId = document.getElementById('eventId')?.value;
     const eventId = String(rawEventId || '').replace(/\D/g, '');
     if (!eventId) {
@@ -892,7 +911,9 @@ function startTracking() {
         localStorage.setItem('lorcana_last_event_id', eventId);
     } catch (e) {}
 
-    fetchData(eventId);
+    // Shift+click → force live PlayHub refresh; normal path uses server cache.
+    const forceRefresh = Boolean(ev && ev.shiftKey);
+    fetchData(eventId, { forceRefresh });
     if (trackingInterval) clearInterval(trackingInterval);
     trackingInterval = setInterval(() => fetchData(eventId), 20000);
 }
@@ -1025,7 +1046,9 @@ function applyLoadedTournamentData(data, opts = {}) {
     const prefix = opts.statusPrefix || 'Zaktualizowano';
     const bubbleNote = bubbleId != null ? ` | bubble #${cutSize} id=${bubbleId}` : '';
     const finalMs = resolveLoadElapsedMs(opts);
-    setStatusLoadIdle(`${prefix}${bubbleNote} · ${new Date().toLocaleTimeString()}`, finalMs);
+    setStatusLoadIdle(`${prefix}${bubbleNote} · ${new Date().toLocaleTimeString()}`, finalMs, {
+        cacheMeta: opts.cacheMeta || data?._cache || null
+    });
 }
 
 let lastAutoCutSyncedEventId = null;
@@ -1102,14 +1125,17 @@ async function initDefaultEventAndAutoTrack() {
     }
 }
 
-async function fetchData(eventId) {
+async function fetchData(eventId, opts = {}) {
     const loadSeq = ++dataLoadSeq;
     const t0 = nowPerfMs();
-    setStatusLoadBusy('Pobieranie danych…');
+    const forceRefresh = Boolean(opts.forceRefresh);
+    setStatusLoadBusy(forceRefresh ? 'Odświeżanie z PlayHub…' : 'Pobieranie z cache…');
     try {
         const safeEventId = encodeURIComponent(String(eventId).replace(/\D/g, ''));
         const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
-        const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}&t=${Date.now()}`);
+        // Default: server disk cache (SWR). Optional force → ?refresh=1 (slow live PlayHub).
+        const refreshQ = forceRefresh ? '&refresh=1' : '';
+        const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}${refreshQ}&t=${Date.now()}`);
         const data = await response.json();
 
         if (loadSeq !== dataLoadSeq) return;
@@ -1139,14 +1165,17 @@ async function fetchData(eventId) {
         const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
         if (fingerprint === lastProcessFingerprint) {
             if (loadSeq !== dataLoadSeq) return;
-            setStatusLoadIdle('Bez zmian · ' + new Date().toLocaleTimeString(), nowPerfMs() - t0);
+            setStatusLoadIdle('Bez zmian · ' + new Date().toLocaleTimeString(), nowPerfMs() - t0, {
+                cacheMeta: data._cache || null
+            });
             return;
         }
 
         applyLoadedTournamentData(data, {
             statusPrefix: 'Zaktualizowano',
             loadStartedAt: t0,
-            loadSeq
+            loadSeq,
+            cacheMeta: data._cache || null
         });
     } catch (error) {
         console.error("Błąd pobierania danych:", error);
