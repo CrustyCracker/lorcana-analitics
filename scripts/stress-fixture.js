@@ -43,7 +43,7 @@ function binomialBuckets(n, rounds) {
 
 /**
  * @param {number} playerCount  np. 2000 / 4000
- * @param {{ completedRounds?: number, cutSize?: number, polishEvery?: number }} [opts]
+ * @param {{ completedRounds?: number, totalRounds?: number, cutSize?: number, polishEvery?: number, eventName?: string }} [opts]
  */
 function createSyntheticField(playerCount, opts = {}) {
   const n = Math.max(2, playerCount | 0);
@@ -111,29 +111,64 @@ function createSyntheticField(playerCount, opts = {}) {
   }
 
   const activeRound = completedRounds + 1;
-  const totalRounds = Math.max(activeRound, getDefaultRoundsForN(n));
+  const totalRounds = Math.max(
+    activeRound,
+    opts.totalRounds != null ? (opts.totalRounds | 0) : getDefaultRoundsForN(n)
+  );
+  const cutSize = opts.cutSize ?? (n >= 1000 ? 64 : 8);
+
+  // Minimalna struktura rund (historyczne mecze puste — TIE używa standings + live pairings).
+  const roundsMatches = {};
+  for (let r = 1; r <= completedRounds; r++) {
+    roundsMatches[r] = {
+      round_number: r,
+      round_id: r,
+      status: 'COMPLETE',
+      matches: []
+    };
+  }
+  roundsMatches[activeRound] = {
+    round_number: activeRound,
+    round_id: activeRound,
+    status: 'IN_PROGRESS',
+    matches: pairings
+  };
 
   return {
-    eventId: 900000 + n,
-    eventName: `Synthetic Stress ${n}`,
+    eventId: opts.eventId ?? (900000 + n),
+    eventName: opts.eventName || `Synthetic Stress ${n}`,
     playerCount: n,
     displayStatus: 'in_progress',
     isCompleted: false,
     standingsRound: completedRounds,
     activeRound,
     totalRounds,
-    cutSize: opts.cutSize ?? (n >= 1000 ? 64 : 8),
+    cutSize,
+    demoMeta: {
+      kind: 'synthetic',
+      completedRounds,
+      activeRound,
+      totalRounds,
+      cutSize,
+      bubbleHintRank: cutSize
+    },
     standings: { standings },
     pairings: { results: pairings, count: pairings.length },
-    roundsMatches: {
-      [completedRounds]: {
-        round_number: completedRounds,
-        round_id: 1,
-        status: 'COMPLETE',
-        matches: [] // historyczne mecze nie są wymagane do process/render/tie smoke
-      }
-    }
+    roundsMatches
   };
+}
+
+/** Gotowy profil: ~2000 graczy, Swiss 12 rund, aktywna runda 12 (po 11 ukończonych). */
+function createDemo2kRound12(overrides = {}) {
+  return createSyntheticField(2000, {
+    completedRounds: 11,
+    totalRounds: 12,
+    cutSize: 64,
+    eventId: 920012,
+    eventName: 'Demo 2k — Swiss 12 (runda 12 / bubble Top 64)',
+    polishEvery: 35,
+    ...overrides
+  });
 }
 
 function getDefaultRoundsForN(n) {
@@ -146,8 +181,16 @@ function getDefaultRoundsForN(n) {
   return 9;
 }
 
-module.exports = {
+const api = {
   createSyntheticField,
+  createDemo2kRound12,
   binomialBuckets,
   getDefaultRoundsForN
 };
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = api;
+}
+if (typeof window !== 'undefined') {
+  window.LorcanaDemoFixture = api;
+}

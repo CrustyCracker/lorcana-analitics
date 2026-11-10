@@ -2,6 +2,7 @@ let trackingInterval = null;
 let latestData = null;
 let currentSelectedPlayerId = null;
 let simulatedResultsCache = new Map();
+let lastTieSimMs = null;
 
 const PAGE_SIZE = 32;
 /** Powyżej tego N wyłączamy ciężkie panele UI (bracket); rada TIE działa zawsze. */
@@ -841,6 +842,112 @@ function startTracking() {
     trackingInterval = setInterval(() => fetchData(eventId), 20000);
 }
 
+/**
+ * Lokalne demo ~2000 graczy / Swiss 12 (aktywna runda 12) — bez PlayHub.
+ * Generuje fixture w przeglądarce, ładuje tabele i odpala Can I Tie na bubble (#64).
+ */
+function loadDemo2k12() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+
+    const factory = (typeof LorcanaDemoFixture !== 'undefined' && LorcanaDemoFixture.createDemo2kRound12)
+        ? LorcanaDemoFixture.createDemo2kRound12
+        : null;
+    if (!factory) {
+        setElText('status', 'Brak generatora demo (scripts/stress-fixture.js).');
+        return;
+    }
+
+    if (trackingInterval) {
+        clearInterval(trackingInterval);
+        trackingInterval = null;
+    }
+
+    setElText('status', 'Generowanie demo 2k / 12 rund…');
+    const tGen0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
+    // Odłóż ciężką generację, żeby UI zdążył pokazać status
+    const run = () => {
+        const data = factory();
+        const genMs = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - tGen0));
+
+        const cutEl = document.getElementById('cutSize');
+        if (cutEl) {
+            cutEl.value = String(data.cutSize || 64);
+            try { saveCutPrefsFromUi(); } catch (e) {}
+        }
+        const eventInput = document.getElementById('eventId');
+        if (eventInput) eventInput.value = String(data.eventId || 920012);
+
+        // Demo niesie totalRounds=12 — wyczyść lokalny override bez reprocess starego eventu
+        try {
+            const overrideInput = document.getElementById('totalRoundsOverride');
+            if (overrideInput) overrideInput.value = '';
+            setStoredRoundsOverride(data.eventId, null);
+        } catch (e) {}
+
+        lastTrackedEventId = String(data.eventId);
+        lastProcessFingerprint = null;
+        lastAutoCutSyncedEventId = null;
+        currentSelectedPlayerId = null;
+        simulatedResultsCache = new Map();
+
+        applyLoadedTournamentData(data, {
+            statusPrefix: `Demo 2k załadowane (gen ${genMs} ms)`,
+            autoSelectBubble: true
+        });
+    };
+
+    if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(() => setTimeout(run, 0));
+    } else {
+        setTimeout(run, 0);
+    }
+}
+
+/**
+ * Wspólna ścieżka po fetch API / demo: process + opcjonalny auto-wybór bubble.
+ */
+function applyLoadedTournamentData(data, opts = {}) {
+    if (!data || data.error) {
+        setElText('status', 'BŁĄD: ' + (data?.error || 'brak danych'));
+        return;
+    }
+
+    latestData = data;
+    const statsPanel = document.getElementById('statsPanel');
+    if (statsPanel) statsPanel.style.display = 'block';
+
+    syncRoundsOverrideUi(data);
+
+    const cutSize = parseInt(document.getElementById('cutSize')?.value || String(data.cutSize || 4), 10);
+    const cutRule = document.getElementById('cutRule')?.value || 'hard';
+    const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
+    lastProcessFingerprint = fingerprint;
+
+    processPairings(data);
+    processStandings(data);
+
+    let bubbleId = null;
+    if (opts.autoSelectBubble) {
+        const list = (cachedLiveStandings && cachedLiveStandings.length)
+            ? cachedLiveStandings
+            : (data.standings?.standings || []);
+        const idx = Math.min(Math.max(0, cutSize - 1), list.length - 1);
+        const bubble = list[idx];
+        bubbleId = bubble?.player?.id || bubble?.id || null;
+        if (bubbleId != null) {
+            // selectPlayerForTie odpala Can I Tie + timing
+            selectPlayerForTie(bubbleId);
+        }
+    } else if (currentSelectedPlayerId) {
+        recalculateTieForSelectedPlayer();
+    }
+
+    const prefix = opts.statusPrefix || 'Zaktualizowano';
+    const bubbleNote = bubbleId != null ? ` | bubble #${cutSize} id=${bubbleId}` : '';
+    setElText('status', `${prefix}${bubbleNote} · ${new Date().toLocaleTimeString()}`);
+}
+
 let lastAutoCutSyncedEventId = null;
 
 async function initDefaultEventAndAutoTrack() {
@@ -858,8 +965,15 @@ async function initDefaultEventAndAutoTrack() {
         }
     });
 
-    // 1. Sprawdzamy parametr w adresie URL (?eventId=... lub ?event=...)
+    // 0. Demo 2k / 12 rund bez PlayHub (?demo=2k lub ?demo=2k12)
     const urlParams = new URLSearchParams(window.location.search);
+    const demoParam = (urlParams.get('demo') || '').toLowerCase();
+    if (demoParam === '2k' || demoParam === '2k12' || demoParam === '2000') {
+        loadDemo2k12();
+        return;
+    }
+
+    // 1. Sprawdzamy parametr w adresie URL (?eventId=... lub ?event=...)
     const urlEventId = urlParams.get('eventId') || urlParams.get('event');
     if (urlEventId && /^\d+$/.test(urlEventId.trim())) {
         const cleanId = urlEventId.trim();
@@ -908,7 +1022,6 @@ async function fetchData(eventId) {
             return;
         }
         
-        latestData = data;
         if (data.lastEventId) {
             try { localStorage.setItem('lorcana_last_event_id', String(data.lastEventId)); } catch (e) {}
         }
@@ -924,11 +1037,6 @@ async function fetchData(eventId) {
             lastAutoCutSyncedEventId = String(safeEventId);
         }
 
-        const statsPanel = document.getElementById('statsPanel');
-        if (statsPanel) statsPanel.style.display = "block";
-
-        syncRoundsOverrideUi(data);
-
         const cutSize = parseInt(document.getElementById('cutSize')?.value || '4');
         const cutRule = document.getElementById('cutRule')?.value || 'hard';
         const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
@@ -936,16 +1044,8 @@ async function fetchData(eventId) {
             setElText('status', "Bez zmian: " + new Date().toLocaleTimeString());
             return;
         }
-        lastProcessFingerprint = fingerprint;
-        
-        processPairings(data);
-        processStandings(data);
-        
-        if (currentSelectedPlayerId) {
-            recalculateTieForSelectedPlayer();
-        }
-        
-        setElText('status', "Zaktualizowano: " + new Date().toLocaleTimeString());
+
+        applyLoadedTournamentData(data, { statusPrefix: 'Zaktualizowano' });
     } catch (error) {
         console.error("Błąd pobierania danych:", error);
         setElText('status', "Błąd komunikacji z serwerem.");
@@ -1732,11 +1832,20 @@ function showTieSimLoadingBanner() {
     banner.innerHTML = '⏳ <strong>Liczenie strategii TIE…</strong> Symulacja Monte Carlo działa w tle (UI pozostaje responsywne).';
 }
 
-function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch, activeRound, totalRounds, cutSize) {
+function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch, activeRound, totalRounds, cutSize, timingMs = null) {
     if (!simResults || !targetPlayer) return;
     if (String(currentSelectedPlayerId) !== String(targetPlayer.player?.id || targetPlayer.id)) return;
 
     simulatedResultsCache.set(String(currentSelectedPlayerId), { sim: simResults, opp: myOpponent });
+    if (timingMs != null && Number.isFinite(timingMs)) {
+        lastTieSimMs = timingMs;
+        try { console.log(`[Can I Tie] symulacja: ${timingMs} ms`); } catch (e) {}
+        const timingEl = document.getElementById('tieSimTimingDisplay');
+        if (timingEl) {
+            timingEl.style.display = 'inline';
+            timingEl.textContent = `Can I Tie: ${timingMs} ms`;
+        }
+    }
 
     const formattedName = formatStandingsPlayerName(targetPlayer);
     setElText('selectedPlayerName', formattedName);
@@ -1797,6 +1906,12 @@ function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch
     setElText('ptsLossDisplay', `Pkt po LOSS: ${currentMatchBasePts}`);
 
     updateRecommendationBanner(simResults, myMatch, targetPlayer, myOpponent, activeRound, totalRounds);
+    if (timingMs != null && Number.isFinite(timingMs)) {
+        const banner = document.getElementById('tieRecommendationBanner');
+        if (banner && banner.innerHTML) {
+            banner.innerHTML += ` <span class="tie-timing-pill" title="Czas Monte Carlo Can I Tie">⏱ ${timingMs} ms</span>`;
+        }
+    }
     renderPlayDrawSeedingPanel(targetPlayer, myOpponent, simResults.isCurrentMatchFinished, cachedLiveStandings, cutSize);
 
     const playerCount = latestData?.playerCount || (latestData?.standings?.standings?.length || 0);
@@ -1867,11 +1982,19 @@ function recalculateTieForSelectedPlayer() {
     );
 
     const requestToken = tieSimRequestSeq + 1;
+    const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
     runTieSimulationAsync(ctx).then((simResults) => {
+        const elapsed = Math.round(((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0));
         if (tieSimActiveRequestId !== requestToken) return;
         if (String(currentSelectedPlayerId) !== selectedIdAtStart) return;
-        applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch, activeRound, totalRounds, cutSize);
+        applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch, activeRound, totalRounds, cutSize, elapsed);
+        const statusEl = document.getElementById('status');
+        if (statusEl && latestData?.demoMeta) {
+            const prev = statusEl.textContent || '';
+            const cleaned = prev.replace(/\s*·\s*TIE\s+\d+\s*ms/i, '');
+            setElText('status', `${cleaned} · TIE ${elapsed} ms`);
+        }
     }).catch((err) => {
         console.error('Błąd symulacji TIE:', err);
         if (String(currentSelectedPlayerId) !== selectedIdAtStart) return;
@@ -4323,6 +4446,8 @@ if (typeof module !== 'undefined' && module.exports) {
         onCutPrefsChanged,
         onRoundsOverrideChanged,
         clearRoundsOverride,
-        syncRoundsOverrideUi
+        syncRoundsOverrideUi,
+        loadDemo2k12,
+        applyLoadedTournamentData
     };
 }

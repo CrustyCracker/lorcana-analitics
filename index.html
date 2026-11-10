@@ -1323,6 +1323,42 @@
             margin: 0;
         }
         .site-footer strong { color: #94a3b8; font-weight: 600; }
+        .demo-load-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin: 8px 0 4px;
+        }
+        .btn-demo {
+            width: auto;
+            height: 40px;
+            padding: 6px 14px;
+            font-size: 13px;
+            background: #243044;
+            color: #7dd3fc;
+            border: 1px solid #38bdf8;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .btn-demo:hover { background: #2c3b55; }
+        .tie-timing-pill {
+            display: inline-block;
+            margin-left: 8px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 600;
+            background: rgba(15, 23, 42, 0.55);
+            border: 1px solid rgba(148, 163, 184, 0.45);
+            color: #e2e8f0;
+            white-space: nowrap;
+        }
+        #tieSimTimingDisplay {
+            font-size: 12px;
+            color: #7dd3fc;
+            margin-left: 8px;
+        }
 
     </style>
 </head>
@@ -1363,6 +1399,11 @@
         </div>
 
         <button onclick="startTracking()" class="full-width btn-refresh">Odśwież / Śledź Live</button>
+    </div>
+
+    <div class="demo-load-row">
+        <button type="button" class="btn-demo" onclick="loadDemo2k12()" title="Syntetyczne ~2000 graczy, Swiss 12 rund, aktywna runda 12 — bez PlayHub">Załaduj demo 2k / 12 rund</button>
+        <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
     </div>
 
     <div class="filter-controls-row">
@@ -1731,6 +1772,7 @@
 
 
 
+<script src="scripts/stress-fixture.js"></script>
 <script src="tie-sim-core.js"></script>
 <script src="app.js"></script>
 </body>
