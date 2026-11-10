@@ -43,12 +43,16 @@ function binomialBuckets(n, rounds) {
 
 /**
  * @param {number} playerCount  np. 2000 / 4000
- * @param {{ completedRounds?: number, totalRounds?: number, cutSize?: number, polishEvery?: number, eventName?: string }} [opts]
+ * @param {{ completedRounds?: number, totalRounds?: number, cutSize?: number, polishEvery?: number, eventName?: string, pairingsMode?: 'just_started'|'mid_round' }} [opts]
+ * pairingsMode:
+ *   - 'just_started' — wszystkie mecze aktywnej rundy IN_PROGRESS (świeżo wystawione)
+ *   - 'mid_round' — część stołów już COMPLETE (domyślne dla stress)
  */
 function createSyntheticField(playerCount, opts = {}) {
   const n = Math.max(2, playerCount | 0);
   const completedRounds = opts.completedRounds ?? 7;
   const polishEvery = opts.polishEvery ?? 40;
+  const pairingsMode = opts.pairingsMode === 'just_started' ? 'just_started' : 'mid_round';
   const buckets = binomialBuckets(n, completedRounds);
 
   const standings = [];
@@ -86,14 +90,14 @@ function createSyntheticField(playerCount, opts = {}) {
     }
   }
 
-  // Aktywna runda = completedRounds + 1 — half finished
+  // Aktywna runda = completedRounds + 1
   const pairings = [];
   for (let i = 0; i < standings.length; i += 2) {
     const p1 = standings[i];
     const p2 = standings[i + 1];
     if (!p2) break;
     const table = (i / 2) + 1;
-    const finished = table % 3 === 0;
+    const finished = pairingsMode === 'mid_round' && table % 3 === 0;
     const draw = finished && table % 9 === 0;
     pairings.push({
       table_number: table,
@@ -150,7 +154,11 @@ function createSyntheticField(playerCount, opts = {}) {
       activeRound,
       totalRounds,
       cutSize,
-      bubbleHintRank: cutSize
+      bubbleHintRank: cutSize,
+      pairingsMode,
+      uiHint: pairingsMode === 'just_started'
+        ? `Po R${completedRounds} (standings). R${activeRound}/${totalRounds} właśnie wystartowała — wszystkie pairings IN_PROGRESS.`
+        : `Po R${completedRounds}. R${activeRound}/${totalRounds} w toku (część stołów zakończona).`
     },
     standings: { standings },
     pairings: { results: pairings, count: pairings.length },
@@ -158,16 +166,21 @@ function createSyntheticField(playerCount, opts = {}) {
   };
 }
 
-/** Gotowy profil: ~2000 graczy, Swiss 12 rund, aktywna runda 12 (po 11 ukończonych). */
+/**
+ * Demo /tests: po 11 rundach Swiss, R12 właśnie wystartowała.
+ * standingsRound=11, activeRound=12, wszystkie pairings R12 = IN_PROGRESS.
+ */
 function createDemo2kRound12(overrides = {}) {
+  const { pairingsMode: modeOverride, ...rest } = overrides;
   return createSyntheticField(2000, {
     completedRounds: 11,
     totalRounds: 12,
     cutSize: 64,
     eventId: 920012,
-    eventName: 'Demo 2k — Swiss 12 (runda 12 / bubble Top 64)',
+    eventName: 'Demo 2k — po R11, R12 właśnie wystartowała (Top 64)',
     polishEvery: 35,
-    ...overrides
+    pairingsMode: modeOverride === 'mid_round' ? 'mid_round' : 'just_started',
+    ...rest
   });
 }
 

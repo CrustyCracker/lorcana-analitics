@@ -903,8 +903,9 @@ function loadDemo2k12() {
         currentSelectedPlayerId = null;
         simulatedResultsCache = new Map();
 
+        const uiHint = data.demoMeta?.uiHint || 'Po R11, R12 właśnie wystartowała';
         applyLoadedTournamentData(data, {
-            statusPrefix: `Demo 2k załadowane (gen ${genMs} ms)`,
+            statusPrefix: `Demo 2k: ${uiHint} (gen ${genMs} ms)`,
             autoSelectBubble: true
         });
     };
