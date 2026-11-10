@@ -876,7 +876,7 @@ function setStatusLoadIdle(message, elapsedMs, opts = {}) {
     el.setAttribute('aria-busy', 'false');
     const hasTiming = elapsedMs != null && Number.isFinite(Number(elapsedMs));
     const timing = hasTiming
-        ? `<span class="load-timing-pill" title="Czas pobrania i przetworzenia danych">⏱ ${escapeHtml(formatLoadDuration(elapsedMs))}</span>`
+        ? `<span class="load-timing-pill" title="Pełny cykl klienta: sieć (fetch api.php) + parse JSON + przeliczenie tabel/UI — nie sam RTT">⏱ cykl ${escapeHtml(formatLoadDuration(elapsedMs))}</span>`
         : '';
     const cacheLabel = formatCacheAgeLabel(opts.cacheMeta);
     const cachePill = cacheLabel
@@ -1125,17 +1125,28 @@ async function initDefaultEventAndAutoTrack() {
     }
 }
 
+/** Client abort budget for api.php (cold PlayHub @~3k can exceed old ~10s PHP curl caps). SWR hits stay fast. */
+const LORCANA_FETCH_ABORT_MS = 180000;
+
 async function fetchData(eventId, opts = {}) {
     const loadSeq = ++dataLoadSeq;
     const t0 = nowPerfMs();
     const forceRefresh = Boolean(opts.forceRefresh);
     setStatusLoadBusy(forceRefresh ? 'Odświeżanie z PlayHub…' : 'Pobieranie z cache…');
+    const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    let abortTimer = null;
+    if (controller) {
+        abortTimer = setTimeout(() => {
+            try { controller.abort(); } catch (e) {}
+        }, LORCANA_FETCH_ABORT_MS);
+    }
     try {
         const safeEventId = encodeURIComponent(String(eventId).replace(/\D/g, ''));
         const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
         // Default: server disk cache (SWR). Optional force → ?refresh=1 (slow live PlayHub).
         const refreshQ = forceRefresh ? '&refresh=1' : '';
-        const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}${refreshQ}&t=${Date.now()}`);
+        const fetchOpts = controller ? { signal: controller.signal } : {};
+        const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}${refreshQ}&t=${Date.now()}`, fetchOpts);
         const data = await response.json();
 
         if (loadSeq !== dataLoadSeq) return;
@@ -1180,7 +1191,14 @@ async function fetchData(eventId, opts = {}) {
     } catch (error) {
         console.error("Błąd pobierania danych:", error);
         if (loadSeq !== dataLoadSeq) return;
-        setStatusLoadIdle('Błąd komunikacji z serwerem.', nowPerfMs() - t0, { error: true });
+        const aborted = error && (error.name === 'AbortError' || error.code === 20);
+        setStatusLoadIdle(
+            aborted ? 'Timeout pobierania (zimny PlayHub >3 min). Spróbuj ponownie.' : 'Błąd komunikacji z serwerem.',
+            nowPerfMs() - t0,
+            { error: true }
+        );
+    } finally {
+        if (abortTimer) clearTimeout(abortTimer);
     }
 }
 

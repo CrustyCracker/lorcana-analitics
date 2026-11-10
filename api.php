@@ -163,7 +163,7 @@ function lorcana_api_revalidate_async($eventId, $authToken, $allowLocalSslFallba
         return 'spawn_unix';
     }
 
-    @set_time_limit(90);
+    lorcana_raise_fetch_time_limit();
     lorcana_refresh_event_cache($eventId, [
         'force' => false,
         'blocking' => false,
@@ -208,6 +208,7 @@ if (!$forceRefresh) {
 }
 
 // Force refresh or true cold miss (no cache file): synchronous PlayHub fetch
+lorcana_raise_fetch_time_limit();
 $refreshed = lorcana_refresh_event_cache($eventId, [
     'force' => true,
     'blocking' => true,

@@ -12,6 +12,31 @@ if (!defined('LORCANA_MATCH_PAGE_SIZE')) {
 if (!defined('LORCANA_MATCH_MAX_PAGES')) {
     define('LORCANA_MATCH_MAX_PAGES', 40); // 40 * 250 = 10k meczów
 }
+/** Per-request curl headroom: ~9s @777 players was near old 10s cap; need room for ~3k. */
+if (!defined('LORCANA_CURL_CONNECT_TIMEOUT')) {
+    define('LORCANA_CURL_CONNECT_TIMEOUT', 20);
+}
+if (!defined('LORCANA_CURL_TIMEOUT')) {
+    define('LORCANA_CURL_TIMEOUT', 60);
+}
+/** Whole cold-fill / refresh budget (many parallel pages × rounds). */
+if (!defined('LORCANA_FETCH_TIME_LIMIT')) {
+    define('LORCANA_FETCH_TIME_LIMIT', 300);
+}
+
+function lorcana_raise_fetch_time_limit($seconds = null) {
+    $seconds = $seconds === null ? LORCANA_FETCH_TIME_LIMIT : (int)$seconds;
+    if ($seconds < 1) {
+        return;
+    }
+    @ini_set('max_execution_time', (string)$seconds);
+    @set_time_limit($seconds);
+}
+
+function lorcana_apply_curl_timeouts($ch) {
+    curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, LORCANA_CURL_CONNECT_TIMEOUT);
+    curl_setopt($ch, CURLOPT_TIMEOUT, LORCANA_CURL_TIMEOUT);
+}
 
 function lorcana_fetch_url_with_status($url, $token = null, $allowLocalSslFallback = false) {
     $ch = curl_init();
@@ -21,7 +46,7 @@ function lorcana_fetch_url_with_status($url, $token = null, $allowLocalSslFallba
     curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    lorcana_apply_curl_timeouts($ch);
     curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
     $headers = [
@@ -89,7 +114,7 @@ function lorcana_fetch_urls_parallel($urlsByKey, $token = null, $allowLocalSslFa
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
         }
-        curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+        lorcana_apply_curl_timeouts($ch);
         curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         $headers = [
             'Accept: application/json',
@@ -397,6 +422,8 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
         return ['ok' => false, 'error' => 'Nieprawidłowy identyfikator turnieju (eventId).', 'httpCode' => 400];
     }
 
+    lorcana_raise_fetch_time_limit();
+
     if ($authToken === null) {
         $authToken = lorcana_load_auth_token();
     }
@@ -552,6 +579,8 @@ function lorcana_refresh_event_cache($eventId, $options = []) {
     $force = !empty($options['force']);
     $allowLocalSslFallback = !empty($options['allowLocalSslFallback']);
     $authToken = array_key_exists('authToken', $options) ? $options['authToken'] : lorcana_load_auth_token();
+
+    lorcana_raise_fetch_time_limit();
 
     $lock = lorcana_acquire_lock(lorcana_refresh_lock_file($eventId), !empty($options['blocking']));
     if (!$lock) {

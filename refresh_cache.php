@@ -207,8 +207,8 @@ if (!$globalLock) {
 }
 
 try {
-    // Avoid hanging the HTTP worker forever on large multi-event refresh
-    @set_time_limit(120);
+    // Large multi-event refresh needs headroom for ~3k cold fills
+    lorcana_raise_fetch_time_limit();
     $ids = lorcana_collect_event_ids($eventId);
     $pass = lorcana_run_refresh_pass($ids, $force, lorcana_is_local_http());
     echo json_encode([
