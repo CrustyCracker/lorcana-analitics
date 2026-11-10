@@ -97,6 +97,116 @@ function runTieSimulationAsync(input) {
 
 const CUT_SIZE_STORAGE_KEY = 'lorcana_cut_size';
 const CUT_RULE_STORAGE_KEY = 'lorcana_cut_rule';
+const ROUNDS_OVERRIDE_KEY_PREFIX = 'lorcana_rounds_override_';
+
+function roundsOverrideStorageKey(eventId) {
+    const id = String(eventId || '').replace(/\D/g, '');
+    return id ? `${ROUNDS_OVERRIDE_KEY_PREFIX}${id}` : null;
+}
+
+function getApiTotalRounds(data) {
+    const activeRound = data?.activeRound || 1;
+    const fromApi = data?.totalRounds || getDefaultTotalRounds(data?.playerCount);
+    return Math.max(fromApi || 1, activeRound);
+}
+
+function getStoredRoundsOverride(eventId) {
+    const key = roundsOverrideStorageKey(eventId);
+    if (!key) return null;
+    try {
+        const raw = localStorage.getItem(key);
+        if (raw && /^\d+$/.test(raw)) {
+            const n = parseInt(raw, 10);
+            if (n >= 1 && n <= 20) return n;
+        }
+    } catch (e) {}
+    return null;
+}
+
+function setStoredRoundsOverride(eventId, rounds) {
+    const key = roundsOverrideStorageKey(eventId);
+    if (!key) return;
+    try {
+        if (rounds == null) localStorage.removeItem(key);
+        else localStorage.setItem(key, String(rounds));
+    } catch (e) {}
+}
+
+/** Efektywna liczba rund Swiss: ręczny override (per event) albo PlayHub/API. */
+function getEffectiveTotalRounds(data) {
+    const activeRound = data?.activeRound || 1;
+    const apiRounds = getApiTotalRounds(data);
+    const override = getStoredRoundsOverride(data?.eventId);
+    if (override != null) return Math.max(override, activeRound);
+    return apiRounds;
+}
+
+function syncRoundsOverrideUi(data) {
+    const input = document.getElementById('totalRoundsOverride');
+    const hint = document.getElementById('roundsOverrideHint');
+    if (!data) return;
+    const apiRounds = getApiTotalRounds(data);
+    const override = getStoredRoundsOverride(data.eventId);
+    const effective = getEffectiveTotalRounds(data);
+    if (input) {
+        input.dataset.apiRounds = String(apiRounds);
+        input.dataset.eventId = String(data.eventId || '');
+        // Puste pole = tryb auto (PlayHub); wypełnione = override
+        input.value = override != null ? String(override) : '';
+        input.placeholder = `Auto: ${apiRounds}`;
+    }
+    if (hint) {
+        if (override != null) {
+            hint.textContent = `Ręcznie: ${effective} rund (PlayHub podaje ${apiRounds}). Przycisk „PlayHub” przywraca auto.`;
+            hint.style.color = '#f39c12';
+        } else {
+            hint.textContent = `Auto z PlayHub: ${apiRounds} rund. Wpisz inną liczbę, jeśli organizatorzy podali złą.`;
+            hint.style.color = '#64748b';
+        }
+    }
+}
+
+function onRoundsOverrideChanged() {
+    const input = document.getElementById('totalRoundsOverride');
+    if (!input || !latestData) return;
+    const eventId = latestData.eventId || input.dataset.eventId;
+    const apiRounds = getApiTotalRounds(latestData);
+    const raw = String(input.value || '').trim();
+    if (!raw) {
+        setStoredRoundsOverride(eventId, null);
+    } else if (/^\d+$/.test(raw)) {
+        const n = parseInt(raw, 10);
+        if (n >= 1 && n <= 20) {
+            // Zapisuj override nawet gdy równy API — użytkownik świadomie ustawił wartość
+            setStoredRoundsOverride(eventId, n);
+        }
+    }
+    syncRoundsOverrideUi(latestData);
+    lastProcessFingerprint = null;
+    processStandings(latestData);
+    if (currentSelectedPlayerId) recalculateTieForSelectedPlayer();
+}
+
+function clearRoundsOverride() {
+    const eventId = latestData?.eventId
+        || document.getElementById('totalRoundsOverride')?.dataset?.eventId
+        || document.getElementById('eventId')?.value;
+    setStoredRoundsOverride(eventId, null);
+    if (latestData) {
+        syncRoundsOverrideUi(latestData);
+        lastProcessFingerprint = null;
+        processStandings(latestData);
+        if (currentSelectedPlayerId) recalculateTieForSelectedPlayer();
+    } else {
+        const input = document.getElementById('totalRoundsOverride');
+        const hint = document.getElementById('roundsOverrideHint');
+        if (input) input.value = '';
+        if (hint) {
+            hint.textContent = 'Domyślnie: wartość z PlayHub. Możesz nadpisać ręcznie.';
+            hint.style.color = '#64748b';
+        }
+    }
+}
 
 function loadCutPrefsIntoUi() {
     const cutSizeEl = document.getElementById('cutSize');
@@ -161,6 +271,7 @@ function buildDataFingerprint(data, cutSize, cutRule) {
             unfinished++;
         }
     }
+    const effectiveRounds = getEffectiveTotalRounds(data);
     return [
         data?.eventId || '',
         data?.activeRound || 0,
@@ -171,7 +282,8 @@ function buildDataFingerprint(data, cutSize, cutRule) {
         completedSig,
         unfinished,
         cutSize,
-        cutRule
+        cutRule,
+        effectiveRounds
     ].join('::');
 }
 
@@ -570,6 +682,8 @@ async function fetchData(eventId) {
         const statsPanel = document.getElementById('statsPanel');
         if (statsPanel) statsPanel.style.display = "block";
 
+        syncRoundsOverrideUi(data);
+
         const cutSize = parseInt(document.getElementById('cutSize')?.value || '4');
         const cutRule = document.getElementById('cutRule')?.value || 'hard';
         const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
@@ -948,7 +1062,7 @@ function processStandings(data) {
     const rawStandings = data.standings?.standings || [];
     
     const activeRound = data.activeRound || 1;
-    const totalRounds = Math.max(data.totalRounds || getDefaultTotalRounds(data.playerCount), activeRound);
+    const totalRounds = getEffectiveTotalRounds(data);
     const standingsRound = data.standingsRound || 0;
     const isCompleted = Boolean(data.isCompleted || data.displayStatus === 'complete');
 
@@ -1422,7 +1536,7 @@ function recalculateTieForSelectedPlayer() {
 
     const rawStandings = latestData.standings.standings;
     const activeRound = latestData.activeRound || 1;
-    const totalRounds = Math.max(latestData.totalRounds || getDefaultTotalRounds(latestData.playerCount), activeRound);
+    const totalRounds = getEffectiveTotalRounds(latestData);
 
     const cutSize = parseInt(document.getElementById('cutSize')?.value || '4');
     const cutRule = document.getElementById('cutRule')?.value || 'hard';
@@ -2361,7 +2475,7 @@ function openOmwpInspector(playerId) {
 
     const history = getPlayerHistoricalMatches(playerId, latestData);
     const standingsMap = buildStandingsMap(standings);
-    const totalRounds = Math.max(latestData.totalRounds || 1, latestData.activeRound || 1);
+    const totalRounds = getEffectiveTotalRounds(latestData);
     const activePairingsList = extractPairingsList(latestData.pairings);
 
     const tbody = document.getElementById('omwpOpponentsBody');
@@ -2510,7 +2624,7 @@ function switchPredictorScenario(scenario) {
         const standings = latestData.standings?.standings || [];
         const targetPlayer = standings.find(p => String(p.player?.id || p.id) === String(currentSelectedPlayerId));
         const activeRound = latestData.activeRound || 1;
-        const totalRounds = Math.max(latestData.totalRounds || 1, activeRound);
+        const totalRounds = getEffectiveTotalRounds(latestData);
         const cached = simulatedResultsCache.get(String(currentSelectedPlayerId));
         if (targetPlayer) {
             recalculateNextRoundPairingsPredictor(cached?.sim, targetPlayer, activeRound, totalRounds);
@@ -3899,6 +4013,8 @@ if (typeof module !== 'undefined' && module.exports) {
         getMatchParticipant,
         getMatchScores,
         getDefaultTotalRounds,
+        getApiTotalRounds,
+        getEffectiveTotalRounds,
         getPlayerHistoricalMatches,
 
         calculateCutLineBreakdown,
@@ -3909,6 +4025,12 @@ if (typeof module !== 'undefined' && module.exports) {
         buildFullTopCutBracketTree,
         getPlayerBracketPath,
         analyzePlayerTopCutSeeding,
-        initDefaultEventAndAutoTrack
+        initDefaultEventAndAutoTrack,
+        loadCutPrefsIntoUi,
+        saveCutPrefsFromUi,
+        onCutPrefsChanged,
+        onRoundsOverrideChanged,
+        clearRoundsOverride,
+        syncRoundsOverrideUi
     };
 }

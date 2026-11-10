@@ -30,11 +30,41 @@
         .controls-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 10px;
+            gap: 12px 10px;
             margin-bottom: 10px;
         }
         
         .full-width { grid-column: span 2; }
+
+        .field-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            min-width: 0;
+        }
+        .field-group label {
+            font-size: 12px;
+            font-weight: 600;
+            color: #94a3b8;
+            letter-spacing: 0.01em;
+        }
+        .field-hint {
+            font-size: 11px;
+            color: #64748b;
+            line-height: 1.35;
+            min-height: 1.35em;
+        }
+        .rounds-override-row {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+        }
+        .rounds-override-row input { flex: 1; min-width: 0; }
+        .rounds-override-row .btn-secondary {
+            width: auto;
+            min-width: 96px;
+            flex-shrink: 0;
+        }
 
         input, select, button { 
             width: 100%;
@@ -81,9 +111,9 @@
         }
         @media (min-width: 768px) {
             .stats-grid { grid-template-columns: repeat(7, 1fr); }
-            .controls-grid { grid-template-columns: 1fr 1fr 1.2fr 1.5fr; }
+            .controls-grid { grid-template-columns: 1.3fr 0.8fr 1.3fr 1fr; }
             .full-width-mobile { grid-column: span 1; }
-            .btn-refresh { grid-column: span 1; }
+            .btn-refresh { grid-column: span 4; }
         }
 
         .stat-card { 
@@ -1249,13 +1279,36 @@
     <h2>Lorcana Should I TIE?</h2>
     
     <div class="controls-grid">
-        <input type="number" id="eventId" placeholder="Wpisz Event ID (np. 1007231)" autocomplete="off" title="ID turnieju z Ravensburger Play Hub. Wciśnij Enter, aby śledzić">
-        <input type="number" id="cutSize" value="4" placeholder="Cut (np. 4)" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
-        <select id="cutRule" class="full-width full-width-mobile" onchange="onCutPrefsChanged()">
-            <option value="hard" selected>Twardy Cut (Sztywne Top X) [ME 2]</option>
-            <option value="soft">Miękki Cut (Top X + równe punkty) [ME 1]</option>
-        </select>
-        
+        <div class="field-group full-width-mobile">
+            <label for="eventId">ID turnieju (PlayHub)</label>
+            <input type="number" id="eventId" placeholder="np. 1007231" autocomplete="off" title="ID turnieju z Ravensburger Play Hub. Wciśnij Enter, aby śledzić">
+            <div class="field-hint">Numer eventu z linku Ravensburger Play / Melee.</div>
+        </div>
+
+        <div class="field-group">
+            <label for="cutSize">Top Cut — od którego miejsca</label>
+            <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
+            <div class="field-hint">np. 8 = Top 8, 32 = Top 32.</div>
+        </div>
+
+        <div class="field-group full-width-mobile">
+            <label for="cutRule">Typ Top Cut</label>
+            <select id="cutRule" onchange="onCutPrefsChanged()">
+                <option value="hard" selected>Twardy Cut (sztywne Top X) [ME 2]</option>
+                <option value="soft">Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
+            </select>
+            <div class="field-hint">Twardy = dokładnie X miejsc; miękki = X + wszyscy z tym samym wynikiem.</div>
+        </div>
+
+        <div class="field-group">
+            <label for="totalRoundsOverride">Liczba rund Swiss</label>
+            <div class="rounds-override-row">
+                <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Domyślnie z PlayHub. Wpisz własną liczbę, jeśli organizatorzy podali błędną.">
+                <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść ręczną liczbę rund i wróć do wartości z PlayHub">PlayHub</button>
+            </div>
+            <div class="field-hint" id="roundsOverrideHint">Domyślnie: wartość z PlayHub. Możesz nadpisać ręcznie.</div>
+        </div>
+
         <button onclick="startTracking()" class="full-width btn-refresh">Odśwież / Śledź Live</button>
     </div>
 
@@ -1468,7 +1521,7 @@
                 <th>Gracz 1</th>
                 <th style="width: 80px;">Wynik</th>
                 <th>Gracz 2</th>
-                <th style="width: 90px;">Status</th>
+                <th style="width: 90px;">Status</th>
             </tr>
         </thead>
         <tbody id="pairingsBody">
