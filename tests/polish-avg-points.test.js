@@ -85,9 +85,13 @@ describe('Polish avg points stats', () => {
         // Flag group includes Crusty + Liryq (both have 🇵🇱)
         assert.equal(stats.flag.count, 2);
         assert.equal(stats.flag.star.name, '[GPL] Crusty 🇵🇱 🏔️');
+        // Terry + Bayo: Polish via 🐀, no 🇵🇱
+        assert.equal(stats.noFlag.count, 2);
+        assert.equal(stats.noFlag.avgPoints, (18 + 12) / 2);
+        assert.equal(stats.noFlag.star.name, '🐀Terry 🥖🐀');
     });
 
-    it('computes avg points and star player for PL-flag / teams / rat crew', () => {
+    it('computes avg points and star player for PL-flag / no-flag / teams / rat crew', () => {
         const standings = [
             standing(1, '[GPL] Crusty 🇵🇱 🏔️', 15, 15, 2),
             standing(2, '[GPL] EvilBunny 🇵🇱🏔️', 12, 12, 5),
@@ -105,6 +109,12 @@ describe('Polish avg points stats', () => {
         assert.equal(stats.flag.star.name, '[GPL] Crusty 🇵🇱 🏔️');
         assert.equal(stats.flag.star.points, 15);
 
+        // Leviniuch + Terry + Mayxs: Polish without 🇵🇱 (team tag / rat / known nick)
+        assert.equal(stats.noFlag.count, 3);
+        assert.equal(stats.noFlag.avgPoints, (9 + 18 + 6) / 3);
+        assert.equal(stats.noFlag.star.name, '🐀Terry 🥖🐀');
+        assert.equal(stats.noFlag.star.points, 18);
+
         const byTag = Object.fromEntries(stats.teams.map((t) => [t.tag, t]));
         assert.equal(byTag.GPL.count, 2);
         assert.equal(byTag.GPL.avgPoints, (15 + 12) / 2);
@@ -118,8 +128,10 @@ describe('Polish avg points stats', () => {
         assert.equal(byTag[POLISH_RAT_CREW_LABEL].star.name, '🐀Terry 🥖🐀');
         assert.equal(byTag.OSA, undefined);
         assert.equal(formatAvgPointsDisplay(stats.flag.avgPoints), '12.3');
+        assert.equal(formatAvgPointsDisplay(stats.noFlag.avgPoints), '11.0');
         assert.equal(formatAvgPointsDisplay(null), '—');
         assert.equal(formatStarPlayerDisplay(stats.flag.star), '⭐ [GPL] Crusty 🇵🇱 🏔️ (15 pkt)');
+        assert.equal(formatStarPlayerDisplay(stats.noFlag.star), '⭐ 🐀Terry 🥖🐀 (18 pkt)');
     });
 
     it('prefers livePoints when present and breaks star ties by liveRank', () => {
@@ -137,5 +149,24 @@ describe('Polish avg points stats', () => {
         assert.equal(stats.flag.count, 2);
         assert.equal(stats.flag.star.name, '[OSA] Zavada 🇵🇱 🐝');
         assert.equal(stats.flag.star.points, 12);
+        assert.equal(stats.noFlag.count, 1);
+        assert.equal(stats.noFlag.star.name, '[OSA] helisa');
+        assert.equal(stats.noFlag.avgPoints, 12);
+    });
+
+    it('splits Poles with flag vs without flag for the comparison rows', () => {
+        const standings = [
+            standing(1, 'Lisu192 🇵🇱', 15),
+            standing(2, 'Gamus', 12),
+            standing(3, 'Farfocja', 9),
+            standing(4, 'RandomForeign', 21)
+        ];
+        const stats = computePolishAvgPointsStats(standings);
+        assert.equal(stats.flag.count, 1);
+        assert.equal(stats.flag.avgPoints, 15);
+        assert.equal(stats.flag.star.name, 'Lisu192 🇵🇱');
+        assert.equal(stats.noFlag.count, 2); // Gamus + Farfocja via known-nicks whitelist
+        assert.equal(stats.noFlag.avgPoints, (12 + 9) / 2);
+        assert.equal(stats.noFlag.star.name, 'Gamus');
     });
 });
