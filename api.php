@@ -272,9 +272,155 @@ if ($pairingsRoundId) {
     $pairingsData = fetchAllPaginatedMatches($pairingsRoundId, $authToken, $isLocalRequest);
 }
 
+/**
+ * Równoległe pobranie pełnych list meczów dla wielu rund (curl_multi).
+ * Każda runda nadal paginuje we własnej pętli, ale rundy lecą równolegle.
+ */
+function fetchAllPaginatedMatchesForRounds($roundIdsByKey, $token = null, $allowLocalSslFallback = false) {
+    $out = [];
+    if (empty($roundIdsByKey) || !function_exists('curl_multi_init')) {
+        foreach ($roundIdsByKey as $key => $roundId) {
+            $out[$key] = fetchAllPaginatedMatches($roundId, $token, $allowLocalSslFallback);
+        }
+        return $out;
+    }
+
+    // Prosty model: odpalamy fetchAllPaginatedMatches w... nadal sekwencyjnie wewnątrz,
+    // ale pierwsze strony wszystkich rund równolegle, potem dociągamy braki.
+    $pageSize = 150;
+    $maxPages = 50;
+    $states = [];
+    foreach ($roundIdsByKey as $key => $roundId) {
+        $states[$key] = [
+            'roundId' => (int)$roundId,
+            'page' => 1,
+            'allResults' => [],
+            'lastPayload' => null,
+            'done' => false
+        ];
+    }
+
+    while (true) {
+        $pending = [];
+        foreach ($states as $key => $st) {
+            if (!$st['done'] && $st['page'] <= $maxPages) {
+                $pending[$key] = $st;
+            }
+        }
+        if (empty($pending)) {
+            break;
+        }
+
+        $mh = curl_multi_init();
+        $handles = [];
+        foreach ($pending as $key => $st) {
+            $safeRoundId = $st['roundId'];
+            $page = $st['page'];
+            $url = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safeRoundId}/matches/paginated/?page={$page}&page_size={$pageSize}&avoid_cache=false";
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $url);
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+            curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
+            if ($allowLocalSslFallback) {
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+            } else {
+                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+            }
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            $headers = [
+                'Accept: application/json',
+                'Content-Type: application/json',
+                'Origin: https://tcg.ravensburgerplay.com',
+                'Referer: https://tcg.ravensburgerplay.com/'
+            ];
+            if ($token) {
+                $headers[] = 'Authorization: ' . $token;
+            }
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+            curl_multi_add_handle($mh, $ch);
+            $handles[$key] = $ch;
+        }
+
+        $running = null;
+        do {
+            $mrc = curl_multi_exec($mh, $running);
+            if ($running) {
+                curl_multi_select($mh, 1.0);
+            }
+        } while ($running && $mrc === CURLM_OK);
+
+        foreach ($handles as $key => $ch) {
+            $body = curl_multi_getcontent($ch);
+            curl_multi_remove_handle($mh, $ch);
+            curl_close($ch);
+
+            $data = json_decode($body, true);
+            if (!is_array($data)) {
+                $states[$key]['done'] = true;
+                continue;
+            }
+            $states[$key]['lastPayload'] = $data;
+
+            if (isset($data['results']) && is_array($data['results'])) {
+                $chunk = $data['results'];
+            } elseif (isset($data['data']) && is_array($data['data'])) {
+                $chunk = $data['data'];
+            } elseif (array_keys($data) === range(0, count($data) - 1)) {
+                $states[$key]['allResults'] = $data;
+                $states[$key]['done'] = true;
+                continue;
+            } else {
+                $states[$key]['done'] = true;
+                continue;
+            }
+
+            if (count($chunk) === 0) {
+                $states[$key]['done'] = true;
+                continue;
+            }
+
+            foreach ($chunk as $row) {
+                $states[$key]['allResults'][] = $row;
+            }
+
+            $totalCount = isset($data['count']) ? (int)$data['count'] : null;
+            $hasNext = !empty($data['next']);
+            if ($totalCount !== null && count($states[$key]['allResults']) >= $totalCount) {
+                $states[$key]['done'] = true;
+            } elseif (!$hasNext && count($chunk) < $pageSize) {
+                $states[$key]['done'] = true;
+            } elseif (!$hasNext && $totalCount === null) {
+                $states[$key]['done'] = true;
+            } else {
+                $states[$key]['page']++;
+            }
+        }
+        curl_multi_close($mh);
+    }
+
+    foreach ($states as $key => $st) {
+        if ($st['lastPayload'] === null && empty($st['allResults'])) {
+            $out[$key] = null;
+            continue;
+        }
+        $payload = is_array($st['lastPayload']) ? $st['lastPayload'] : [];
+        $payload['results'] = $st['allResults'];
+        $payload['count'] = count($st['allResults']);
+        $payload['next'] = null;
+        $payload['previous'] = null;
+        $out[$key] = $payload;
+    }
+    return $out;
+}
+
 $roundsMatches = [];
 if (!empty($eligibleRounds)) {
     ksort($eligibleRounds);
+    $toFetch = [];
     foreach ($eligibleRounds as $rNum => $rInfo) {
         $safeRoundId = (int)$rInfo['id'];
         if ($pairingsRoundId && $safeRoundId === (int)$pairingsRoundId && $pairingsData) {
@@ -285,12 +431,18 @@ if (!empty($eligibleRounds)) {
                 'matches' => $pairingsData['results'] ?? $pairingsData['data'] ?? $pairingsData
             ];
         } else {
-            $mData = fetchAllPaginatedMatches($safeRoundId, $authToken, $isLocalRequest);
+            $toFetch[$rNum] = $safeRoundId;
+        }
+    }
+    if (!empty($toFetch)) {
+        $fetched = fetchAllPaginatedMatchesForRounds($toFetch, $authToken, $isLocalRequest);
+        foreach ($toFetch as $rNum => $safeRoundId) {
+            $mData = $fetched[$rNum] ?? null;
             if ($mData) {
                 $roundsMatches[$rNum] = [
                     'round_number' => $rNum,
                     'round_id' => $safeRoundId,
-                    'status' => $rInfo['status'],
+                    'status' => $eligibleRounds[$rNum]['status'],
                     'matches' => $mData['results'] ?? $mData['data'] ?? $mData
                 ];
             }

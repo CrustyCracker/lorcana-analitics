@@ -18,11 +18,81 @@ let cachedLiveStandings = [];
 let cachedStandingsMap = new Map();
 let cachedCutContext = { cutSize: 4, cutRule: 'hard', activeRound: 1, totalRounds: 1 };
 
+function getTieSimCore() {
+    if (typeof LorcanaTieSim !== 'undefined' && LorcanaTieSim) return LorcanaTieSim;
+    if (typeof require !== 'undefined') {
+        return require('./tie-sim-core.js');
+    }
+    throw new Error('tie-sim-core.js niedostepny');
+}
+
 function getAdaptiveSimCount(playerCount) {
-    const n = Number(playerCount) || 0;
-    if (n > 800) return 100;
-    if (n > 200) return 200;
-    return 600;
+    try {
+        return getTieSimCore().getAdaptiveSimCount(playerCount);
+    } catch (e) {
+        const n = Number(playerCount) || 0;
+        if (n > 800) return 100;
+        if (n > 200) return 200;
+        return 600;
+    }
+}
+
+/** Web Worker do MC — jedna instancja na sesje */
+let tieSimWorker = null;
+let tieSimWorkerFailed = false;
+let tieSimRequestSeq = 0;
+let tieSimActiveRequestId = 0;
+
+function getTieSimWorker() {
+    if (tieSimWorkerFailed || typeof Worker === 'undefined') return null;
+    if (tieSimWorker) return tieSimWorker;
+    try {
+        tieSimWorker = new Worker('tie-sim-worker.js');
+        return tieSimWorker;
+    } catch (e) {
+        console.warn('Nie udalo sie uruchomic Web Workera TIE — fallback sync.', e);
+        tieSimWorkerFailed = true;
+        return null;
+    }
+}
+
+function runTieSimulationAsync(input) {
+    return new Promise((resolve, reject) => {
+        const requestId = ++tieSimRequestSeq;
+        tieSimActiveRequestId = requestId;
+        const worker = getTieSimWorker();
+        if (!worker) {
+            try {
+                resolve(getTieSimCore().executePreparedTieSimulation(input));
+            } catch (err) {
+                reject(err);
+            }
+            return;
+        }
+        const onMsg = (event) => {
+            const msg = event.data || {};
+            if (msg.requestId !== requestId) return;
+            worker.removeEventListener('message', onMsg);
+            worker.removeEventListener('error', onErr);
+            if (msg.error) reject(new Error(msg.error));
+            else resolve(msg.result);
+        };
+        const onErr = () => {
+            worker.removeEventListener('message', onMsg);
+            worker.removeEventListener('error', onErr);
+            tieSimWorkerFailed = true;
+            try { worker.terminate(); } catch (e) {}
+            tieSimWorker = null;
+            try {
+                resolve(getTieSimCore().executePreparedTieSimulation(input));
+            } catch (fallbackErr) {
+                reject(fallbackErr);
+            }
+        };
+        worker.addEventListener('message', onMsg);
+        worker.addEventListener('error', onErr);
+        worker.postMessage({ requestId, input });
+    });
 }
 
 function shouldGateHeavyUi(playerCount) {
@@ -1412,6 +1482,104 @@ function selectPlayerForTie(playerId) {
     if (tieMod) tieMod.scrollIntoView({ behavior: 'smooth' });
 }
 
+function showTieSimLoadingBanner() {
+    const banner = document.getElementById('tieRecommendationBanner');
+    if (!banner) return;
+    banner.className = 'recommendation-box rec-risk';
+    banner.innerHTML = '⏳ <strong>Liczenie strategii TIE…</strong> Symulacja Monte Carlo działa w tle (UI pozostaje responsywne).';
+}
+
+function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch, activeRound, totalRounds, cutSize) {
+    if (!simResults || !targetPlayer) return;
+    if (String(currentSelectedPlayerId) !== String(targetPlayer.player?.id || targetPlayer.id)) return;
+
+    simulatedResultsCache.set(String(currentSelectedPlayerId), { sim: simResults, opp: myOpponent });
+
+    const formattedName = formatStandingsPlayerName(targetPlayer);
+    setElText('selectedPlayerName', formattedName);
+    setElText('selectedPlayerTable', myMatch ? `(Stół #${myMatch.table_number || myMatch.tableNumber || '?'} vs ${myOpponent?.name || 'BYE'})` : "");
+    const baseOmw = ((targetPlayer.opponent_match_win_percentage || 0) * 100).toFixed(1);
+    const baseGw = ((targetPlayer.game_win_percentage || 0) * 100).toFixed(1);
+    const baseOgw = ((targetPlayer.opponent_game_win_percentage || 0) * 100).toFixed(1);
+    let scopeNote = '';
+    if (simResults.scoped) {
+        scopeNote = ` | scope ${simResults.scopedPlayerCount}/${simResults.fullPlayerCount}`;
+    }
+    setElText('selectedPlayerBaseStats', `Stan bazowy: ${targetPlayer.match_points} pkt | OMW: ${baseOmw}% | GW: ${baseGw}% | OGW: ${baseOgw}%${scopeNote}`);
+
+    const tieRoundContextEl = document.getElementById('tieRoundContext');
+    if (tieRoundContextEl) {
+        if (simResults.matchesLeft === 0) {
+            tieRoundContextEl.innerHTML = `
+                <span class="round-pill">🎯 Wszystkie rundy rozegrane (${totalRounds}/${totalRounds})</span>
+                <span class="round-pill" style="background: rgba(46, 204, 113, 0.2); color: #2ecc71; border-color: #2ecc71;">🏆 Turniej / Faza Swiss zakończona</span>
+            `;
+        } else {
+            let matchStatePill = "";
+            if (simResults.isCurrentMatchFinished) {
+                matchStatePill = `<span style="color: #2ecc71;">✅ Twój mecz w R${activeRound} jest zakończony${myMatch?._isWhatIf ? ' (What-If)' : ''}.</span>`;
+            } else if (myMatch) {
+                const safeTbl = escapeHtml(myMatch.table_number || myMatch.tableNumber || '?');
+                const safeOpp = escapeHtml(myOpponent?.name || 'BYE');
+                matchStatePill = `<span>⚔️ Stół #${safeTbl} vs <strong>${safeOpp}</strong></span>`;
+            }
+
+            let roundWord = simResults.matchesLeft === 1 ? 'mecz' : (simResults.matchesLeft >= 2 && simResults.matchesLeft <= 4 ? 'mecze' : 'meczów');
+            tieRoundContextEl.innerHTML = `
+                <span class="round-pill">🎯 Runda ${activeRound} z ${totalRounds}</span>
+                <span class="round-pill">⏳ Pozostało do rozegrania: ${simResults.matchesLeft} ${roundWord}</span>
+                ${matchStatePill}
+            `;
+        }
+    }
+
+    const currentMatchScenariosWrapper = document.getElementById('currentMatchScenariosWrapper');
+    if (currentMatchScenariosWrapper) {
+        currentMatchScenariosWrapper.style.display = simResults.matchesLeft === 0 ? 'none' : 'block';
+    }
+
+    renderDoubleTiePrompt(simResults, targetPlayer, myOpponent, totalRounds);
+    renderMultiRoundScenarios(simResults);
+
+    const currentMatchBasePts = targetPlayer.match_points;
+    setElText('tieCurrentRoundNum', activeRound);
+    setElText('chanceTieDisplay', simResults.chanceTie + "%");
+    setElText('ptsTieDisplay', `Pkt po TIE: ${currentMatchBasePts + 1}`);
+    setElText('oppTieChanceDisplay', myOpponent ? `Rywal po TIE: ${simResults.oppChanceTie}%` : `Brak rywala`);
+
+    setElText('chanceWinDisplay', simResults.chanceWin + "%");
+    setElText('ptsWinDisplay', `Pkt po WIN: ${currentMatchBasePts + 3}`);
+
+    setElText('chanceLossDisplay', simResults.chanceLoss + "%");
+    setElText('ptsLossDisplay', `Pkt po LOSS: ${currentMatchBasePts}`);
+
+    updateRecommendationBanner(simResults, myMatch, targetPlayer, myOpponent, activeRound, totalRounds);
+    renderPlayDrawSeedingPanel(targetPlayer, myOpponent, simResults.isCurrentMatchFinished, cachedLiveStandings, cutSize);
+
+    const rawPairingsList = extractPairingsList(latestData?.pairings);
+    const standingsMap = buildStandingsMap(latestData?.standings?.standings || []);
+    const isCompleted = Boolean(latestData?.isCompleted || latestData?.displayStatus === 'complete');
+    const isLiveRoundInProgress = Boolean(activeRound > (latestData?.standingsRound || 0) && !isCompleted);
+    const { effectivePairingsList: pairingsList } = computeWhatIfEffectiveData(
+        latestData?.standings?.standings || [],
+        rawPairingsList,
+        whatIfOverrides,
+        standingsMap,
+        isLiveRoundInProgress
+    );
+    renderBubbleNeighborsWhatIf(targetPlayer, pairingsList, standingsMap, cutSize);
+
+    const playerCount = latestData?.playerCount || (latestData?.standings?.standings?.length || 0);
+    if (!shouldGateHeavyUi(playerCount)) {
+        renderTopCutBracketPanel(cachedLiveStandings, cutSize);
+    } else {
+        const bracketPanel = document.getElementById('topCutBracketPanel');
+        if (bracketPanel) bracketPanel.style.display = 'none';
+    }
+    recalculateNextRoundPairingsPredictor(simResults, targetPlayer, activeRound, totalRounds);
+    renderLiveStandingsTable();
+}
+
 function recalculateTieForSelectedPlayer() {
     if (!latestData || !latestData.standings?.standings || !currentSelectedPlayerId) return;
 
@@ -1437,7 +1605,7 @@ function recalculateTieForSelectedPlayer() {
 
     const targetPlayer = standings.find(p => String(p.player?.id || p.id) === String(currentSelectedPlayerId));
     if (!targetPlayer) return;
-    
+
     let myMatch = null;
     let myOpponent = null;
     const oppLookup = buildOpponentLookup(pairingsList, standingsMap);
@@ -1457,101 +1625,38 @@ function recalculateTieForSelectedPlayer() {
         }
     }
 
-    let bubbleIndex = Math.min(cutSize - 1, standings.length - 1);
-    let bubbleScore = standings[bubbleIndex]?.match_points || 0;
-    // Preferuj projected bubble z LIVE (livePoints), gdy dostępne
+    let bubbleScore = standings[Math.min(cutSize - 1, standings.length - 1)]?.match_points || 0;
     if (cachedLiveStandings && cachedLiveStandings.length > 0) {
         const liveBubbleIdx = Math.min(cutSize - 1, cachedLiveStandings.length - 1);
         bubbleScore = cachedLiveStandings[liveBubbleIdx]?.livePoints ?? bubbleScore;
     }
-    let projectedFinalBubble = Math.ceil((bubbleScore / Math.max(1, activeRound)) * totalRounds);
+    const projectedFinalBubble = Math.ceil((bubbleScore / Math.max(1, activeRound)) * totalRounds);
 
-    const simResults = runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress);
-    simulatedResultsCache.set(String(currentSelectedPlayerId), { sim: simResults, opp: myOpponent });
+    const selectedIdAtStart = String(currentSelectedPlayerId);
+    showTieSimLoadingBanner();
 
-    const formattedName = formatStandingsPlayerName(targetPlayer);
-    setElText('selectedPlayerName', formattedName);
-    setElText('selectedPlayerTable', myMatch ? `(Stół #${myMatch.table_number || myMatch.tableNumber || '?'} vs ${myOpponent?.name || 'BYE'})` : "");
-    const baseOmw = ((targetPlayer.opponent_match_win_percentage || 0) * 100).toFixed(1);
-    const baseGw = ((targetPlayer.game_win_percentage || 0) * 100).toFixed(1);
-    const baseOgw = ((targetPlayer.opponent_game_win_percentage || 0) * 100).toFixed(1);
-    setElText('selectedPlayerBaseStats', `Stan bazowy: ${targetPlayer.match_points} pkt | OMW: ${baseOmw}% | GW: ${baseGw}% | OGW: ${baseOgw}%`);
+    const ctx = prepareTieSimulationContext(
+        targetPlayer, myOpponent, standings, pairingsList, standingsMap,
+        cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble,
+        isLiveRoundInProgress
+    );
 
-    // 1. Pasek kontekstu rundy
-    const tieRoundContextEl = document.getElementById('tieRoundContext');
-    if (tieRoundContextEl) {
-        if (simResults.matchesLeft === 0) {
-            tieRoundContextEl.innerHTML = `
-                <span class="round-pill">🎯 Wszystkie rundy rozegrane (${totalRounds}/${totalRounds})</span>
-                <span class="round-pill" style="background: rgba(46, 204, 113, 0.2); color: #2ecc71; border-color: #2ecc71;">🏆 Turniej / Faza Swiss zakończona</span>
-            `;
-        } else {
-            let matchStatePill = "";
-            if (simResults.isCurrentMatchFinished) {
-                matchStatePill = `<span style="color: #2ecc71;">✅ Twój mecz w R${activeRound} jest zakończony${myMatch?._isWhatIf ? ' (What-If)' : ''}.</span>`;
-            } else if (myMatch) {
-                const safeTbl = escapeHtml(myMatch.table_number || myMatch.tableNumber || '?');
-                const safeOpp = escapeHtml(myOpponent?.name || 'BYE');
-                matchStatePill = `<span>⚔️ Stół #${safeTbl} vs <strong>${safeOpp}</strong></span>`;
-            }
-            
-            let roundWord = simResults.matchesLeft === 1 ? 'mecz' : (simResults.matchesLeft >= 2 && simResults.matchesLeft <= 4 ? 'mecze' : 'meczów');
-            tieRoundContextEl.innerHTML = `
-                <span class="round-pill">🎯 Runda ${activeRound} z ${totalRounds}</span>
-                <span class="round-pill">⏳ Pozostało do rozegrania: ${simResults.matchesLeft} ${roundWord}</span>
-                ${matchStatePill}
-            `;
+    const requestToken = tieSimRequestSeq + 1;
+
+    runTieSimulationAsync(ctx).then((simResults) => {
+        if (tieSimActiveRequestId !== requestToken) return;
+        if (String(currentSelectedPlayerId) !== selectedIdAtStart) return;
+        applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch, activeRound, totalRounds, cutSize);
+    }).catch((err) => {
+        console.error('Błąd symulacji TIE:', err);
+        if (String(currentSelectedPlayerId) !== selectedIdAtStart) return;
+        const banner = document.getElementById('tieRecommendationBanner');
+        if (banner) {
+            banner.className = 'recommendation-box rec-danger';
+            banner.innerHTML = '🛑 <strong>Błąd symulacji TIE.</strong> Spróbuj ponownie wybrać gracza.';
         }
-    }
-
-    // Widoczność sekcji scenariuszy bieżącego meczu (ukrywamy, gdy faza Swiss jest zakończona)
-    const currentMatchScenariosWrapper = document.getElementById('currentMatchScenariosWrapper');
-    if (currentMatchScenariosWrapper) {
-        currentMatchScenariosWrapper.style.display = simResults.matchesLeft === 0 ? 'none' : 'block';
-    }
-
-    // 2. Podpowiedź: Czy 2 remisy z rzędu dają Top Cut?
-    renderDoubleTiePrompt(simResults, targetPlayer, myOpponent, totalRounds);
-
-    // 3. Ścieżki awansu (Scenariusze wielorundowe)
-    renderMultiRoundScenarios(simResults);
-
-    // 4. Scenariusze dla obecnego pojedynczego meczu
-    const currentMatchBasePts = targetPlayer.match_points;
-    setElText('tieCurrentRoundNum', activeRound);
-    setElText('chanceTieDisplay', simResults.chanceTie + "%");
-    setElText('ptsTieDisplay', `Pkt po TIE: ${currentMatchBasePts + 1}`);
-    setElText('oppTieChanceDisplay', myOpponent ? `Rywal po TIE: ${simResults.oppChanceTie}%` : `Brak rywala`);
-    
-    setElText('chanceWinDisplay', simResults.chanceWin + "%");
-    setElText('ptsWinDisplay', `Pkt po WIN: ${currentMatchBasePts + 3}`);
-    
-    setElText('chanceLossDisplay', simResults.chanceLoss + "%");
-    setElText('ptsLossDisplay', `Pkt po LOSS: ${currentMatchBasePts}`);
-
-    // 5. Główny baner z poradą taktyczną
-    updateRecommendationBanner(simResults, myMatch, targetPlayer, myOpponent, activeRound, totalRounds);
-
-    // 6. Rozstawienie (Seeding) i przywilej Play/Draw w Top Cut
-    renderPlayDrawSeedingPanel(targetPlayer, myOpponent, simResults.isCurrentMatchFinished, cachedLiveStandings, cutSize);
-
-    // 7. Sąsiednie stoły Bubble (Szybki What-If)
-    renderBubbleNeighborsWhatIf(targetPlayer, pairingsList, standingsMap, cutSize);
-
-    // 8–9. Ciężkie panele: przy dużym N wyłącz bracket; predictor zostaje (O(N), on-demand)
-    const playerCount = latestData.playerCount || standings.length;
-    if (!shouldGateHeavyUi(playerCount)) {
-        renderTopCutBracketPanel(cachedLiveStandings, cutSize);
-    } else {
-        const bracketPanel = document.getElementById('topCutBracketPanel');
-        if (bracketPanel) bracketPanel.style.display = 'none';
-    }
-    recalculateNextRoundPairingsPredictor(simResults, targetPlayer, activeRound, totalRounds);
-
-    // Odśwież wiersz LIVE wybranego gracza (badge/strategia z prawdziwego MC, nie heurystyki)
-    renderLiveStandingsTable();
+    });
 }
-
 function renderDoubleTiePrompt(sim, targetPlayer, myOpponent, totalRounds) {
     const panel = document.getElementById('doubleTiePromptPanel');
     const titleEl = document.getElementById('doubleTiePromptTitle');
@@ -1771,9 +1876,8 @@ function renderMultiRoundScenarios(sim) {
     `).join('');
 }
 
-function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, currentRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress = true, simCountOverride = null) {
-    const playerCount = Array.isArray(standings) ? standings.length : 0;
-    const SIM_COUNT = Math.max(20, Number(simCountOverride) || getAdaptiveSimCount(playerCount));
+function prepareTieSimulationContext(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, currentRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress = true, simCountOverride = null) {
+    const fullPlayerCount = Array.isArray(standings) ? standings.length : 0;
     const targetId = targetPlayer.player.id;
     const opponentId = myOpponent?.id || null;
 
@@ -1784,7 +1888,6 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
     const liveUnfinishedMatches = [];
     const completedRoundOpponents = new Map();
 
-    // Jeśli runda na żywo jest w toku, sprawdzamy status trwających stołów i doliczamy delty punktowe
     if (isLiveRoundInProgress) {
         for (const m of pairingsList) {
             const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
@@ -1794,7 +1897,7 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
                 const status = (m.status || m.state || "").toUpperCase();
                 const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
                 const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
-                
+
                 if (isComplete) {
                     isCurrentMatchFinished = true;
                     const isP1 = (p1 && String(p1.id) === String(targetId));
@@ -1827,16 +1930,6 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
         }
     });
 
-    const basePlayers = standings.map(p => ({
-        id: p.player.id,
-        name: p.player.best_identifier,
-        points: p.match_points,
-        baseOmwp: p.opponent_match_win_percentage || 0.33,
-        gwp: p.game_win_percentage || 0.33,
-        ogwp: p.opponent_game_win_percentage || 0.33,
-        activeOpponentId: roundPairingPairs.get(p.player.id) || null
-    }));
-
     if (isLiveRoundInProgress) {
         pairingsList.forEach(m => {
             const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
@@ -1864,294 +1957,107 @@ function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList,
                     if (id1) fixedMatchDeltas.set(id1, 0);
                     if (id2) fixedMatchDeltas.set(id2, 3);
                 }
-            } else {
-                if (id1 && id2) {
-                    liveUnfinishedMatches.push({ id1, id2 });
-                }
+            } else if (id1 && id2) {
+                liveUnfinishedMatches.push({ id1, id2 });
             }
         });
     }
+
+    const targetBasePts = targetPlayer.match_points + (isCurrentMatchFinished ? targetFixedRoundDelta : 0);
+    const maxGain = matchesLeft * 3;
+    // Max punktow targetu: baza (z delty) + pozostale otwarte mecze * 3
+    const targetCap = targetBasePts + (isCurrentMatchFinished ? matchesLeft * 3 : Math.max(0, matchesLeft - 1) * 3);
+
+    const SCOPE_FULL_FIELD_LIMIT = 250;
+    let scopedStandings = standings;
+    let fixedAheadCount = 0;
+    let scoped = false;
+
+    if (fullPlayerCount > SCOPE_FULL_FIELD_LIMIT) {
+        const low = Math.max(0, Math.min(targetBasePts, projectedFinalBubble) - maxGain - 3);
+        const high = Math.max(targetCap, projectedFinalBubble) + 3;
+        const kept = [];
+        for (const p of standings) {
+            const pts = p.match_points || 0;
+            const pid = p.player?.id;
+            const isTarget = String(pid) === String(targetId);
+            const isOpp = opponentId && String(pid) === String(opponentId);
+            if (isTarget || isOpp || (pts >= low && pts <= high)) {
+                kept.push(p);
+            } else if (pts > targetCap) {
+                fixedAheadCount++;
+            }
+        }
+        const minKeep = Math.min(fullPlayerCount, Math.max(cutSize * 5, 120));
+        if (kept.length >= Math.min(minKeep, Math.floor(fullPlayerCount * 0.15)) || kept.length >= 80) {
+            scopedStandings = kept;
+            scoped = true;
+        } else {
+            fixedAheadCount = 0;
+            scopedStandings = standings;
+            scoped = false;
+        }
+    }
+
+    const scopedIds = new Set(scopedStandings.map(p => p.player.id));
+    const basePlayers = scopedStandings.map(p => ({
+        id: p.player.id,
+        name: p.player.best_identifier,
+        points: p.match_points,
+        baseOmwp: p.opponent_match_win_percentage || 0.33,
+        gwp: p.game_win_percentage || 0.33,
+        ogwp: p.opponent_game_win_percentage || 0.33,
+        activeOpponentId: roundPairingPairs.get(p.player.id) || null
+    }));
 
     const oppBasePlayer = opponentId ? basePlayers.find(p => p.id === opponentId) : null;
-    const targetBasePts = targetPlayer.match_points + (isCurrentMatchFinished ? targetFixedRoundDelta : 0);
-    const oppBasePts = oppBasePlayer ? (oppBasePlayer.points + (isCurrentMatchFinished ? opponentFixedRoundDelta : 0)) : 0;
+    const oppBasePts = oppBasePlayer
+        ? (oppBasePlayer.points + (isCurrentMatchFinished ? opponentFixedRoundDelta : 0))
+        : 0;
 
-    let tieSuccesses = 0;
-    let oppTieSuccesses = 0;
-    let winSuccesses = 0;
-    let lossSuccesses = 0;
+    const scopedUnfinished = liveUnfinishedMatches.filter(m => scopedIds.has(m.id1) && scopedIds.has(m.id2));
+    const scopedFixedDeltas = [];
+    fixedMatchDeltas.forEach((delta, id) => {
+        if (scopedIds.has(id)) scopedFixedDeltas.push([id, delta]);
+    });
+    const scopedCompletedOpponents = [];
+    completedRoundOpponents.forEach((opp, id) => {
+        if (scopedIds.has(id)) scopedCompletedOpponents.push([id, opp]);
+    });
 
-    let doubleTieSuccesses = 0;
-    let oppDoubleTieSuccesses = 0;
-    let winTieSuccesses = 0;
-    let winLossSuccesses = 0;
-    let tieLossSuccesses = 0;
-    let doubleWinSuccesses = 0;
-
-    let tripleTieSuccesses = 0;
-    let oppTripleTieSuccesses = 0;
-    let winDoubleTieSuccesses = 0;
-    let oppWinDoubleTieSuccesses = 0;
-    let winTieLossSuccesses = 0;
-    let twoWinLossSuccesses = 0;
-    let twoWinTieSuccesses = 0;
-    let tripleWinSuccesses = 0;
-
-    let simBubbleSum = 0;
-
-    const rollSingleMatchPts = () => {
-        const r = Math.random();
-        if (r < 0.08) return 1;
-        if (r < 0.54) return 3;
-        return 0;
-    };
-
-    for (let simIdx = 0; simIdx < SIM_COUNT; simIdx++) {
-        const simBoard = basePlayers.map(p => {
-            const completedOpp = completedRoundOpponents.get(p.id);
-            return {
-                id: p.id,
-                name: p.name,
-                points: p.points + (fixedMatchDeltas.get(p.id) || 0),
-                baseOmwp: p.baseOmwp,
-                gwp: p.gwp,
-                ogwp: p.ogwp,
-                opponents: completedOpp ? [completedOpp] : []
-            };
-        });
-
-        const boardMap = new Map();
-        simBoard.forEach(p => boardMap.set(p.id, p));
-
-        liveUnfinishedMatches.forEach(m => {
-            const p1 = boardMap.get(m.id1);
-            const p2 = boardMap.get(m.id2);
-            if (!p1 || !p2) return;
-
-            const roll = Math.random();
-            if (roll < 0.08) {
-                p1.points += 1;
-                p2.points += 1;
-            } else if (roll < 0.54) {
-                p1.points += 3;
-            } else {
-                p2.points += 3;
-            }
-            p1.opponents.push(p2.id);
-            p2.opponents.push(p1.id);
-        });
-
-        for (let r = currentRound + 1; r <= totalRounds; r++) {
-            simBoard.sort((a, b) => {
-                if (b.points !== a.points) return b.points - a.points;
-                return (Math.random() - 0.5);
-            });
-
-            const isFinalRound = (r === totalRounds);
-            const currentBubbleBeforeRound = simBoard[Math.min(cutSize - 1, simBoard.length - 1)]?.points || projectedFinalBubble;
-
-            for (let pi = 0; pi < simBoard.length; pi += 2) {
-                if (pi + 1 >= simBoard.length) {
-                    simBoard[pi].points += 3;
-                    continue;
-                }
-
-                const p1 = simBoard[pi];
-                const p2 = simBoard[pi + 1];
-                p1.opponents.push(p2.id);
-                p2.opponents.push(p1.id);
-
-                const bothCanID = isFinalRound && (p1.points > currentBubbleBeforeRound && p2.points > currentBubbleBeforeRound);
-
-                const roll = Math.random();
-                if (bothCanID && roll < 0.75) {
-                    p1.points += 1;
-                    p2.points += 1;
-                } else if (roll < 0.08) {
-                    p1.points += 1;
-                    p2.points += 1;
-                } else if (roll < 0.54) {
-                    p1.points += 3;
-                } else {
-                    p2.points += 3;
-                }
-            }
-        }
-
-        // Niezależne rzuty na kolejne mecze po 1., 2. i 3. zaplanowanym meczu
-        let targetAutoAfter1 = 0;
-        let oppAutoAfter1 = 0;
-        let targetAutoAfter2 = 0;
-        let oppAutoAfter2 = 0;
-        let targetAutoAfter3 = 0;
-        let oppAutoAfter3 = 0;
-
-        for (let mIdx = 1; mIdx < matchesLeft; mIdx++) {
-            const tRoll = rollSingleMatchPts();
-            const oRoll = rollSingleMatchPts();
-            targetAutoAfter1 += tRoll;
-            oppAutoAfter1 += oRoll;
-            if (mIdx >= 2) {
-                targetAutoAfter2 += tRoll;
-                oppAutoAfter2 += oRoll;
-            }
-            if (mIdx >= 3) {
-                targetAutoAfter3 += tRoll;
-                oppAutoAfter3 += oRoll;
-            }
-        }
-
-        const baseWeight = Math.max(1, totalRounds - matchesLeft);
-        simBoard.forEach(p => {
-            let oppMwpSum = 0;
-            p.opponents.forEach(oppId => {
-                const opp = boardMap.get(oppId);
-                if (opp) {
-                    oppMwpSum += Math.max(0.3333, opp.points / (totalRounds * 3));
-                } else {
-                    oppMwpSum += 0.3333;
-                }
-            });
-            p.finalOmwp = ((p.baseOmwp * baseWeight) + oppMwpSum) / (baseWeight + p.opponents.length);
-        });
-
-        const sortedEndPts = simBoard.map(p => p.points).sort((a, b) => b - a);
-        simBubbleSum += sortedEndPts[Math.min(cutSize - 1, sortedEndPts.length - 1)] || 0;
-
-        const checkPlayerCut = (playerId, simPoints, simOmwp, simGwp, simOgwp, correlatedOppId = null, correlatedOppPts = undefined) => {
-            let playersAhead = 0;
-            for (const p of simBoard) {
-                if (p.id === playerId) continue;
-                const pPts = (correlatedOppId && p.id === correlatedOppId && correlatedOppPts !== undefined) ? correlatedOppPts : p.points;
-                if (pPts > simPoints) {
-                    playersAhead++;
-                } else if (pPts === simPoints) {
-                    if (p.finalOmwp > simOmwp) {
-                        playersAhead++;
-                    } else if (p.finalOmwp === simOmwp) {
-                        if ((p.gwp || 0) > (simGwp || 0)) {
-                            playersAhead++;
-                        } else if ((p.gwp || 0) === (simGwp || 0)) {
-                            if ((p.ogwp || 0) > (simOgwp || 0)) {
-                                playersAhead++;
-                            }
-                        }
-                    }
-                }
-            }
-            const rank = playersAhead + 1;
-            if (cutRule === 'hard') {
-                return rank <= cutSize;
-            } else {
-                const sortedPoints = [];
-                for (const p of simBoard) {
-                    if (p.id === playerId) continue;
-                    const pPts = (correlatedOppId && p.id === correlatedOppId && correlatedOppPts !== undefined) ? correlatedOppPts : p.points;
-                    sortedPoints.push(pPts);
-                }
-                sortedPoints.push(simPoints);
-                sortedPoints.sort((a, b) => b - a);
-                const bubbleIdx = Math.min(cutSize - 1, sortedPoints.length - 1);
-                return simPoints >= sortedPoints[bubbleIdx];
-            }
-        };
-
-        const targetP = boardMap.get(targetId);
-        const oppP = opponentId ? boardMap.get(opponentId) : null;
-        const targetOmwp = targetP?.finalOmwp || 0.5;
-        const oppOmwp = oppP?.finalOmwp || 0.5;
-        const targetGwp = targetP?.gwp || 0.33;
-        const oppGwp = oppP?.gwp || 0.33;
-        const targetOgwp = targetP?.ogwp || 0.33;
-        const oppOgwp = oppP?.ogwp || 0.33;
-
-        const corrOppId = (!isCurrentMatchFinished && opponentId) ? opponentId : null;
-        const corrTargetId = (!isCurrentMatchFinished && opponentId) ? targetId : null;
-
-        // 1. Scenariusz REMIS w bieżącym meczu
-        const tPtsTie = targetBasePts + 1 + targetAutoAfter1;
-        const oPtsTie = oppBasePts + 1 + oppAutoAfter1;
-        if (checkPlayerCut(targetId, tPtsTie, targetOmwp, targetGwp, targetOgwp, corrOppId, oPtsTie)) tieSuccesses++;
-
-        if (oppP) {
-            if (checkPlayerCut(opponentId, oPtsTie, oppOmwp, oppGwp, oppOgwp, corrTargetId, tPtsTie)) oppTieSuccesses++;
-        }
-
-        // 2. Scenariusz WYGRANA w bieżącym meczu (rywal przegrywa bieżący mecz)
-        const tPtsWin = targetBasePts + 3 + targetAutoAfter1;
-        const oPtsWhenTargetWins = oppBasePts + 0 + oppAutoAfter1;
-        if (checkPlayerCut(targetId, tPtsWin, targetOmwp, targetGwp, targetOgwp, corrOppId, oPtsWhenTargetWins)) winSuccesses++;
-
-        // 3. Scenariusz PRZEGRANA w bieżącym meczu (rywal wygrywa bieżący mecz)
-        const tPtsLoss = targetBasePts + 0 + targetAutoAfter1;
-        const oPtsWhenTargetLoses = oppBasePts + 3 + oppAutoAfter1;
-        if (checkPlayerCut(targetId, tPtsLoss, targetOmwp, targetGwp, targetOgwp, corrOppId, oPtsWhenTargetLoses)) lossSuccesses++;
-
-        // 4. Scenariusze 2-meczowe (2x TIE, WIN+TIE, WIN+LOSS, TIE+LOSS, 2x WIN)
-        const tPts2Tie = targetBasePts + 2 + targetAutoAfter2;
-        const oPts2Tie = oppBasePts + 2 + oppAutoAfter2;
-        if (checkPlayerCut(targetId, tPts2Tie, targetOmwp, targetGwp, targetOgwp, corrOppId, oPts2Tie)) doubleTieSuccesses++;
-        if (oppP && checkPlayerCut(opponentId, oPts2Tie, oppOmwp, oppGwp, oppOgwp, corrTargetId, tPts2Tie)) oppDoubleTieSuccesses++;
-
-        if (checkPlayerCut(targetId, targetBasePts + 4 + targetAutoAfter2, targetOmwp, targetGwp, targetOgwp)) winTieSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 3 + targetAutoAfter2, targetOmwp, targetGwp, targetOgwp)) winLossSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 1 + targetAutoAfter2, targetOmwp, targetGwp, targetOgwp)) tieLossSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 6 + targetAutoAfter2, targetOmwp, targetGwp, targetOgwp)) doubleWinSuccesses++;
-
-        // 5. Scenariusze 3-meczowe (dla dużych turniejów DLC, gdy pozostały 3 rundy)
-        const tPts3Tie = targetBasePts + 3 + targetAutoAfter3;
-        const oPts3Tie = oppBasePts + 3 + oppAutoAfter3;
-        if (checkPlayerCut(targetId, tPts3Tie, targetOmwp, targetGwp, targetOgwp, corrOppId, oPts3Tie)) tripleTieSuccesses++;
-        if (oppP && checkPlayerCut(opponentId, oPts3Tie, oppOmwp, oppGwp, oppOgwp, corrTargetId, tPts3Tie)) oppTripleTieSuccesses++;
-
-        const tPtsWin2Tie = targetBasePts + 5 + targetAutoAfter3;
-        const oPtsWin2Tie = oppBasePts + 5 + oppAutoAfter3;
-        if (checkPlayerCut(targetId, tPtsWin2Tie, targetOmwp, targetGwp, targetOgwp)) winDoubleTieSuccesses++;
-        if (oppP && checkPlayerCut(opponentId, oPtsWin2Tie, oppOmwp, oppGwp, oppOgwp)) oppWinDoubleTieSuccesses++;
-
-        if (checkPlayerCut(targetId, targetBasePts + 4 + targetAutoAfter3, targetOmwp, targetGwp, targetOgwp)) winTieLossSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 6 + targetAutoAfter3, targetOmwp, targetGwp, targetOgwp)) twoWinLossSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 7 + targetAutoAfter3, targetOmwp, targetGwp, targetOgwp)) twoWinTieSuccesses++;
-        if (checkPlayerCut(targetId, targetBasePts + 9 + targetAutoAfter3, targetOmwp, targetGwp, targetOgwp)) tripleWinSuccesses++;
-    }
-
-    const basePtsForCalc = targetBasePts;
-    const simProjectedBubble = simBubbleSum > 0 ? Math.round(simBubbleSum / SIM_COUNT) : projectedFinalBubble;
+    const simCount = Math.max(20, Number(simCountOverride) || getAdaptiveSimCount(fullPlayerCount));
 
     return {
+        simCount,
+        targetId,
+        opponentId,
+        cutSize,
+        cutRule,
+        currentRound,
+        totalRounds,
+        projectedFinalBubble,
         matchesLeft,
         isCurrentMatchFinished,
-        chanceTie: Math.round((tieSuccesses / SIM_COUNT) * 100),
-        oppChanceTie: Math.round((oppTieSuccesses / SIM_COUNT) * 100),
-        chanceWin: Math.round((winSuccesses / SIM_COUNT) * 100),
-        chanceLoss: Math.round((lossSuccesses / SIM_COUNT) * 100),
-        chanceDoubleTie: Math.round((doubleTieSuccesses / SIM_COUNT) * 100),
-        oppChanceDoubleTie: Math.round((oppDoubleTieSuccesses / SIM_COUNT) * 100),
-        chanceWinTie: Math.round((winTieSuccesses / SIM_COUNT) * 100),
-        chanceWinLoss: Math.round((winLossSuccesses / SIM_COUNT) * 100),
-        chanceTieLoss: Math.round((tieLossSuccesses / SIM_COUNT) * 100),
-        chanceDoubleWin: Math.round((doubleWinSuccesses / SIM_COUNT) * 100),
-        chanceTripleTie: Math.round((tripleTieSuccesses / SIM_COUNT) * 100),
-        oppChanceTripleTie: Math.round((oppTripleTieSuccesses / SIM_COUNT) * 100),
-        chanceWinDoubleTie: Math.round((winDoubleTieSuccesses / SIM_COUNT) * 100),
-        oppChanceWinDoubleTie: Math.round((oppWinDoubleTieSuccesses / SIM_COUNT) * 100),
-        chanceWinTieLoss: Math.round((winTieLossSuccesses / SIM_COUNT) * 100),
-        chanceTwoWinLoss: Math.round((twoWinLossSuccesses / SIM_COUNT) * 100),
-        chanceTwoWinTie: Math.round((twoWinTieSuccesses / SIM_COUNT) * 100),
-        chanceTripleWin: Math.round((tripleWinSuccesses / SIM_COUNT) * 100),
-        ptsDoubleTie: basePtsForCalc + 2,
-        ptsWinTie: basePtsForCalc + 4,
-        ptsWinLoss: basePtsForCalc + 3,
-        ptsTieLoss: basePtsForCalc + 1,
-        ptsDoubleWin: basePtsForCalc + 6,
-        ptsTripleTie: basePtsForCalc + 3,
-        ptsWinDoubleTie: basePtsForCalc + 5,
-        ptsWinTieLoss: basePtsForCalc + 4,
-        ptsTwoWinLoss: basePtsForCalc + 6,
-        ptsTwoWinTie: basePtsForCalc + 7,
-        ptsTripleWin: basePtsForCalc + 9,
-        projectedBubble: simProjectedBubble
+        targetBasePts,
+        oppBasePts,
+        fixedAheadCount: scoped ? fixedAheadCount : 0,
+        basePlayers,
+        fixedMatchDeltas: scopedFixedDeltas,
+        completedRoundOpponents: scopedCompletedOpponents,
+        liveUnfinishedMatches: scoped ? scopedUnfinished : liveUnfinishedMatches.map(m => ({ id1: m.id1, id2: m.id2 })),
+        scoped,
+        scopedPlayerCount: basePlayers.length,
+        fullPlayerCount
     };
+}
+
+function runLiveTieSimulation(targetPlayer, myOpponent, standings, pairingsList, standingsMap, cutSize, cutRule, currentRound, totalRounds, projectedFinalBubble, isLiveRoundInProgress = true, simCountOverride = null) {
+    const ctx = prepareTieSimulationContext(
+        targetPlayer, myOpponent, standings, pairingsList, standingsMap,
+        cutSize, cutRule, currentRound, totalRounds, projectedFinalBubble,
+        isLiveRoundInProgress, simCountOverride
+    );
+    return getTieSimCore().executePreparedTieSimulation(ctx);
 }
 
 function updateRecommendationBanner(sim, myMatch, targetPlayer, myOpponent, activeRound, totalRounds) {
@@ -4234,6 +4140,7 @@ if (typeof module !== 'undefined' && module.exports) {
         escapeHtml,
         escapeJsAttr,
         runLiveTieSimulation,
+        prepareTieSimulationContext,
         getAdaptiveSimCount,
         shouldGateHeavyUi,
         LARGE_EVENT_PLAYER_THRESHOLD,
