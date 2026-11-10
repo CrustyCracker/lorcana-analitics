@@ -52,35 +52,35 @@ function lorcana_cache_ttl_seconds(array $payload) {
         && ($totalRounds <= 0 || $activeRound <= $totalRounds)
         && !in_array($display, ['complete', 'completed', 'finished'], true);
 
-    // Pairings in progress / standings lagging → refresh aggressively
+    // Live Swiss default cadence ~30s (was ~10–20s).
     if ($inLiveSwiss && $standingsRound < $activeRound) {
         if ($playerCount >= 1000) {
-            return 20;
+            return 45;
         }
         if ($playerCount >= 400) {
-            return 15;
+            return 35;
         }
-        return 12;
+        return 30;
     }
 
     if ($inLiveSwiss) {
         if ($playerCount >= 1000) {
-            return 30;
+            return 45;
         }
         if ($playerCount >= 400) {
-            return 25;
+            return 35;
         }
-        return 20;
+        return 30;
     }
 
     // Default / unknown status
     if ($playerCount >= 1000) {
-        return 45;
+        return 60;
     }
     if ($playerCount >= 400) {
-        return 30;
+        return 45;
     }
-    return 20;
+    return 30;
 }
 
 /** How often the background poller should revisit an event (may equal soft TTL). */

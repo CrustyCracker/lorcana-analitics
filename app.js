@@ -915,7 +915,7 @@ function startTracking(ev) {
     const forceRefresh = Boolean(ev && ev.shiftKey);
     fetchData(eventId, { forceRefresh });
     if (trackingInterval) clearInterval(trackingInterval);
-    trackingInterval = setInterval(() => fetchData(eventId), 20000);
+    trackingInterval = setInterval(() => fetchData(eventId), 30000);
 }
 
 function isTestsPage() {

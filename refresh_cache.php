@@ -5,7 +5,7 @@
  * CLI (XAMPP / Task Scheduler / loop):
  *   php refresh_cache.php
  *   php refresh_cache.php --event=1233041 --force
- *   php refresh_cache.php --loop --sleep=5
+ *   php refresh_cache.php --loop --sleep=30
  *
  * HTTP (shared hosting cron, e.g. Voj4k):
  *   GET refresh_cache.php?key=YOUR_CRON_KEY
@@ -38,7 +38,7 @@ function lorcana_parse_cli_args(array $argv) {
         'eventId' => null,
         'force' => false,
         'loop' => false,
-        'sleep' => 5,
+        'sleep' => 30,
         'once' => true,
     ];
     foreach (array_slice($argv, 1) as $arg) {
