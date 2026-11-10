@@ -88,17 +88,37 @@
             for (let ui = 0; ui < liveUnfinishedMatches.length; ui++) {
                 const m = liveUnfinishedMatches[ui];
                 const p1 = boardMap.get(m.id1);
-                const p2 = boardMap.get(m.id2);
-                if (!p1 || !p2) continue;
+                if (!p1) continue;
 
-                const roll = Math.random();
-                if (roll < 0.08) {
-                    p1.points += 1;
-                    p2.points += 1;
-                } else if (roll < 0.54) {
-                    p1.points += 3;
+                // Ghost: in-scope player paired with someone outside the scoped board.
+                // Dropping these matches understates the field and can falsely mark TIE as safe.
+                if (m.ghost || m.id2 == null) {
+                    if (typeof m.forcedPts === 'number') {
+                        p1.points += m.forcedPts;
+                    } else {
+                        const roll = Math.random();
+                        if (roll < 0.08) p1.points += 1;
+                        else if (roll < 0.54) p1.points += 3;
+                    }
+                    continue;
+                }
+
+                const p2 = boardMap.get(m.id2);
+                if (!p2) continue;
+
+                if (typeof m.forcedPts1 === 'number' || typeof m.forcedPts2 === 'number') {
+                    p1.points += Number(m.forcedPts1) || 0;
+                    p2.points += Number(m.forcedPts2) || 0;
                 } else {
-                    p2.points += 3;
+                    const roll = Math.random();
+                    if (roll < 0.08) {
+                        p1.points += 1;
+                        p2.points += 1;
+                    } else if (roll < 0.54) {
+                        p1.points += 3;
+                    } else {
+                        p2.points += 3;
+                    }
                 }
                 p1.opponents.push(p2.id);
                 p2.opponents.push(p1.id);

@@ -2495,7 +2495,7 @@ function renderDoubleTiePrompt(sim, targetPlayer, myOpponent, totalRounds) {
         if (sim.chanceTie >= 90) {
             badgeEl.className = 'verdict-badge verdict-yes';
             badgeEl.innerText = `TAK (${sim.chanceTie}%)`;
-            descEl.innerHTML = `🎉 <strong>PEWNY CUT:</strong> To ostatnia runda! Remis daje Ci łącznie <strong>${(targetPlayer.livePoints || targetPlayer.match_points) + 1} pkt</strong> i <strong>${sim.chanceTie}%</strong> gwarancji awansu do Top Cutu.`;
+            descEl.innerHTML = `🎉 <strong>BARDZO WYSOKA SZANSA (MC):</strong> To ostatnia runda! Remis daje Ci łącznie <strong>${(targetPlayer.livePoints || targetPlayer.match_points) + 1} pkt</strong> i szacunek Monte Carlo <strong>${sim.chanceTie}%</strong> na Top Cut — to nie jest matematyczna pewność.`;
         } else if (sim.chanceTie >= 75) {
             badgeEl.className = 'verdict-badge verdict-maybe';
             badgeEl.innerText = `PRAWDOPODOBNE (${sim.chanceTie}%)`;
@@ -2714,8 +2714,10 @@ function prepareTieSimulationContext(targetPlayer, myOpponent, standings, pairin
 
     const targetBasePts = targetPlayer.match_points + (isCurrentMatchFinished ? targetFixedRoundDelta : 0);
     const maxGain = matchesLeft * 3;
-    // Max punktow targetu: baza (z delty) + pozostale otwarte mecze * 3
-    const targetCap = targetBasePts + (isCurrentMatchFinished ? matchesLeft * 3 : Math.max(0, matchesLeft - 1) * 3);
+    // Max reachable points: base (incl. finished live delta) + every still-open match * 3.
+    // matchesLeft already counts an unfinished current match, so do NOT subtract 1 here —
+    // understating targetCap mis-labels catchable players as fixedAhead and warps scope.
+    const targetCap = targetBasePts + matchesLeft * 3;
 
     const SCOPE_FULL_FIELD_LIMIT = 250;
     let scopedStandings = standings;
@@ -2764,7 +2766,47 @@ function prepareTieSimulationContext(targetPlayer, myOpponent, standings, pairin
         ? (oppBasePlayer.points + (isCurrentMatchFinished ? opponentFixedRoundDelta : 0))
         : 0;
 
-    const scopedUnfinished = liveUnfinishedMatches.filter(m => scopedIds.has(m.id1) && scopedIds.has(m.id2));
+    const isTargetPair = (id1, id2) => {
+        if (isCurrentMatchFinished || !opponentId) return false;
+        const a = String(id1);
+        const b = String(id2);
+        const t = String(targetId);
+        const o = String(opponentId);
+        return (a === t && b === o) || (a === o && b === t);
+    };
+
+    // Target/opponent unfinished match is evaluated as hypothetical W/T/L scenarios —
+    // do not also RNG it on the board (points overridden anyway). Still record opponent
+    // edges so OMWP blending includes the current-round pairing.
+    if (!isCurrentMatchFinished && opponentId && scopedIds.has(targetId)) {
+        if (!completedRoundOpponents.has(targetId)) completedRoundOpponents.set(targetId, opponentId);
+        if (scopedIds.has(opponentId) && !completedRoundOpponents.has(opponentId)) {
+            completedRoundOpponents.set(opponentId, targetId);
+        }
+    }
+
+    const scopedUnfinished = [];
+    for (const m of liveUnfinishedMatches) {
+        if (isTargetPair(m.id1, m.id2)) continue;
+        const in1 = scopedIds.has(m.id1);
+        const in2 = scopedIds.has(m.id2);
+        if (in1 && in2) {
+            scopedUnfinished.push({ id1: m.id1, id2: m.id2 });
+        } else if (scoped && (in1 || in2)) {
+            // Cross-boundary pairing: keep the in-scope player’s result via a ghost opponent.
+            // Omitting these was a false-safe-TIE bug (pair-downs never scored).
+            scopedUnfinished.push({
+                id1: in1 ? m.id1 : m.id2,
+                id2: null,
+                ghost: true
+            });
+        }
+    }
+
+    const fullUnfinished = liveUnfinishedMatches
+        .filter(m => !isTargetPair(m.id1, m.id2))
+        .map(m => ({ id1: m.id1, id2: m.id2 }));
+
     const scopedFixedDeltas = [];
     fixedMatchDeltas.forEach((delta, id) => {
         if (scopedIds.has(id)) scopedFixedDeltas.push([id, delta]);
@@ -2793,10 +2835,11 @@ function prepareTieSimulationContext(targetPlayer, myOpponent, standings, pairin
         basePlayers,
         fixedMatchDeltas: scopedFixedDeltas,
         completedRoundOpponents: scopedCompletedOpponents,
-        liveUnfinishedMatches: scoped ? scopedUnfinished : liveUnfinishedMatches.map(m => ({ id1: m.id1, id2: m.id2 })),
+        liveUnfinishedMatches: scoped ? scopedUnfinished : fullUnfinished,
         scoped,
         scopedPlayerCount: basePlayers.length,
-        fullPlayerCount
+        fullPlayerCount,
+        targetCap
     };
 }
 
