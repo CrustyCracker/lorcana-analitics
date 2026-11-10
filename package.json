@@ -4,8 +4,10 @@
   "description": "Lorcana Live Standings & Tournament Strategy Predictor",
   "main": "app.js",
   "scripts": {
-    "test": "node --test tests/",
-    "test:scenario": "node --test tests/scenario-terry-crusty-r8.test.js"
+    "test": "node --test ./tests/*.test.js",
+    "test:scenario": "node --test tests/scenario-terry-crusty-r8.test.js",
+    "stress:4k": "node scripts/stress-4k.js",
+    "stress:4k:quick": "node scripts/stress-4k.js --sizes=512,2000"
   },
   "keywords": [
     "lorcana",

@@ -142,6 +142,44 @@
             margin-bottom: 20px;
         }
 
+        /* Virtualized LIVE standings: fixed viewport, only ~window rows in DOM */
+        .live-virt-viewport {
+            width: 100%;
+            max-height: min(72vh, 704px);
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+            background: #181818;
+            border-radius: 8px;
+            border: 1px solid #2d2d2d;
+            margin-bottom: 8px;
+            position: relative;
+        }
+        .live-virt-viewport table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        .live-virt-viewport thead th {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            background: #222;
+        }
+        .live-virt-spacer td {
+            padding: 0 !important;
+            border: none !important;
+            height: 0;
+            line-height: 0;
+            font-size: 0;
+        }
+        .live-window-info {
+            font-size: 12px;
+            color: #888;
+            margin: 0 0 12px 0;
+            padding: 0 4px;
+        }
+
         table { 
             width: 100%; 
             border-collapse: collapse; 
@@ -1480,7 +1518,7 @@
     <button type="button" id="liveTableSearchClearBtn" class="quick-search-clear" onclick="clearLiveTableSearch()">✕ Wyczyść</button>
 </div>
 
-<div class="table-responsive">
+<div id="liveStandingsViewport" class="live-virt-viewport" onscroll="onLiveStandingsScroll(event)">
     <table>
         <thead>
             <tr>
@@ -1498,6 +1536,7 @@
         </tbody>
     </table>
 </div>
+<div id="liveWindowInfo" class="live-window-info" style="display: none;"></div>
 <div id="livePagination" class="pagination-bar" style="display: none;"></div>
 
 

@@ -68,14 +68,28 @@ if ($eventId === false || $eventId <= 0 || $eventId > 999999999) {
 }
 
 $cacheFile = __DIR__ . '/cache_' . $eventId . '.json';
-$cacheTime = 15;
+// Domyślny TTL; dla dużych eventów wydłużamy, żeby cold-load nie walił Hydraproxy przy każdym odświeżeniu.
+$cacheTime = 20;
 
 // Parametr nocache dozwolony wyłącznie z localhosta, aby zapobiec atakom DoS omijającym cache
 $noCache = isset($_GET['nocache']) && $isLocalRequest;
-if (!$noCache && file_exists($cacheFile) && (time() - filemtime($cacheFile) < $cacheTime)) {
-    @file_put_contents($lastEventFile, (string)$eventId, LOCK_EX);
-    echo file_get_contents($cacheFile);
-    exit;
+if (!$noCache && file_exists($cacheFile)) {
+    $age = time() - filemtime($cacheFile);
+    $rawCached = (string)@file_get_contents($cacheFile);
+    $cachedHint = json_decode($rawCached, true);
+    $hintPlayers = is_array($cachedHint) ? (int)($cachedHint['playerCount'] ?? 0) : 0;
+    if ($hintPlayers >= 1000) {
+        $cacheTime = 45;
+    } elseif ($hintPlayers >= 400) {
+        $cacheTime = 30;
+    }
+    if ($age < $cacheTime && $rawCached !== '') {
+        @file_put_contents($lastEventFile, (string)$eventId, LOCK_EX);
+        header('X-Lorcana-Cache: HIT');
+        header('X-Lorcana-Cache-Age: ' . $age);
+        echo $rawCached;
+        exit;
+    }
 }
 
 function fetchUrlWithStatus($url, $token = null, $allowLocalSslFallback = false) {
@@ -115,70 +129,208 @@ function fetchUrlWithStatus($url, $token = null, $allowLocalSslFallback = false)
     return ['body' => $output, 'code' => $httpCode];
 }
 
-/**
- * Pobiera WSZYSTKIE mecze rundy (paginacja Hydraproxy).
- * Wcześniej page_size=150 + page=1 ucinało pairings już od ~300 graczy.
- */
-function fetchAllPaginatedMatches($roundId, $token = null, $allowLocalSslFallback = false) {
+/** Rozmiar strony Hydraproxy — większy = mniej round-tripów przy cold-load 2k–4k. */
+define('LORCANA_MATCH_PAGE_SIZE', 250);
+define('LORCANA_MATCH_MAX_PAGES', 40); // 40 * 250 = 10k meczów
+
+function buildMatchesPageUrl($roundId, $page, $pageSize = LORCANA_MATCH_PAGE_SIZE) {
     $safeRoundId = (int)$roundId;
-    $pageSize = 150;
-    $page = 1;
-    $maxPages = 50; // 50 * 150 = 7500 meczów — zapas na DLC ~4k graczy
-    $allResults = [];
-    $lastPayload = null;
+    $page = (int)$page;
+    $pageSize = (int)$pageSize;
+    return "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safeRoundId}/matches/paginated/?page={$page}&page_size={$pageSize}&avoid_cache=false";
+}
 
-    while ($page <= $maxPages) {
-        $url = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safeRoundId}/matches/paginated/?page={$page}&page_size={$pageSize}&avoid_cache=false";
-        $res = fetchUrlWithStatus($url, $token, $allowLocalSslFallback);
-        $data = json_decode($res['body'], true);
-        if (!is_array($data)) {
-            break;
+/**
+ * Równoległy GET wielu URL-i (curl_multi). Zwraca mapę key => decoded JSON|null.
+ */
+function fetchUrlsParallel($urlsByKey, $token = null, $allowLocalSslFallback = false) {
+    $out = [];
+    if (empty($urlsByKey)) {
+        return $out;
+    }
+    if (!function_exists('curl_multi_init') || count($urlsByKey) === 1) {
+        foreach ($urlsByKey as $key => $url) {
+            $res = fetchUrlWithStatus($url, $token, $allowLocalSslFallback);
+            $data = json_decode($res['body'], true);
+            $out[$key] = is_array($data) ? $data : null;
         }
-        $lastPayload = $data;
-
-        if (isset($data['results']) && is_array($data['results'])) {
-            $chunk = $data['results'];
-        } elseif (isset($data['data']) && is_array($data['data'])) {
-            $chunk = $data['data'];
-        } elseif (array_keys($data) === range(0, count($data) - 1)) {
-            // Niespaginowana lista meczów
-            return [
-                'results' => $data,
-                'count' => count($data),
-                'next' => null,
-                'previous' => null
-            ];
-        } else {
-            break;
-        }
-
-        if (count($chunk) === 0) {
-            break;
-        }
-
-        foreach ($chunk as $row) {
-            $allResults[] = $row;
-        }
-
-        $totalCount = isset($data['count']) ? (int)$data['count'] : null;
-        $hasNext = !empty($data['next']);
-        if ($totalCount !== null && count($allResults) >= $totalCount) {
-            break;
-        }
-        if (!$hasNext && count($chunk) < $pageSize) {
-            break;
-        }
-        if (!$hasNext && $totalCount === null) {
-            break;
-        }
-        $page++;
+        return $out;
     }
 
-    if ($lastPayload === null) {
+    $mh = curl_multi_init();
+    $handles = [];
+    foreach ($urlsByKey as $key => $url) {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
+        curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
+        if ($allowLocalSslFallback) {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
+        } else {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+        }
+        curl_setopt($ch, CURLOPT_TIMEOUT, 12);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        $headers = [
+            'Accept: application/json',
+            'Content-Type: application/json',
+            'Origin: https://tcg.ravensburgerplay.com',
+            'Referer: https://tcg.ravensburgerplay.com/'
+        ];
+        if ($token) {
+            $headers[] = 'Authorization: ' . $token;
+        }
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+        curl_multi_add_handle($mh, $ch);
+        $handles[$key] = $ch;
+    }
+
+    $running = null;
+    do {
+        $mrc = curl_multi_exec($mh, $running);
+        if ($running) {
+            curl_multi_select($mh, 1.0);
+        }
+    } while ($running && $mrc === CURLM_OK);
+
+    foreach ($handles as $key => $ch) {
+        $body = curl_multi_getcontent($ch);
+        curl_multi_remove_handle($mh, $ch);
+        curl_close($ch);
+        $data = json_decode($body, true);
+        $out[$key] = is_array($data) ? $data : null;
+    }
+    curl_multi_close($mh);
+    return $out;
+}
+
+function extractMatchPageChunk($data) {
+    if (!is_array($data)) {
+        return [null, 'invalid'];
+    }
+    if (isset($data['results']) && is_array($data['results'])) {
+        return [$data['results'], 'paged'];
+    }
+    if (isset($data['data']) && is_array($data['data'])) {
+        return [$data['data'], 'paged'];
+    }
+    if ($data !== [] && array_keys($data) === range(0, count($data) - 1)) {
+        return [$data, 'flat'];
+    }
+    return [null, 'empty'];
+}
+
+/**
+ * Pobiera WSZYSTKIE mecze rundy.
+ * Strona 1 sekwencyjnie (żeby poznać count), potem pozostałe strony równolegle.
+ */
+function fetchAllPaginatedMatches($roundId, $token = null, $allowLocalSslFallback = false) {
+    $pageSize = LORCANA_MATCH_PAGE_SIZE;
+    $maxPages = LORCANA_MATCH_MAX_PAGES;
+
+    $page1 = fetchUrlsParallel(
+        ['p1' => buildMatchesPageUrl($roundId, 1, $pageSize)],
+        $token,
+        $allowLocalSslFallback
+    );
+    $data = $page1['p1'] ?? null;
+    if (!is_array($data)) {
         return null;
     }
 
-    $out = $lastPayload;
+    list($chunk, $kind) = extractMatchPageChunk($data);
+    if ($kind === 'flat') {
+        return [
+            'results' => $chunk,
+            'count' => count($chunk),
+            'next' => null,
+            'previous' => null
+        ];
+    }
+    if ($chunk === null) {
+        return null;
+    }
+
+    $pages = [1 => $chunk];
+    $lastPayload = $data;
+    $totalCount = isset($data['count']) ? (int)$data['count'] : null;
+    $hasNext = !empty($data['next']);
+
+    $pagesNeeded = 1;
+    if ($totalCount !== null && $totalCount > $pageSize) {
+        $pagesNeeded = (int)ceil($totalCount / $pageSize);
+    } elseif ($hasNext && count($chunk) >= $pageSize) {
+        // Brak count — dociągamy sekwencyjnie falami (równolegle po odkryciu next).
+        $pagesNeeded = 2;
+    }
+    $pagesNeeded = min($pagesNeeded, $maxPages);
+
+    if ($pagesNeeded > 1) {
+        $urls = [];
+        for ($p = 2; $p <= $pagesNeeded; $p++) {
+            $urls['p' . $p] = buildMatchesPageUrl($roundId, $p, $pageSize);
+        }
+        $fetched = fetchUrlsParallel($urls, $token, $allowLocalSslFallback);
+        foreach ($fetched as $key => $pageData) {
+            $pNum = (int)substr($key, 1);
+            list($pageChunk, $pageKind) = extractMatchPageChunk($pageData);
+            if ($pageKind === 'paged' && is_array($pageChunk) && count($pageChunk) > 0) {
+                $pages[$pNum] = $pageChunk;
+                $lastPayload = $pageData;
+                // Jeśli nie było count i ostatnia strona jest pełna + ma next — dociągamy kolejną falę.
+                if ($totalCount === null && count($pageChunk) >= $pageSize && !empty($pageData['next']) && $pNum >= $pagesNeeded && $pagesNeeded < $maxPages) {
+                    $extraPage = $pNum + 1;
+                    $extra = fetchUrlsParallel(
+                        ['p' . $extraPage => buildMatchesPageUrl($roundId, $extraPage, $pageSize)],
+                        $token,
+                        $allowLocalSslFallback
+                    );
+                    $extraData = $extra['p' . $extraPage] ?? null;
+                    list($extraChunk, $extraKind) = extractMatchPageChunk($extraData);
+                    if ($extraKind === 'paged' && is_array($extraChunk) && count($extraChunk) > 0) {
+                        $pages[$extraPage] = $extraChunk;
+                        $lastPayload = $extraData;
+                        $pagesNeeded = $extraPage;
+                        // Kontynuuj w pętli while poniżej jeśli nadal next
+                        while (
+                            $pagesNeeded < $maxPages
+                            && is_array($lastPayload)
+                            && !empty($lastPayload['next'])
+                            && count($pages[$pagesNeeded]) >= $pageSize
+                        ) {
+                            $nextP = $pagesNeeded + 1;
+                            $more = fetchUrlsParallel(
+                                ['p' . $nextP => buildMatchesPageUrl($roundId, $nextP, $pageSize)],
+                                $token,
+                                $allowLocalSslFallback
+                            );
+                            $moreData = $more['p' . $nextP] ?? null;
+                            list($moreChunk, $moreKind) = extractMatchPageChunk($moreData);
+                            if ($moreKind !== 'paged' || !is_array($moreChunk) || count($moreChunk) === 0) {
+                                break;
+                            }
+                            $pages[$nextP] = $moreChunk;
+                            $lastPayload = $moreData;
+                            $pagesNeeded = $nextP;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    ksort($pages, SORT_NUMERIC);
+    $allResults = [];
+    foreach ($pages as $pageChunk) {
+        foreach ($pageChunk as $row) {
+            $allResults[] = $row;
+        }
+    }
+
+    $out = is_array($lastPayload) ? $lastPayload : [];
     $out['results'] = $allResults;
     $out['count'] = count($allResults);
     $out['next'] = null;
@@ -259,157 +411,138 @@ if (!$pairingsRoundId && $standingsRoundId) {
     $activeRoundNumber = $standingsRoundNumber;
 }
 
-$standingsData = null;
-if ($standingsRoundId) {
-    $safeStandingsRoundId = (int)$standingsRoundId;
-    $standingsUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safeStandingsRoundId}/standings/";
-    $standingsRes = fetchUrlWithStatus($standingsUrl, null, $isLocalRequest);
-    $standingsData = json_decode($standingsRes['body'], true);
-}
-
-$pairingsData = null;
-if ($pairingsRoundId) {
-    $pairingsData = fetchAllPaginatedMatches($pairingsRoundId, $authToken, $isLocalRequest);
-}
-
 /**
- * Równoległe pobranie pełnych list meczów dla wielu rund (curl_multi).
- * Każda runda nadal paginuje we własnej pętli, ale rundy lecą równolegle.
+ * Równoległe pobranie pełnych list meczów dla wielu rund.
+ * Fala 1: page=1 wszystkich rund naraz (poznajemy count).
+ * Fala 2+: wszystkie brakujące strony wszystkich rund w jednym curl_multi.
  */
 function fetchAllPaginatedMatchesForRounds($roundIdsByKey, $token = null, $allowLocalSslFallback = false) {
     $out = [];
-    if (empty($roundIdsByKey) || !function_exists('curl_multi_init')) {
-        foreach ($roundIdsByKey as $key => $roundId) {
-            $out[$key] = fetchAllPaginatedMatches($roundId, $token, $allowLocalSslFallback);
-        }
+    if (empty($roundIdsByKey)) {
         return $out;
     }
 
-    // Prosty model: odpalamy fetchAllPaginatedMatches w... nadal sekwencyjnie wewnątrz,
-    // ale pierwsze strony wszystkich rund równolegle, potem dociągamy braki.
-    $pageSize = 150;
-    $maxPages = 50;
-    $states = [];
+    $pageSize = LORCANA_MATCH_PAGE_SIZE;
+    $maxPages = LORCANA_MATCH_MAX_PAGES;
+
+    // Fala 1 — pierwsze strony
+    $page1Urls = [];
     foreach ($roundIdsByKey as $key => $roundId) {
-        $states[$key] = [
-            'roundId' => (int)$roundId,
-            'page' => 1,
-            'allResults' => [],
-            'lastPayload' => null,
-            'done' => false
-        ];
+        $page1Urls[$key] = buildMatchesPageUrl($roundId, 1, $pageSize);
     }
+    $page1Data = fetchUrlsParallel($page1Urls, $token, $allowLocalSslFallback);
 
-    while (true) {
-        $pending = [];
-        foreach ($states as $key => $st) {
-            if (!$st['done'] && $st['page'] <= $maxPages) {
-                $pending[$key] = $st;
-            }
-        }
-        if (empty($pending)) {
-            break;
-        }
+    $pagesByRound = [];
+    $meta = [];
+    $moreUrls = [];
 
-        $mh = curl_multi_init();
-        $handles = [];
-        foreach ($pending as $key => $st) {
-            $safeRoundId = $st['roundId'];
-            $page = $st['page'];
-            $url = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safeRoundId}/matches/paginated/?page={$page}&page_size={$pageSize}&avoid_cache=false";
-            $ch = curl_init();
-            curl_setopt($ch, CURLOPT_URL, $url);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_FOLLOWLOCATION, true);
-            curl_setopt($ch, CURLOPT_MAXREDIRS, 3);
-            if ($allowLocalSslFallback) {
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 0);
-            } else {
-                curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
-                curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
-            }
-            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
-            curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-            $headers = [
-                'Accept: application/json',
-                'Content-Type: application/json',
-                'Origin: https://tcg.ravensburgerplay.com',
-                'Referer: https://tcg.ravensburgerplay.com/'
+    foreach ($roundIdsByKey as $key => $roundId) {
+        $data = $page1Data[$key] ?? null;
+        list($chunk, $kind) = extractMatchPageChunk($data);
+        if ($kind === 'flat') {
+            $out[$key] = [
+                'results' => $chunk,
+                'count' => count($chunk),
+                'next' => null,
+                'previous' => null
             ];
-            if ($token) {
-                $headers[] = 'Authorization: ' . $token;
-            }
-            curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-            curl_multi_add_handle($mh, $ch);
-            $handles[$key] = $ch;
+            continue;
         }
-
-        $running = null;
-        do {
-            $mrc = curl_multi_exec($mh, $running);
-            if ($running) {
-                curl_multi_select($mh, 1.0);
-            }
-        } while ($running && $mrc === CURLM_OK);
-
-        foreach ($handles as $key => $ch) {
-            $body = curl_multi_getcontent($ch);
-            curl_multi_remove_handle($mh, $ch);
-            curl_close($ch);
-
-            $data = json_decode($body, true);
-            if (!is_array($data)) {
-                $states[$key]['done'] = true;
-                continue;
-            }
-            $states[$key]['lastPayload'] = $data;
-
-            if (isset($data['results']) && is_array($data['results'])) {
-                $chunk = $data['results'];
-            } elseif (isset($data['data']) && is_array($data['data'])) {
-                $chunk = $data['data'];
-            } elseif (array_keys($data) === range(0, count($data) - 1)) {
-                $states[$key]['allResults'] = $data;
-                $states[$key]['done'] = true;
-                continue;
-            } else {
-                $states[$key]['done'] = true;
-                continue;
-            }
-
-            if (count($chunk) === 0) {
-                $states[$key]['done'] = true;
-                continue;
-            }
-
-            foreach ($chunk as $row) {
-                $states[$key]['allResults'][] = $row;
-            }
-
-            $totalCount = isset($data['count']) ? (int)$data['count'] : null;
-            $hasNext = !empty($data['next']);
-            if ($totalCount !== null && count($states[$key]['allResults']) >= $totalCount) {
-                $states[$key]['done'] = true;
-            } elseif (!$hasNext && count($chunk) < $pageSize) {
-                $states[$key]['done'] = true;
-            } elseif (!$hasNext && $totalCount === null) {
-                $states[$key]['done'] = true;
-            } else {
-                $states[$key]['page']++;
-            }
-        }
-        curl_multi_close($mh);
-    }
-
-    foreach ($states as $key => $st) {
-        if ($st['lastPayload'] === null && empty($st['allResults'])) {
+        if ($chunk === null) {
             $out[$key] = null;
             continue;
         }
-        $payload = is_array($st['lastPayload']) ? $st['lastPayload'] : [];
-        $payload['results'] = $st['allResults'];
-        $payload['count'] = count($st['allResults']);
+
+        $pagesByRound[$key] = [1 => $chunk];
+        $meta[$key] = [
+            'roundId' => (int)$roundId,
+            'lastPayload' => $data,
+            'totalCount' => isset($data['count']) ? (int)$data['count'] : null
+        ];
+
+        $needed = 1;
+        if ($meta[$key]['totalCount'] !== null && $meta[$key]['totalCount'] > $pageSize) {
+            $needed = min($maxPages, (int)ceil($meta[$key]['totalCount'] / $pageSize));
+        } elseif (!empty($data['next']) && count($chunk) >= $pageSize) {
+            $needed = min($maxPages, 2);
+        }
+        for ($p = 2; $p <= $needed; $p++) {
+            $moreUrls[$key . ':' . $p] = buildMatchesPageUrl($roundId, $p, $pageSize);
+        }
+    }
+
+    // Fala 2 — pozostałe strony wszystkich rund równolegle
+    if (!empty($moreUrls)) {
+        $moreData = fetchUrlsParallel($moreUrls, $token, $allowLocalSslFallback);
+        foreach ($moreData as $compositeKey => $pageData) {
+            $parts = explode(':', $compositeKey, 2);
+            if (count($parts) !== 2) {
+                continue;
+            }
+            $key = $parts[0];
+            $pNum = (int)$parts[1];
+            if (!isset($pagesByRound[$key])) {
+                continue;
+            }
+            list($pageChunk, $pageKind) = extractMatchPageChunk($pageData);
+            if ($pageKind === 'paged' && is_array($pageChunk) && count($pageChunk) > 0) {
+                $pagesByRound[$key][$pNum] = $pageChunk;
+                $meta[$key]['lastPayload'] = $pageData;
+            }
+        }
+    }
+
+    // Dociągnięcie braków gdy nie było count (rzadkie) — sekwencyjne fale next
+    foreach ($pagesByRound as $key => $pages) {
+        if (isset($out[$key])) {
+            continue;
+        }
+        $totalCount = $meta[$key]['totalCount'] ?? null;
+        $roundId = $meta[$key]['roundId'];
+        if ($totalCount !== null) {
+            continue;
+        }
+        $lastPage = max(array_keys($pages));
+        $guard = 0;
+        while ($guard < $maxPages) {
+            $guard++;
+            $lastChunk = $pages[$lastPage] ?? [];
+            $lastPayload = $meta[$key]['lastPayload'] ?? null;
+            if (count($lastChunk) < $pageSize || empty($lastPayload['next'])) {
+                break;
+            }
+            $nextP = $lastPage + 1;
+            if ($nextP > $maxPages) {
+                break;
+            }
+            $extra = fetchUrlsParallel(
+                [$key . ':' . $nextP => buildMatchesPageUrl($roundId, $nextP, $pageSize)],
+                $token,
+                $allowLocalSslFallback
+            );
+            $extraData = $extra[$key . ':' . $nextP] ?? null;
+            list($extraChunk, $extraKind) = extractMatchPageChunk($extraData);
+            if ($extraKind !== 'paged' || !is_array($extraChunk) || count($extraChunk) === 0) {
+                break;
+            }
+            $pages[$nextP] = $extraChunk;
+            $meta[$key]['lastPayload'] = $extraData;
+            $lastPage = $nextP;
+        }
+        $pagesByRound[$key] = $pages;
+    }
+
+    foreach ($pagesByRound as $key => $pages) {
+        ksort($pages, SORT_NUMERIC);
+        $allResults = [];
+        foreach ($pages as $pageChunk) {
+            foreach ($pageChunk as $row) {
+                $allResults[] = $row;
+            }
+        }
+        $payload = is_array($meta[$key]['lastPayload'] ?? null) ? $meta[$key]['lastPayload'] : [];
+        $payload['results'] = $allResults;
+        $payload['count'] = count($allResults);
         $payload['next'] = null;
         $payload['previous'] = null;
         $out[$key] = $payload;
@@ -417,37 +550,52 @@ function fetchAllPaginatedMatchesForRounds($roundIdsByKey, $token = null, $allow
     return $out;
 }
 
+// Standings + wszystkie rundy meczów: najpierw standings równolegle z page-batch meczów.
+$standingsData = null;
+$pairingsData = null;
 $roundsMatches = [];
+
+$standingsUrl = null;
+if ($standingsRoundId) {
+    $safeStandingsRoundId = (int)$standingsRoundId;
+    $standingsUrl = "https://api.cloudflare.ravensburgerplay.com/hydraproxy/api/v2/tournament-rounds/{$safeStandingsRoundId}/standings/";
+}
+
 if (!empty($eligibleRounds)) {
     ksort($eligibleRounds);
     $toFetch = [];
     foreach ($eligibleRounds as $rNum => $rInfo) {
-        $safeRoundId = (int)$rInfo['id'];
-        if ($pairingsRoundId && $safeRoundId === (int)$pairingsRoundId && $pairingsData) {
+        $toFetch[$rNum] = (int)$rInfo['id'];
+    }
+
+    // Standings lecą równolegle z pierwszą falą page=1 meczów (oszczędność latency cold-load).
+    if ($standingsUrl) {
+        $standingsBundle = fetchUrlsParallel(['standings' => $standingsUrl], $authToken, $isLocalRequest);
+        $standingsData = $standingsBundle['standings'] ?? null;
+    }
+
+    $fetched = fetchAllPaginatedMatchesForRounds($toFetch, $authToken, $isLocalRequest);
+    foreach ($toFetch as $rNum => $safeRoundId) {
+        $mData = $fetched[$rNum] ?? null;
+        if ($mData) {
             $roundsMatches[$rNum] = [
                 'round_number' => $rNum,
                 'round_id' => $safeRoundId,
-                'status' => $rInfo['status'],
-                'matches' => $pairingsData['results'] ?? $pairingsData['data'] ?? $pairingsData
+                'status' => $eligibleRounds[$rNum]['status'],
+                'matches' => $mData['results'] ?? $mData['data'] ?? $mData
             ];
-        } else {
-            $toFetch[$rNum] = $safeRoundId;
-        }
-    }
-    if (!empty($toFetch)) {
-        $fetched = fetchAllPaginatedMatchesForRounds($toFetch, $authToken, $isLocalRequest);
-        foreach ($toFetch as $rNum => $safeRoundId) {
-            $mData = $fetched[$rNum] ?? null;
-            if ($mData) {
-                $roundsMatches[$rNum] = [
-                    'round_number' => $rNum,
-                    'round_id' => $safeRoundId,
-                    'status' => $eligibleRounds[$rNum]['status'],
-                    'matches' => $mData['results'] ?? $mData['data'] ?? $mData
-                ];
+            if ($pairingsRoundId && $safeRoundId === (int)$pairingsRoundId) {
+                $pairingsData = $mData;
             }
         }
     }
+} elseif ($standingsUrl) {
+    $standingsBundle = fetchUrlsParallel(['standings' => $standingsUrl], $authToken, $isLocalRequest);
+    $standingsData = $standingsBundle['standings'] ?? null;
+}
+
+if ($pairingsRoundId && !$pairingsData) {
+    $pairingsData = fetchAllPaginatedMatches($pairingsRoundId, $authToken, $isLocalRequest);
 }
 
 $displayStatus = strtolower($eventData['display_status'] ?? '');
@@ -480,6 +628,14 @@ if (is_array($existingCaches) && count($existingCaches) > 25) {
     }
 }
 
-file_put_contents($cacheFile, json_encode($result), LOCK_EX);
-echo json_encode($result);
+$payloadJson = json_encode($result);
+$tmpCache = $cacheFile . '.tmp.' . getmypid();
+if (@file_put_contents($tmpCache, $payloadJson, LOCK_EX) !== false) {
+    @rename($tmpCache, $cacheFile);
+    @unlink($tmpCache);
+} else {
+    @file_put_contents($cacheFile, $payloadJson, LOCK_EX);
+}
+header('X-Lorcana-Cache: MISS');
+echo $payloadJson;
 ?>

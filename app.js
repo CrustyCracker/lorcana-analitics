@@ -6,6 +6,11 @@ let simulatedResultsCache = new Map();
 const PAGE_SIZE = 32;
 /** Powyżej tego N wyłączamy ciężkie panele UI (bracket); rada TIE działa zawsze. */
 const LARGE_EVENT_PLAYER_THRESHOLD = 400;
+/** Virtual window LIVE: stała wysokość wiersza + overscan — max DOM rows ≪ N. */
+const LIVE_ROW_HEIGHT = 44;
+const LIVE_VIEWPORT_ROWS = 16;
+const LIVE_OVERSCAN = 6;
+const LIVE_MAX_DOM_ROWS = LIVE_VIEWPORT_ROWS + LIVE_OVERSCAN * 2;
 let lastProcessFingerprint = null;
 let currentPages = {
     pairings: 1,
@@ -15,6 +20,10 @@ let currentPages = {
 let cachedPairings = [];
 let cachedOfficialStandings = [];
 let cachedLiveStandings = [];
+let cachedFilteredLiveList = [];
+let liveVirtScrollTop = 0;
+let liveVirtRaf = null;
+let liveVirtLastWindowKey = '';
 let cachedStandingsMap = new Map();
 let cachedCutContext = { cutSize: 4, cutRule: 'hard', activeRound: 1, totalRounds: 1 };
 
@@ -531,13 +540,150 @@ function changePairingsPage(newPage) {
 }
 
 function changeLivePage(newPage) {
-    let list = cachedLiveStandings;
-    if (filterOnlyPoles) {
-        list = list.filter(p => isPolishPlayer(p, cachedStandingsMap));
-    }
+    const list = cachedFilteredLiveList.length
+        ? cachedFilteredLiveList
+        : filterLiveStandingsList(cachedLiveStandings, {
+            filterOnlyPoles,
+            statusFilter: currentLiveStatusFilter,
+            searchQuery: liveTableSearchQuery,
+            standingsMap: cachedStandingsMap,
+            cutSize: cachedCutContext.cutSize,
+            simCache: simulatedResultsCache
+        });
     const totalPages = Math.ceil((list.length || 0) / PAGE_SIZE);
     currentPages.live = Math.max(1, Math.min(newPage, totalPages || 1));
+    const viewport = typeof document !== 'undefined' ? document.getElementById('liveStandingsViewport') : null;
+    if (viewport) {
+        const targetTop = (currentPages.live - 1) * PAGE_SIZE * LIVE_ROW_HEIGHT;
+        viewport.scrollTop = targetTop;
+        liveVirtScrollTop = targetTop;
+    }
     renderLiveStandingsTable();
+}
+
+function onLiveStandingsScroll(ev) {
+    const el = ev?.target || (typeof document !== 'undefined' ? document.getElementById('liveStandingsViewport') : null);
+    if (!el) return;
+    liveVirtScrollTop = el.scrollTop || 0;
+    if (liveVirtRaf) return;
+    liveVirtRaf = (typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame : (fn) => setTimeout(fn, 16))(() => {
+        liveVirtRaf = null;
+        renderLiveStandingsTable({ fromScroll: true });
+    });
+}
+
+/**
+ * Filtr listy LIVE (PL / status cut / wyszukiwarka) — czysta funkcja pod UI i stress.
+ */
+function filterLiveStandingsList(liveStandings, opts = {}) {
+    const {
+        filterOnlyPoles: onlyPl = false,
+        statusFilter = 'all',
+        searchQuery = '',
+        standingsMap = null,
+        cutSize = 4,
+        simCache = null
+    } = opts;
+
+    let list = Array.isArray(liveStandings) ? liveStandings : [];
+    if (onlyPl) {
+        list = list.filter(p => isPolishPlayer(p, standingsMap));
+    }
+    if (statusFilter && statusFilter !== 'all') {
+        list = list.filter(p => {
+            const cached = simCache?.get?.(String(p.player.id));
+            const sim = cached?.sim;
+            const category = getCutStatusCategory(p, sim, cutSize);
+            if (statusFilter === 'cut') return category === 'cut' || category === 'bubble';
+            if (statusFilter === 'bubble') return category === 'bubble';
+            return true;
+        });
+    }
+    const q = String(searchQuery || '').trim().toLowerCase();
+    if (q) {
+        list = list.filter(p => formatStandingsPlayerName(p).toLowerCase().includes(q));
+    }
+    return list;
+}
+
+/**
+ * Okno wirtualne: które indeksy renderować + paddings (px) dla scrolla.
+ * Gwarantuje domRows ≤ LIVE_MAX_DOM_ROWS (przy sensownym viewportHeight).
+ */
+function getLiveVirtualWindow(totalItems, scrollTop, viewportHeight, rowHeight = LIVE_ROW_HEIGHT, overscan = LIVE_OVERSCAN) {
+    const total = Math.max(0, totalItems | 0);
+    const rowH = Math.max(1, rowHeight | 0);
+    const vh = Math.max(rowH, viewportHeight || LIVE_VIEWPORT_ROWS * rowH);
+    if (total === 0) {
+        return { start: 0, end: 0, topPad: 0, bottomPad: 0, domRows: 0 };
+    }
+    const start = Math.max(0, Math.floor((scrollTop || 0) / rowH) - overscan);
+    const capacity = Math.min(LIVE_MAX_DOM_ROWS, Math.ceil(vh / rowH) + overscan * 2);
+    const end = Math.min(total, start + capacity);
+    return {
+        start,
+        end,
+        topPad: start * rowH,
+        bottomPad: Math.max(0, (total - end) * rowH),
+        domRows: Math.max(0, end - start)
+    };
+}
+
+/**
+ * Czysta ścieżka process→LIVE ranking (bez DOM) — do stress / testów.
+ */
+function computeLiveStandingsList(rawStandings, pairingsList, options = {}) {
+    const standingsMap = options.standingsMap || buildStandingsMap(rawStandings || []);
+    const isLiveRoundInProgress = Boolean(options.isLiveRoundInProgress);
+    const liveScoreDeltas = new Map();
+    if (isLiveRoundInProgress && Array.isArray(pairingsList)) {
+        for (const m of pairingsList) {
+            const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+            const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+            const id1 = p1?.id;
+            const id2 = p2?.id;
+            const { score1, score2, hasScore, winnerId } = getMatchScores(m);
+            const status = (m.status || m.state || "").toUpperCase();
+            const isComplete = status === "COMPLETE" || status === "FINISHED" || status === "COMPLETED" || winnerId != null || hasScore;
+            const isDraw = m.match_is_intentional_draw || m.match_is_unintentional_draw || status === "DRAW";
+            if (!isComplete) continue;
+            if (isDraw) {
+                if (id1) liveScoreDeltas.set(String(id1), 1);
+                if (id2) liveScoreDeltas.set(String(id2), 1);
+            } else if (score1 > score2 || (winnerId && id1 && String(id1) === String(winnerId))) {
+                if (id1) liveScoreDeltas.set(String(id1), 3);
+                if (id2) liveScoreDeltas.set(String(id2), 0);
+            } else if (score2 > score1 || (winnerId && id2 && String(id2) === String(winnerId))) {
+                if (id1) liveScoreDeltas.set(String(id1), 0);
+                if (id2) liveScoreDeltas.set(String(id2), 3);
+            }
+        }
+    }
+
+    const liveStandings = (rawStandings || []).map(p => {
+        const delta = liveScoreDeltas.get(String(p.player.id)) || 0;
+        return {
+            ...p,
+            livePoints: (p.match_points || 0) + delta,
+            delta
+        };
+    });
+
+    liveStandings.sort((a, b) => {
+        if (b.livePoints !== a.livePoints) return b.livePoints - a.livePoints;
+        if ((b.opponent_match_win_percentage || 0) !== (a.opponent_match_win_percentage || 0)) {
+            return (b.opponent_match_win_percentage || 0) - (a.opponent_match_win_percentage || 0);
+        }
+        if ((b.game_win_percentage || 0) !== (a.game_win_percentage || 0)) {
+            return (b.game_win_percentage || 0) - (a.game_win_percentage || 0);
+        }
+        return (b.opponent_game_win_percentage || 0) - (a.opponent_game_win_percentage || 0);
+    });
+
+    liveStandings.forEach((p, idx) => {
+        p.liveRank = idx + 1;
+    });
+    return liveStandings;
 }
 
 function changeOfficialPage(newPage) {
@@ -1199,38 +1345,31 @@ function processStandings(data) {
 // -------------------------------------------------------------
 
 function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, totalRounds) {
-    if (liveStandings) cachedLiveStandings = liveStandings;
-    if (cutSize !== undefined) cachedCutContext.cutSize = cutSize;
-    if (cutRule !== undefined) cachedCutContext.cutRule = cutRule;
-    if (activeRound !== undefined) cachedCutContext.activeRound = activeRound;
-    if (totalRounds !== undefined) cachedCutContext.totalRounds = totalRounds;
+    const fromScroll = !!(liveStandings && typeof liveStandings === 'object' && !Array.isArray(liveStandings) && liveStandings.fromScroll);
+    if (!fromScroll) {
+        if (liveStandings) cachedLiveStandings = liveStandings;
+        if (cutSize !== undefined) cachedCutContext.cutSize = cutSize;
+        if (cutRule !== undefined) cachedCutContext.cutRule = cutRule;
+        if (activeRound !== undefined) cachedCutContext.activeRound = activeRound;
+        if (totalRounds !== undefined) cachedCutContext.totalRounds = totalRounds;
+    }
 
     const ctx = cachedCutContext;
     const tbody = document.getElementById('liveStandingsBody');
     if (!tbody) return;
 
-    let list = cachedLiveStandings;
-    if (filterOnlyPoles) {
-        list = list.filter(p => isPolishPlayer(p, cachedStandingsMap));
-    }
+    const list = filterLiveStandingsList(cachedLiveStandings, {
+        filterOnlyPoles,
+        statusFilter: currentLiveStatusFilter,
+        searchQuery: liveTableSearchQuery,
+        standingsMap: cachedStandingsMap,
+        cutSize: ctx.cutSize,
+        simCache: simulatedResultsCache
+    });
+    cachedFilteredLiveList = list;
 
-    if (currentLiveStatusFilter !== 'all') {
-        list = list.filter(p => {
-            const cached = simulatedResultsCache.get(String(p.player.id));
-            const sim = cached?.sim;
-            const category = getCutStatusCategory(p, sim, ctx.cutSize);
-            if (currentLiveStatusFilter === 'cut') return category === 'cut' || category === 'bubble';
-            if (currentLiveStatusFilter === 'bubble') return category === 'bubble';
-            return true;
-        });
-    }
-
-    if (liveTableSearchQuery) {
-        list = list.filter(p => {
-            const formattedName = formatStandingsPlayerName(p).toLowerCase();
-            return formattedName.includes(liveTableSearchQuery);
-        });
-    }
+    const infoEl = document.getElementById('liveWindowInfo');
+    const viewport = document.getElementById('liveStandingsViewport');
 
     if (!list || list.length === 0) {
         let emptyMsg = "Trwa symulacja wyników live...";
@@ -1238,44 +1377,62 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
         else if (filterOnlyPoles) emptyMsg = "Brak graczy z Polski w tabeli LIVE.";
         else if (currentLiveStatusFilter !== 'all') emptyMsg = "Brak graczy pasujących do wybranego filtra statusu.";
 
-        tbody.innerHTML = `<tr><td colspan="7" style="color: #888; padding: 20px;">${emptyMsg}</td></tr>`;
+        tbody.innerHTML = '<tr><td colspan="7" style="color: #888; padding: 20px;">' + emptyMsg + '</td></tr>';
+        if (infoEl) infoEl.style.display = 'none';
         renderPagination('livePagination', 0, 1, 'changeLivePage');
+        liveVirtLastWindowKey = '';
         return;
     }
 
     const totalItems = list.length;
-    const totalPages = Math.ceil(totalItems / PAGE_SIZE);
-    currentPages.live = Math.max(1, Math.min(currentPages.live, totalPages));
+    const viewportHeight = viewport
+        ? (viewport.clientHeight || LIVE_VIEWPORT_ROWS * LIVE_ROW_HEIGHT)
+        : LIVE_VIEWPORT_ROWS * LIVE_ROW_HEIGHT;
+    if (viewport && !fromScroll) {
+        liveVirtScrollTop = viewport.scrollTop || liveVirtScrollTop;
+    }
 
-    const start = (currentPages.live - 1) * PAGE_SIZE;
-    const pageItems = list.slice(start, start + PAGE_SIZE);
+    const win = getLiveVirtualWindow(totalItems, liveVirtScrollTop, viewportHeight, LIVE_ROW_HEIGHT, LIVE_OVERSCAN);
+    const windowKey = totalItems + ':' + win.start + ':' + win.end + ':' + ctx.cutSize + ':' + (currentSelectedPlayerId || '');
+    if (fromScroll && windowKey === liveVirtLastWindowKey) {
+        return;
+    }
+    liveVirtLastWindowKey = windowKey;
 
-    tbody.innerHTML = "";
+    currentPages.live = Math.max(1, Math.floor(win.start / PAGE_SIZE) + 1);
 
-    pageItems.forEach((player, pageIdx) => {
-        const displayRank = player.liveRank || (start + pageIdx + 1);
+    const frag = document.createDocumentFragment();
+    if (win.topPad > 0) {
+        const topSpacer = document.createElement('tr');
+        topSpacer.className = 'live-virt-spacer';
+        topSpacer.innerHTML = '<td colspan="7" style="height:' + win.topPad + 'px;"></td>';
+        frag.appendChild(topSpacer);
+    }
+
+    for (let i = win.start; i < win.end; i++) {
+        const player = list[i];
+        const displayRank = player.liveRank || (i + 1);
         const tr = document.createElement('tr');
         tr.className = "clickable-row";
+        tr.style.height = LIVE_ROW_HEIGHT + 'px';
         tr.title = "Kliknij, aby otworzyć szczegóły w module Can I take a TIE";
         tr.onclick = () => selectPlayerForTie(player.player.id);
-        
+
         const formattedName = formatStandingsPlayerName(player);
         const omwp = ((player.opponent_match_win_percentage || 0) * 100).toFixed(1) + "%";
         const gwp = ((player.game_win_percentage || 0) * 100).toFixed(1) + "%";
         const ogwp = ((player.opponent_game_win_percentage || 0) * 100).toFixed(1) + "%";
-        
+
         const cached = simulatedResultsCache.get(String(player.player.id));
         const sim = cached?.sim;
-        
+
         const inCut = (displayRank <= ctx.cutSize);
         const { ptsNeededText, strategyText, rowClass } = derivePlayerStrategy(sim, inCut);
-        
         const cutBadgeHtml = getCutStatusBadge(player, sim, inCut, ctx.cutSize, sim?.matchesLeft);
 
-        // Zaznaczenie dodanych punktów live (np. 1 + 3)
-        let pointsDisplay = `<strong>${player.livePoints}</strong>`;
+        let pointsDisplay = '<strong>' + player.livePoints + '</strong>';
         if (player.delta > 0) {
-            pointsDisplay += ` <span style="font-size: 11px; color: #2ecc71;">(+${player.delta})</span>`;
+            pointsDisplay += ' <span style="font-size: 11px; color: #2ecc71;">(+' + player.delta + ')</span>';
         }
 
         tr.className += " " + rowClass;
@@ -1287,17 +1444,31 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
         const safeName = escapeHtml(formattedName);
         const safePlayerId = escapeJsAttr(player.player.id);
 
-        tr.innerHTML = `
-            <td><strong>${displayRank}</strong></td>
-            <td class="player-cell-truncate" style="text-align: left;" title="${safeName}"><strong>${safeName}</strong></td>
-            <td>${pointsDisplay}</td>
-            <td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="event.stopPropagation(); openOmwpInspector('${safePlayerId}')">${omwp} / ${gwp} / ${ogwp} 🔍</td>
-            <td><strong>${ptsNeededText}</strong></td>
-            <td class="strategy">${strategyText}</td>
-            <td>${cutBadgeHtml}</td>
-        `;
-        tbody.appendChild(tr);
-    });
+        tr.innerHTML =
+            '<td><strong>' + displayRank + '</strong></td>' +
+            '<td class="player-cell-truncate" style="text-align: left;" title="' + safeName + '"><strong>' + safeName + '</strong></td>' +
+            '<td>' + pointsDisplay + '</td>' +
+            '<td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="event.stopPropagation(); openOmwpInspector(\'' + safePlayerId + '\')">' + omwp + ' / ' + gwp + ' / ' + ogwp + ' \uD83D\uDD0D</td>' +
+            '<td><strong>' + ptsNeededText + '</strong></td>' +
+            '<td class="strategy">' + strategyText + '</td>' +
+            '<td>' + cutBadgeHtml + '</td>';
+        frag.appendChild(tr);
+    }
+
+    if (win.bottomPad > 0) {
+        const bottomSpacer = document.createElement('tr');
+        bottomSpacer.className = 'live-virt-spacer';
+        bottomSpacer.innerHTML = '<td colspan="7" style="height:' + win.bottomPad + 'px;"></td>';
+        frag.appendChild(bottomSpacer);
+    }
+
+    tbody.innerHTML = '';
+    tbody.appendChild(frag);
+
+    if (infoEl) {
+        infoEl.style.display = 'block';
+        infoEl.textContent = 'Widok wirtualny: wiersze ' + (win.start + 1) + '-' + win.end + ' z ' + totalItems + ' (w DOM <= ' + LIVE_MAX_DOM_ROWS + ')';
+    }
 
     renderPagination('livePagination', totalItems, currentPages.live, 'changeLivePage');
 }
@@ -1420,19 +1591,28 @@ function onPlayerSearchInput() {
 function selectPlayerForTie(playerId) {
     currentSelectedPlayerId = playerId;
 
-    // Jeśli wybrany gracz znajduje się na innej stronie w tabeli LIVE, przełącz stronę
-    let list = cachedLiveStandings;
-    if (filterOnlyPoles) {
-        list = list.filter(p => isPolishPlayer(p, cachedStandingsMap));
-    }
+    // Przewiń wirtualne okno LIVE do wybranego gracza
+    const list = cachedFilteredLiveList.length
+        ? cachedFilteredLiveList
+        : filterLiveStandingsList(cachedLiveStandings, {
+            filterOnlyPoles,
+            statusFilter: currentLiveStatusFilter,
+            searchQuery: liveTableSearchQuery,
+            standingsMap: cachedStandingsMap,
+            cutSize: cachedCutContext.cutSize,
+            simCache: simulatedResultsCache
+        });
 
-    if (list && list.length > PAGE_SIZE) {
+    if (list && list.length > 0) {
         const pIdx = list.findIndex(p => String(p.player?.id || p.id) === String(playerId));
         if (pIdx !== -1) {
-            const targetPage = Math.floor(pIdx / PAGE_SIZE) + 1;
-            if (currentPages.live !== targetPage) {
-                currentPages.live = targetPage;
+            const viewport = document.getElementById('liveStandingsViewport');
+            const targetTop = Math.max(0, pIdx * LIVE_ROW_HEIGHT - LIVE_ROW_HEIGHT * 2);
+            if (viewport) {
+                viewport.scrollTop = targetTop;
             }
+            liveVirtScrollTop = targetTop;
+            currentPages.live = Math.floor(pIdx / PAGE_SIZE) + 1;
         }
     }
     renderLiveStandingsTable();
@@ -4004,6 +4184,14 @@ if (typeof module !== 'undefined' && module.exports) {
         getAdaptiveSimCount,
         shouldGateHeavyUi,
         LARGE_EVENT_PLAYER_THRESHOLD,
+        PAGE_SIZE,
+        LIVE_ROW_HEIGHT,
+        LIVE_VIEWPORT_ROWS,
+        LIVE_OVERSCAN,
+        LIVE_MAX_DOM_ROWS,
+        filterLiveStandingsList,
+        getLiveVirtualWindow,
+        computeLiveStandingsList,
         derivePlayerStrategy,
         getCutStatusCategory,
         getCutStatusBadge,
