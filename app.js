@@ -312,6 +312,7 @@ function buildOpponentLookup(pairingsList, standingsMap) {
 // FILTR: POLSCY GRACZE (FLAGA PL, GÓRY, SZCZUR, DRUŻYNY)
 // -------------------------------------------------------------
 const POLISH_TEAM_TAGS = ['GPL', 'M7', 'OSA', 'LV', 'Q2W', 'L4', 'EX', 'IDK'];
+const POLISH_RAT_CREW_LABEL = 'rat crew';
 const POLISH_FLAG_REGEX = /[\u{1F1F5}\u{1F1F1}]|🇵🇱/u;
 const POLISH_MOUNTAIN_REGEX = /[\u{1F3D4}\u{26F0}\u{1F5FB}]|[🏔⛰🗻]/u;
 const POLISH_RAT_REGEX = /[\u{1F400}\u{1F401}]|[🐀🐁]/u;
@@ -409,6 +410,165 @@ function extractPolishNickCore(text) {
 const POLISH_KNOWN_NICK_KEYS = new Set(POLISH_KNOWN_NICKS.map(normalizePolishNickKey).filter(Boolean));
 const POLISH_KNOWN_NICK_CORES = new Set(POLISH_KNOWN_NICKS.map(extractPolishNickCore).filter((c) => c && c.length >= 2));
 
+function extractBracketTeamTagsFromText(text) {
+    const tags = [];
+    const s = String(text || '');
+    const re = /\[([^\]]+)\]/gu;
+    let m;
+    while ((m = re.exec(s)) !== null) {
+        const tag = String(m[1] || '').trim().toUpperCase();
+        if (tag) tags.push(tag);
+    }
+    return tags;
+}
+
+/** Katalog tagów drużyn PL: stała lista + tagi wyciągnięte z POLISH_KNOWN_NICKS. */
+function buildPolishTeamTagCatalog() {
+    const set = new Set(POLISH_TEAM_TAGS.map((t) => String(t).toUpperCase()));
+    for (const nick of POLISH_KNOWN_NICKS) {
+        for (const tag of extractBracketTeamTagsFromText(nick)) {
+            set.add(tag);
+        }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+}
+
+const POLISH_TEAM_TAG_CATALOG = buildPolishTeamTagCatalog();
+
+function textMatchesPolishTeamTag(text, tag) {
+    if (!text || !tag) return false;
+    const escaped = String(tag).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const regex = new RegExp('(?:^|[\\s_\\|\\-\\[\\(\\{/])' + escaped + '(?=[\\s_\\|\\-\\]\\)\\}:/]|$|\\b)', 'i');
+    return regex.test(text);
+}
+
+function getPlayerIdentityTexts(playerOrName) {
+    if (!playerOrName) return [];
+    if (typeof playerOrName === 'string') return [playerOrName].filter(Boolean);
+
+    const standingObj = playerOrName.raw || playerOrName;
+    return [
+        playerOrName.name,
+        standingObj?.user_event_status?.best_identifier,
+        standingObj?.player?.best_identifier,
+        standingObj?.user_event_status?.user?.username,
+        standingObj?.name
+    ].filter(Boolean);
+}
+
+function getStandingMatchPoints(player) {
+    if (!player) return 0;
+    const pts = player.livePoints ?? player.match_points ?? 0;
+    return Number.isFinite(pts) ? pts : 0;
+}
+
+function averagePoints(values) {
+    if (!values || values.length === 0) return null;
+    const sum = values.reduce((acc, v) => acc + v, 0);
+    return sum / values.length;
+}
+
+/**
+ * Statystyki średnich punktów: gracze z flagą PL oraz per tag drużyny PL
+ * (katalog z POLISH_TEAM_TAGS / POLISH_KNOWN_NICKS + „rat crew” z emoji szczura).
+ */
+function computePolishAvgPointsStats(standings) {
+    const list = Array.isArray(standings) ? standings : [];
+    const flagPoints = [];
+    const teamPoints = new Map();
+    for (const tag of POLISH_TEAM_TAG_CATALOG) {
+        teamPoints.set(tag, []);
+    }
+    teamPoints.set(POLISH_RAT_CREW_LABEL, []);
+
+    for (const player of list) {
+        const texts = getPlayerIdentityTexts(player);
+        if (texts.length === 0) continue;
+        const pts = getStandingMatchPoints(player);
+
+        if (texts.some((t) => POLISH_FLAG_REGEX.test(t))) {
+            flagPoints.push(pts);
+        }
+        if (texts.some((t) => POLISH_RAT_REGEX.test(t))) {
+            teamPoints.get(POLISH_RAT_CREW_LABEL).push(pts);
+        }
+        for (const tag of POLISH_TEAM_TAG_CATALOG) {
+            if (texts.some((t) => textMatchesPolishTeamTag(t, tag))) {
+                teamPoints.get(tag).push(pts);
+            }
+        }
+    }
+
+    const teams = [];
+    for (const [tag, values] of teamPoints.entries()) {
+        if (values.length === 0) continue;
+        teams.push({
+            tag,
+            count: values.length,
+            avgPoints: averagePoints(values)
+        });
+    }
+    teams.sort((a, b) => {
+        const avgDiff = (b.avgPoints ?? 0) - (a.avgPoints ?? 0);
+        if (avgDiff !== 0) return avgDiff;
+        return String(a.tag).localeCompare(String(b.tag));
+    });
+
+    return {
+        flag: {
+            count: flagPoints.length,
+            avgPoints: averagePoints(flagPoints)
+        },
+        teams
+    };
+}
+
+function formatAvgPointsDisplay(avg) {
+    if (avg == null || !Number.isFinite(avg)) return '—';
+    return (Math.round(avg * 10) / 10).toFixed(1);
+}
+
+function renderPolishAvgPointsTable(standings) {
+    const wrap = document.getElementById('polishAvgPointsWrap');
+    const body = document.getElementById('polishAvgPointsBody');
+    if (!wrap || !body) return;
+
+    const stats = computePolishAvgPointsStats(standings);
+    const rows = [];
+
+    if (stats.flag.count > 0) {
+        rows.push({
+            label: '🇵🇱 Flaga PL',
+            count: stats.flag.count,
+            avgPoints: stats.flag.avgPoints
+        });
+    }
+    for (const team of stats.teams) {
+        const label = team.tag === POLISH_RAT_CREW_LABEL
+            ? '🐀 rat crew'
+            : `[${team.tag}]`;
+        rows.push({
+            label,
+            count: team.count,
+            avgPoints: team.avgPoints
+        });
+    }
+
+    const hasAny = rows.length > 0;
+    wrap.style.display = hasAny ? 'block' : 'none';
+    if (!hasAny) {
+        body.innerHTML = '';
+        return;
+    }
+
+    body.innerHTML = rows.map((r) => (
+        `<tr>` +
+        `<td>${escapeHtml(r.label)}</td>` +
+        `<td>${r.count}</td>` +
+        `<td><strong>${formatAvgPointsDisplay(r.avgPoints)}</strong></td>` +
+        `</tr>`
+    )).join('');
+}
 
 let filterOnlyPoles = false;
 let currentLiveStatusFilter = 'all';
@@ -509,9 +669,8 @@ function checkTextForPolishIndicators(text) {
     const nickCore = extractPolishNickCore(text);
     if (nickCore && POLISH_KNOWN_NICK_CORES.has(nickCore)) return true;
 
-    for (const tag of POLISH_TEAM_TAGS) {
-        const regex = new RegExp('(?:^|[\\s_\\|\\-\\\[\\(\\{/])' + tag + '(?=[\\s_\\|\\-\\\\]\\)\\}:/]|$|\\b)', 'i');
-        if (regex.test(text)) return true;
+    for (const tag of POLISH_TEAM_TAG_CATALOG) {
+        if (textMatchesPolishTeamTag(text, tag)) return true;
     }
     return false;
 }
@@ -1662,6 +1821,7 @@ function processStandings(data) {
     setElText('bubbleScore', currentBubbleScore);
     setElText('projectedBubbleScore', projectedFinalBubble);
     setElText('playersInCut', playersInCut);
+    renderPolishAvgPointsTable(liveStandings);
 
     const drawStats = calculateTournamentDrawStats(data, pairingsList);
     setElText('tournamentDrawsInfo', `${drawStats.drawMatches} (${drawStats.pct}%)`);
@@ -4584,8 +4744,17 @@ if (typeof module !== 'undefined' && module.exports) {
         shouldGateHeavyUi,
         LARGE_EVENT_PLAYER_THRESHOLD,
         POLISH_KNOWN_NICKS,
+        POLISH_TEAM_TAGS,
+        POLISH_TEAM_TAG_CATALOG,
+        POLISH_RAT_CREW_LABEL,
         normalizePolishNickKey,
         extractPolishNickCore,
+        extractBracketTeamTagsFromText,
+        buildPolishTeamTagCatalog,
+        textMatchesPolishTeamTag,
+        getPlayerIdentityTexts,
+        computePolishAvgPointsStats,
+        formatAvgPointsDisplay,
         checkTextForPolishIndicators,
         isPolishPlayer,
         PAGE_SIZE,

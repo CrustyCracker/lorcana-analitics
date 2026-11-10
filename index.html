@@ -210,6 +210,45 @@
         .stat-card .label { font-size: 11px; color: var(--text-mute); text-transform: uppercase; letter-spacing: 0.04em; }
         .stat-card .value { font-family: var(--font-display); font-size: 18px; font-weight: 700; color: var(--gold); margin-top: 4px; }
 
+        .polish-avg-wrap {
+            margin-top: 14px;
+        }
+        .polish-avg-wrap h4 {
+            font-family: var(--font-display);
+            font-size: 13px;
+            color: var(--gold);
+            margin: 0 0 8px 0;
+            letter-spacing: 0.03em;
+            font-weight: 700;
+        }
+        .polish-avg-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .polish-avg-table th,
+        .polish-avg-table td {
+            padding: 7px 10px;
+            border-bottom: 1px solid var(--line);
+            text-align: left;
+        }
+        .polish-avg-table th {
+            color: var(--text-mute);
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            font-size: 10px;
+            font-weight: 600;
+        }
+        .polish-avg-table td:nth-child(2),
+        .polish-avg-table th:nth-child(2),
+        .polish-avg-table td:nth-child(3),
+        .polish-avg-table th:nth-child(3) {
+            text-align: right;
+            white-space: nowrap;
+        }
+        .polish-avg-table tbody tr:last-child td { border-bottom: none; }
+        .polish-avg-table strong { color: var(--gold); font-family: var(--font-display); }
+
         .section-header { 
             display: flex; 
             justify-content: space-between; 
@@ -1738,6 +1777,21 @@
         <div class="stat-card"><div class="label">Obecny Próg</div><div class="value" id="bubbleScore">-</div></div>
         <div class="stat-card"><div class="label">Próg Koniec</div><div class="value" id="projectedBubbleScore">-</div></div>
         <div class="stat-card"><div class="label">W Cut</div><div class="value" id="playersInCut">-</div></div>
+    </div>
+    <div id="polishAvgPointsWrap" class="polish-avg-wrap" style="display: none;">
+        <h4>Średnie punkty — Polacy / teamy</h4>
+        <div class="table-responsive" style="margin-bottom: 0;">
+            <table class="polish-avg-table">
+                <thead>
+                    <tr>
+                        <th>Grupa</th>
+                        <th>Graczy</th>
+                        <th>Śr. pkt</th>
+                    </tr>
+                </thead>
+                <tbody id="polishAvgPointsBody"></tbody>
+            </table>
+        </div>
     </div>
 </div>
 
