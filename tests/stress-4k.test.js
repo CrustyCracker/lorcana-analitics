@@ -18,7 +18,7 @@ const {
   LIVE_VIEWPORT_ROWS
 } = require('../app.js');
 
-const { createSyntheticField } = require('../scripts/stress-fixture');
+const { createSyntheticField, createDemo2kRound12 } = require('../scripts/stress-fixture');
 
 function findOpponent(pairingsList, playerId, standingsMap) {
   const id = String(playerId);
@@ -131,5 +131,45 @@ describe('Synthetic stress harness (2k–4k, bez PlayHub)', () => {
     const elapsed = Math.round(performance.now() - tAll);
     assert.ok(elapsed < 180000, `4000-player stress took too long: ${elapsed}ms`);
     console.log(`[stress-4k.test] N=4000 elapsed=${elapsed}ms tieMs=${tieMs} matchesLeft=${sim.matchesLeft}`);
+  });
+
+  it('demo 2k ma pełną listę meczów R12 (wszyscy sparowani, IN_PROGRESS)', () => {
+    const data = createDemo2kRound12();
+    assert.equal(data.standingsRound, 11);
+    assert.equal(data.activeRound, 12);
+    assert.equal(data.totalRounds, 12);
+    assert.equal(data.standings.standings.length, 2000);
+
+    const pairings = extractPairingsList(data.pairings);
+    assert.equal(pairings.length, 1000, `expected 1000 R12 tables, got ${pairings.length}`);
+    assert.equal(data.roundsMatches[12].matches.length, 1000);
+
+    const paired = new Set();
+    for (const m of pairings) {
+      assert.equal(String(m.status).toUpperCase(), 'IN_PROGRESS');
+      const p1 = getMatchParticipant(m, 1);
+      const p2 = getMatchParticipant(m, 2);
+      assert.ok(p1 && p2, 'each table needs two players');
+      paired.add(p1.id ?? p1.player?.id);
+      paired.add(p2.id ?? p2.player?.id);
+    }
+    assert.equal(paired.size, 2000);
+
+    const map = buildStandingsMap(data.standings.standings);
+    const live = computeLiveStandingsList(data.standings.standings, pairings, {
+      standingsMap: map,
+      isLiveRoundInProgress: true
+    });
+    assert.equal(live.length, 2000);
+    assert.ok(live.every(p => (p.delta || 0) === 0), 'just-started R12 must not apply LIVE deltas');
+
+    const bubble = live[63];
+    const opp = findOpponent(pairings, bubble.player.id, map);
+    assert.ok(opp, 'bubble must have R12 opponent from full pairings');
+    const sim = runLiveTieSimulation(
+      bubble, opp, live, pairings, map, 64, 'hard',
+      12, 12, bubble.livePoints, true, 40
+    );
+    assert.equal(sim.matchesLeft, 1);
   });
 });

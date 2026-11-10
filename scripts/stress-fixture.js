@@ -90,36 +90,18 @@ function createSyntheticField(playerCount, opts = {}) {
     }
   }
 
-  // Aktywna runda = completedRounds + 1
-  const pairings = [];
-  for (let i = 0; i < standings.length; i += 2) {
-    const p1 = standings[i];
-    const p2 = standings[i + 1];
-    if (!p2) break;
-    const table = (i / 2) + 1;
-    const finished = pairingsMode === 'mid_round' && table % 3 === 0;
-    const draw = finished && table % 9 === 0;
-    pairings.push({
-      table_number: table,
-      status: finished ? 'COMPLETE' : 'IN_PROGRESS',
-      match_is_intentional_draw: draw,
-      match_is_unintentional_draw: false,
-      games_won_by_winner: finished && !draw ? 2 : null,
-      games_won_by_loser: finished && !draw ? 0 : null,
-      winning_player: finished && !draw ? { id: p1.player.id } : null,
-      player_match_relationships: [
-        { player: { id: p1.player.id, best_identifier: p1.player.best_identifier } },
-        { player: { id: p2.player.id, best_identifier: p2.player.best_identifier } }
-      ]
-    });
-  }
-
   const activeRound = completedRounds + 1;
   const totalRounds = Math.max(
     activeRound,
     opts.totalRounds != null ? (opts.totalRounds | 0) : getDefaultRoundsForN(n)
   );
   const cutSize = opts.cutSize ?? (n >= 1000 ? 64 : 8);
+
+  // Pełna lista meczów aktywnej rundy — każdy gracz w dokładnie jednym stole (jak prawdziwy Swiss live).
+  const pairings = buildFullRoundPairings(standings, {
+    roundNumber: activeRound,
+    pairingsMode
+  });
 
   // Minimalna struktura rund (historyczne mecze puste — TIE używa standings + live pairings).
   const roundsMatches = {};
@@ -131,12 +113,16 @@ function createSyntheticField(playerCount, opts = {}) {
       matches: []
     };
   }
+  // Osobna kopia listy — LIVE / Can I Tie czytają data.pairings; rundy też muszą mieć pełny R_active.
   roundsMatches[activeRound] = {
     round_number: activeRound,
     round_id: activeRound,
     status: 'IN_PROGRESS',
-    matches: pairings
+    matches: pairings.slice()
   };
+
+  const inProgressCount = pairings.filter(m => String(m.status).toUpperCase() === 'IN_PROGRESS').length;
+  const completeCount = pairings.length - inProgressCount;
 
   return {
     eventId: opts.eventId ?? (900000 + n),
@@ -156,23 +142,127 @@ function createSyntheticField(playerCount, opts = {}) {
       cutSize,
       bubbleHintRank: cutSize,
       pairingsMode,
+      liveMatchCount: pairings.length,
+      liveInProgressCount: inProgressCount,
+      liveCompleteCount: completeCount,
       uiHint: pairingsMode === 'just_started'
-        ? `Po R${completedRounds} (standings). R${activeRound}/${totalRounds} właśnie wystartowała — wszystkie pairings IN_PROGRESS.`
-        : `Po R${completedRounds}. R${activeRound}/${totalRounds} w toku (część stołów zakończona).`
+        ? `Po R${completedRounds} (standings). R${activeRound}/${totalRounds} właśnie wystartowała — ${pairings.length} meczów LIVE (wszystkie IN_PROGRESS).`
+        : `Po R${completedRounds}. R${activeRound}/${totalRounds} w toku — ${pairings.length} meczów (${inProgressCount} live / ${completeCount} koniec).`
     },
     standings: { standings },
-    pairings: { results: pairings, count: pairings.length },
+    // Kształt jak Hydraproxy paginated matches payload
+    pairings: {
+      results: pairings,
+      count: pairings.length,
+      next: null,
+      previous: null
+    },
     roundsMatches
   };
 }
 
 /**
+ * Pełne parowanie Swiss: każdy standing w dokładnie jednym meczu aktywnej rundy.
+ * just_started → wszystkie IN_PROGRESS (bez wyniku); mid_round → co 3. stół COMPLETE.
+ */
+function buildFullRoundPairings(standings, opts = {}) {
+  const list = Array.isArray(standings) ? standings : [];
+  const pairingsMode = opts.pairingsMode === 'just_started' ? 'just_started' : 'mid_round';
+  const roundNumber = opts.roundNumber || 1;
+  const pairings = [];
+
+  for (let i = 0; i < list.length; i += 2) {
+    const s1 = list[i];
+    const s2 = list[i + 1];
+    const table = (i / 2) + 1;
+    const p1 = {
+      id: s1.player.id,
+      best_identifier: s1.player.best_identifier
+    };
+
+    // Nieparzyste pole → BYE dla ostatniego (rzadkie; demo 2k jest parzyste).
+    if (!s2) {
+      pairings.push({
+        id: roundNumber * 100000 + table,
+        table_number: table,
+        round_number: roundNumber,
+        status: 'COMPLETE',
+        is_bye: true,
+        round_type: 'BYE',
+        match_is_intentional_draw: false,
+        match_is_unintentional_draw: false,
+        team_1_game_wins: 2,
+        team_2_game_wins: 0,
+        players: [p1],
+        player_1: p1,
+        player_match_relationships: [{ player: p1 }]
+      });
+      break;
+    }
+
+    const p2 = {
+      id: s2.player.id,
+      best_identifier: s2.player.best_identifier
+    };
+    const finished = pairingsMode === 'mid_round' && table % 3 === 0;
+    const draw = finished && table % 9 === 0;
+
+    if (finished) {
+      const match = {
+        id: roundNumber * 100000 + table,
+        table_number: table,
+        round_number: roundNumber,
+        status: 'COMPLETE',
+        is_bye: false,
+        match_is_intentional_draw: draw,
+        match_is_unintentional_draw: false,
+        players: [p1, p2],
+        player_1: p1,
+        player_2: p2,
+        player_match_relationships: [{ player: p1 }, { player: p2 }]
+      };
+      if (draw) {
+        match.team_1_game_wins = 1;
+        match.team_2_game_wins = 1;
+      } else {
+        match.team_1_game_wins = 2;
+        match.team_2_game_wins = 0;
+        match.games_won_by_winner = 2;
+        match.games_won_by_loser = 0;
+        match.winning_player = { id: p1.id };
+        match.winner_id = p1.id;
+      }
+      pairings.push(match);
+    } else {
+      // Świeży / trwający mecz — bez winnerów, 0:0, status LIVE
+      pairings.push({
+        id: roundNumber * 100000 + table,
+        table_number: table,
+        round_number: roundNumber,
+        status: 'IN_PROGRESS',
+        is_bye: false,
+        match_is_intentional_draw: false,
+        match_is_unintentional_draw: false,
+        team_1_game_wins: 0,
+        team_2_game_wins: 0,
+        players: [p1, p2],
+        player_1: p1,
+        player_2: p2,
+        player_match_relationships: [{ player: p1 }, { player: p2 }]
+      });
+    }
+  }
+
+  return pairings;
+}
+
+/**
  * Demo /tests: po 11 rundach Swiss, R12 właśnie wystartowała.
- * standingsRound=11, activeRound=12, wszystkie pairings R12 = IN_PROGRESS.
+ * standingsRound=11, activeRound=12, PEŁNA lista pairings R12 (wszystkie IN_PROGRESS).
  */
 function createDemo2kRound12(overrides = {}) {
   const { pairingsMode: modeOverride, ...rest } = overrides;
-  return createSyntheticField(2000, {
+  const data = createSyntheticField(2000, {
     completedRounds: 11,
     totalRounds: 12,
     cutSize: 64,
@@ -182,6 +272,27 @@ function createDemo2kRound12(overrides = {}) {
     pairingsMode: modeOverride === 'mid_round' ? 'mid_round' : 'just_started',
     ...rest
   });
+
+  const players = data.standings.standings.length;
+  const live = data.pairings.results;
+  const expectedTables = Math.floor(players / 2);
+  if (live.length < expectedTables) {
+    throw new Error(`Demo 2k: partial R12 pairings (${live.length}/${expectedTables})`);
+  }
+  const paired = new Set();
+  for (const m of live) {
+    for (const rel of (m.player_match_relationships || [])) {
+      if (rel?.player?.id != null) paired.add(rel.player.id);
+    }
+  }
+  if (paired.size < players - (players % 2)) {
+    throw new Error(`Demo 2k: unpaired players in R12 (${paired.size}/${players})`);
+  }
+  const allLive = live.every(m => String(m.status).toUpperCase() === 'IN_PROGRESS' || m.is_bye);
+  if (modeOverride !== 'mid_round' && !allLive) {
+    throw new Error('Demo 2k: expected every non-BYE R12 match IN_PROGRESS');
+  }
+  return data;
 }
 
 function getDefaultRoundsForN(n) {
@@ -197,6 +308,7 @@ function getDefaultRoundsForN(n) {
 const api = {
   createSyntheticField,
   createDemo2kRound12,
+  buildFullRoundPairings,
   binomialBuckets,
   getDefaultRoundsForN
 };

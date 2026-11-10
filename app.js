@@ -903,9 +903,11 @@ function loadDemo2k12() {
         currentSelectedPlayerId = null;
         simulatedResultsCache = new Map();
 
+        const liveN = data.demoMeta?.liveMatchCount ?? extractPairingsList(data.pairings).length;
+        const liveOpen = data.demoMeta?.liveInProgressCount ?? liveN;
         const uiHint = data.demoMeta?.uiHint || 'Po R11, R12 właśnie wystartowała';
         applyLoadedTournamentData(data, {
-            statusPrefix: `Demo 2k: ${uiHint} (gen ${genMs} ms)`,
+            statusPrefix: `Demo 2k: ${uiHint} · mecze R${data.activeRound}: ${liveOpen}/${liveN} IN_PROGRESS (gen ${genMs} ms)`,
             autoSelectBubble: true
         });
     };
