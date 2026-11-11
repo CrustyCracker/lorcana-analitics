@@ -34,6 +34,35 @@ function lorcana_raise_fetch_time_limit($seconds = null) {
     @set_time_limit($seconds);
 }
 
+/**
+ * Best-effort field size for an event.
+ * PlayHub often leaves registered_user_count=1 on completed events while
+ * starting_player_count (and standings length) reflect the real field.
+ *
+ * @param array $eventData Raw event JSON from Hydraproxy
+ * @param array|null $standingsData Optional standings payload (standings/results list)
+ * @return int
+ */
+function lorcana_resolve_player_count($eventData, $standingsData = null) {
+    $registered = (int)($eventData['registered_user_count'] ?? 0);
+    $starting = (int)($eventData['starting_player_count'] ?? 0);
+    $count = max($registered, $starting);
+
+    if (is_array($standingsData)) {
+        $list = null;
+        if (isset($standingsData['standings']) && is_array($standingsData['standings'])) {
+            $list = $standingsData['standings'];
+        } elseif (isset($standingsData['results']) && is_array($standingsData['results'])) {
+            $list = $standingsData['results'];
+        }
+        if (is_array($list)) {
+            $count = max($count, count($list));
+        }
+    }
+
+    return $count;
+}
+
 function lorcana_apply_curl_timeouts($ch) {
     curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, LORCANA_CURL_CONNECT_TIMEOUT);
     curl_setopt($ch, CURLOPT_TIMEOUT, LORCANA_CURL_TIMEOUT);
@@ -442,7 +471,8 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
     }
 
     $eventName = $eventData['name'] ?? 'Nieznany Event';
-    $playerCount = $eventData['registered_user_count'] ?? 0;
+    // Finished events often report registered_user_count=1; starting_player_count is the real field size.
+    $playerCount = lorcana_resolve_player_count($eventData);
 
     $standingsRoundId = null;
     $standingsRoundNumber = 0;
@@ -550,6 +580,9 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
 
     $displayStatus = strtolower($eventData['display_status'] ?? '');
     $isCompleted = in_array($displayStatus, ['complete', 'completed', 'finished']);
+
+    // Prefer the larger of registration / starting / standings length once rows exist.
+    $playerCount = lorcana_resolve_player_count($eventData, $standingsData);
 
     $payload = [
         'eventId' => $eventId,

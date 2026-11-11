@@ -58,8 +58,13 @@ function installMinimalDom() {
     makeEl('cutSize', 'input').value = '4';
     makeEl('cutRule', 'select').value = 'hard';
     makeEl('statsPanel', 'div');
+    makeEl('polishAvgPointsWrap', 'div').style.display = 'none';
     makeEl('polishAvgPointsBody', 'tbody');
-    makeEl('cutLineBreakdownPanel', 'div');
+    makeEl('cutBreakdownPanel', 'div').style.display = 'none';
+    makeEl('cutBreakdownMetricsGrid', 'div');
+    makeEl('cutBreakdownBracketsRow', 'div');
+    makeEl('breakdownSummarySubtitle', 'div');
+    makeEl('breakdownCutSizeLabel', 'span');
 
     global.document = {
         getElementById(id) {
@@ -209,6 +214,7 @@ describe('Stale standings after tournament ID switch', () => {
             playerCount: 19,
             activeRound: 0,
             standingsRound: 0,
+            totalRounds: 5,
             displayStatus: 'upcoming',
             pairings: { pairings: [] },
             standings: null
@@ -218,7 +224,22 @@ describe('Stale standings after tournament ID switch', () => {
         app.applyLoadedTournamentData(eventA, { loadSeq: null });
         assert.match(elements.get('liveStandingsBody').innerHTML, /StickyRow/);
 
+        // Simulate prior-event Polish/cut panels still visible (the audit footgun).
+        const polishWrap = elements.get('polishAvgPointsWrap');
+        const polishBody = elements.get('polishAvgPointsBody');
+        const cutPanel = elements.get('cutBreakdownPanel');
+        const cutGrid = elements.get('cutBreakdownMetricsGrid');
+        polishWrap.style.display = 'block';
+        polishBody.innerHTML = '<tr><td>BANGKOK-STALE</td></tr>';
+        cutPanel.style.display = 'block';
+        cutGrid.innerHTML = '<div class="cut-metric-card">STALE-CUT</div>';
+
         app.resetTournamentViewForEventSwitch('876881');
+        assert.equal(polishWrap.style.display, 'none');
+        assert.equal(polishBody.innerHTML, '');
+        assert.equal(cutPanel.style.display, 'none');
+        assert.equal(cutGrid.innerHTML, '');
+
         app.setLastTrackedEventIdForTest('876881');
         app.applyLoadedTournamentData(eventB, { loadSeq: null });
 
@@ -226,6 +247,12 @@ describe('Stale standings after tournament ID switch', () => {
         assert.equal(app.getCachedLiveStandings().length, 0);
         assert.doesNotMatch(elements.get('liveStandingsBody').innerHTML, /StickyRow/);
         assert.match(elements.get('liveStandingsBody').innerHTML, /Brak tabeli|Ładowanie/i);
+        assert.equal(polishWrap.style.display, 'none');
+        assert.doesNotMatch(polishBody.innerHTML, /BANGKOK-STALE/);
+        assert.equal(cutPanel.style.display, 'none');
+        assert.doesNotMatch(cutGrid.innerHTML, /STALE-CUT/);
+        assert.equal(elements.get('activeRoundInfo').innerText, '0/5');
+        assert.match(elements.get('roundsLeftInfo').innerText, /Nie rozpoczęty/i);
     });
 
     it('top cut change applies to the current tracked eventId only', () => {

@@ -117,9 +117,26 @@ function roundsOverrideStorageKey(eventId) {
     return id ? `${ROUNDS_OVERRIDE_KEY_PREFIX}${id}` : null;
 }
 
+/** Preserve activeRound=0 (upcoming / not started); only coerce non-numeric to 0. */
+function resolveActiveRound(data) {
+    const n = Number(data?.activeRound);
+    return Number.isFinite(n) ? Math.max(0, Math.trunc(n)) : 0;
+}
+
+/**
+ * Field size for display / heavy-UI gating.
+ * Meta playerCount can be registered_user_count=1 on finished events — never let a
+ * truthy 1 mask a real standings length (avoid `playerCount || rows.length`).
+ */
+function resolvePlayerCount(data, standingsLength = 0) {
+    const meta = Number(data?.playerCount) || 0;
+    const rows = Number(standingsLength) || 0;
+    return Math.max(meta, rows);
+}
+
 function getApiTotalRounds(data) {
-    const activeRound = data?.activeRound || 1;
-    const fromApi = data?.totalRounds || getDefaultTotalRounds(data?.playerCount);
+    const activeRound = resolveActiveRound(data);
+    const fromApi = data?.totalRounds || getDefaultTotalRounds(resolvePlayerCount(data));
     return Math.max(fromApi || 1, activeRound);
 }
 
@@ -147,7 +164,7 @@ function setStoredRoundsOverride(eventId, rounds) {
 
 /** Efektywna liczba rund Swiss: ręczny override (per event) albo PlayHub/API. */
 function getEffectiveTotalRounds(data) {
-    const activeRound = data?.activeRound || 1;
+    const activeRound = resolveActiveRound(data);
     const apiRounds = getApiTotalRounds(data);
     const override = getStoredRoundsOverride(data?.eventId);
     if (override != null) return Math.max(override, activeRound);
@@ -1193,6 +1210,9 @@ function clearStandingsCachesAndDom(nextEventId, opts = {}) {
     if (bracketPanel) bracketPanel.style.display = 'none';
     const bracketGrid = document.getElementById('topCutBracketGrid');
     if (bracketGrid) bracketGrid.innerHTML = '';
+    // Polish avg + cut-breakdown used to keep the previous event's stats visible.
+    renderPolishAvgPointsTable([]);
+    renderCutLineBreakdownPanel([], 0, 'hard', 0, 0);
     stampStandingsEventMarker(nextEventId);
 }
 
@@ -1531,7 +1551,7 @@ function applyLoadedTournamentData(data, opts = {}) {
         }
         renderPairingsTable();
         if (cachedLiveStandings && cachedLiveStandings.length) {
-            const playerCount = data.playerCount || cachedLiveStandings.length;
+            const playerCount = resolvePlayerCount(data, cachedLiveStandings.length);
             renderPolishAvgPointsTable(cachedLiveStandings);
             renderCutLineBreakdownPanel(
                 cachedLiveStandings,
@@ -1549,6 +1569,15 @@ function applyLoadedTournamentData(data, opts = {}) {
             }
             stampStandingsEventMarker(data.eventId);
         } else {
+            // Empty/upcoming: clear secondary panels the same way LIVE already clears.
+            renderPolishAvgPointsTable([]);
+            renderCutLineBreakdownPanel(
+                [],
+                cutSize,
+                cutRule,
+                cachedCutContext.activeRound || 0,
+                cachedCutContext.totalRounds || 0
+            );
             renderOfficialStandingsTable(data.standings?.standings || [], cutSize, cutRule);
             stampStandingsEventMarker(data.eventId);
         }
@@ -2190,7 +2219,7 @@ function processStandings(data, opts = {}) {
     const uiGeneration = opts.uiGeneration != null ? opts.uiGeneration : uiApplyGeneration;
     const loadSeq = opts.loadSeq;
     
-    const activeRound = data.activeRound || 1;
+    const activeRound = resolveActiveRound(data);
     const totalRounds = getEffectiveTotalRounds(data);
     const standingsRound = data.standingsRound || 0;
     const isCompleted = Boolean(data.isCompleted || data.displayStatus === 'complete');
@@ -2201,12 +2230,14 @@ function processStandings(data, opts = {}) {
     const isLiveRoundInProgress = Boolean(activeRound > standingsRound && !isCompleted);
 
     setElText('eventNameDisplay', data.eventName || 'Turniej');
-    setElText('totalPlayersDisplay', data.playerCount || 0);
+    setElText('totalPlayersDisplay', resolvePlayerCount(data, rawStandings.length));
     setElText('activeRoundInfo', `${activeRound}/${totalRounds}`);
     
     const roundsLeftCount = Math.max(0, totalRounds - activeRound);
     let roundsLeftLabel = "";
-    if (isCompleted || (!isLiveRoundInProgress && roundsLeftCount === 0)) {
+    if (activeRound <= 0 && !isCompleted) {
+        roundsLeftLabel = "Nie rozpoczęty";
+    } else if (isCompleted || (!isLiveRoundInProgress && roundsLeftCount === 0)) {
         roundsLeftLabel = "Turniej zakończony";
     } else if (roundsLeftCount === 0) {
         roundsLeftLabel = "Ostatnia runda!";
@@ -2243,6 +2274,9 @@ function processStandings(data, opts = {}) {
                 officialBody.innerHTML = '<tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>';
             }
         }
+        // Same clear path as LIVE: do not leave prior event Polish/cut stats mounted.
+        renderPolishAvgPointsTable([]);
+        renderCutLineBreakdownPanel([], cutSize, cutRule, activeRound, totalRounds);
         stampStandingsEventMarker(data.eventId);
         return;
     }
@@ -2354,7 +2388,7 @@ function processStandings(data, opts = {}) {
     stampStandingsEventMarker(data.eventId);
     updatePolesFilterUI();
 
-    const playerCount = data.playerCount || liveStandings.length;
+    const playerCount = resolvePlayerCount(data, liveStandings.length);
     if (deferSecondary) {
         return;
     }
@@ -2763,7 +2797,10 @@ function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch
     }
     renderPlayDrawSeedingPanel(targetPlayer, myOpponent, simResults.isCurrentMatchFinished, cachedLiveStandings, cutSize);
 
-    const playerCount = latestData?.playerCount || (latestData?.standings?.standings?.length || 0);
+    const playerCount = resolvePlayerCount(
+        latestData,
+        latestData?.standings?.standings?.length || cachedLiveStandings.length || 0
+    );
     if (!shouldGateHeavyUi(playerCount)) {
         renderTopCutBracketPanel(cachedLiveStandings, cutSize);
     } else {
@@ -2778,7 +2815,7 @@ function recalculateTieForSelectedPlayer() {
     if (!latestData || !latestData.standings?.standings || !currentSelectedPlayerId) return;
 
     const rawStandings = latestData.standings.standings;
-    const activeRound = latestData.activeRound || 1;
+    const activeRound = resolveActiveRound(latestData);
     const totalRounds = getEffectiveTotalRounds(latestData);
 
     const cutSize = parseInt(document.getElementById('cutSize')?.value || '4');
@@ -3946,7 +3983,7 @@ function switchPredictorScenario(scenario) {
     if (latestData && currentSelectedPlayerId) {
         const standings = latestData.standings?.standings || [];
         const targetPlayer = standings.find(p => String(p.player?.id || p.id) === String(currentSelectedPlayerId));
-        const activeRound = latestData.activeRound || 1;
+        const activeRound = resolveActiveRound(latestData);
         const totalRounds = getEffectiveTotalRounds(latestData);
         const cached = simulatedResultsCache.get(String(currentSelectedPlayerId));
         if (targetPlayer) {
@@ -3965,7 +4002,10 @@ function recalculateNextRoundPairingsPredictor(sim, targetPlayer, activeRound, t
     }
 
     // Przy bardzo dużych polach ogranicz listę kandydatów (UI), rachunek i tak jest O(N)
-    const gateHeavy = shouldGateHeavyUi(latestData.playerCount || 0);
+    const gateHeavy = shouldGateHeavyUi(resolvePlayerCount(
+        latestData,
+        latestData.standings?.standings?.length || cachedLiveStandings.length || 0
+    ));
 
     panel.style.display = 'block';
     setElText('predictorNextRoundNum', activeRound + 1);
@@ -4208,6 +4248,9 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
     const bd = calculateCutLineBreakdown(liveStandings, cutSize, cutRule);
     if (!bd) {
         panel.style.display = 'none';
+        gridEl.innerHTML = '';
+        rowEl.innerHTML = '';
+        if (subtitleEl) subtitleEl.innerHTML = '';
         return;
     }
 
@@ -5347,6 +5390,8 @@ if (typeof module !== 'undefined' && module.exports) {
         prepareTieSimulationContext,
         getAdaptiveSimCount,
         shouldGateHeavyUi,
+        resolveActiveRound,
+        resolvePlayerCount,
         LARGE_EVENT_PLAYER_THRESHOLD,
         POLISH_KNOWN_NICKS,
         POLISH_TEAM_TAGS,
