@@ -60,6 +60,9 @@ let tieSimActiveRequestId = 0;
 let siteConfig = {
     activeEventId: null,
     predictionAlgorithm: 'hybrid',
+    defaultCutSize: 4,
+    defaultCutRule: 'hard',
+    defaultSwissRounds: null,
     updatedAt: null
 };
 /** In-memory TIE result cache: fingerprint → { result, at } (per browser tab). */
@@ -212,28 +215,84 @@ function applySessionEventOverride() {
     startTracking();
 }
 
+function applyPublicSiteConfigPayload(data) {
+    if (!data || typeof data !== 'object') return siteConfig;
+    if (data.activeEventId || data.lastEventId) {
+        siteConfig.activeEventId = Number(data.activeEventId || data.lastEventId);
+    }
+    if (data.predictionAlgorithm) {
+        siteConfig.predictionAlgorithm = data.predictionAlgorithm;
+    }
+    if (data.defaultCutSize != null) {
+        const n = parseInt(data.defaultCutSize, 10);
+        if (Number.isFinite(n) && n >= 2 && n <= 256) siteConfig.defaultCutSize = n;
+    }
+    if (data.defaultCutRule === 'hard' || data.defaultCutRule === 'soft') {
+        siteConfig.defaultCutRule = data.defaultCutRule;
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'defaultSwissRounds')) {
+        if (data.defaultSwissRounds == null || data.defaultSwissRounds === '') {
+            siteConfig.defaultSwissRounds = null;
+        } else {
+            const n = parseInt(data.defaultSwissRounds, 10);
+            siteConfig.defaultSwissRounds = (Number.isFinite(n) && n >= 1 && n <= 20) ? n : null;
+        }
+    }
+    if (data.updatedAt != null) siteConfig.updatedAt = data.updatedAt;
+    return siteConfig;
+}
+
 async function fetchSiteConfig() {
     const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
     try {
         const res = await fetch(`${apiBase}api.php?action=get_config`, { cache: 'no-cache' });
         if (!res.ok) throw new Error('config http ' + res.status);
-        const data = await res.json();
-        if (data && data.activeEventId) {
-            siteConfig.activeEventId = Number(data.activeEventId);
-            siteConfig.predictionAlgorithm = data.predictionAlgorithm || 'hybrid';
-            siteConfig.updatedAt = data.updatedAt || null;
-        }
+        applyPublicSiteConfigPayload(await res.json());
     } catch (e) {
         try {
             const res = await fetch(`${apiBase}api.php?action=get_last_event`, { cache: 'no-cache' });
-            const data = await res.json();
-            if (data && (data.activeEventId || data.lastEventId)) {
-                siteConfig.activeEventId = Number(data.activeEventId || data.lastEventId);
-                siteConfig.predictionAlgorithm = data.predictionAlgorithm || siteConfig.predictionAlgorithm || 'hybrid';
-            }
+            applyPublicSiteConfigPayload(await res.json());
         } catch (e2) { /* ignore */ }
     }
     return siteConfig;
+}
+
+function getAdminSwissRoundsDefault() {
+    const n = Number(siteConfig?.defaultSwissRounds);
+    return (Number.isFinite(n) && n >= 1 && n <= 20) ? n : null;
+}
+
+function hasLocalCutSizeOverride() {
+    try { return localStorage.getItem(CUT_SIZE_STORAGE_KEY) != null; } catch (e) { return false; }
+}
+
+function hasLocalCutRuleOverride() {
+    try { return localStorage.getItem(CUT_RULE_STORAGE_KEY) != null; } catch (e) { return false; }
+}
+
+function applyAdminCutDefaultsToUi() {
+    const cutSizeEl = document.getElementById('cutSize');
+    const cutRuleEl = document.getElementById('cutRule');
+    const size = Number(siteConfig.defaultCutSize);
+    const rule = siteConfig.defaultCutRule === 'soft' ? 'soft' : 'hard';
+    if (cutSizeEl && Number.isFinite(size) && size >= 2 && size <= 256) {
+        cutSizeEl.value = String(size);
+    }
+    if (cutRuleEl) cutRuleEl.value = rule;
+}
+
+function updateCutPrefsHint() {
+    const hint = document.getElementById('cutPrefsHint');
+    if (!hint) return;
+    const localSize = hasLocalCutSizeOverride();
+    const localRule = hasLocalCutRuleOverride();
+    if (localSize || localRule) {
+        hint.textContent = 'Lokalny override (ta przeglądarka) — nie zmienia ustawień admina ani innych gości. „Domyślne admina” czyści lokalny zapis.';
+        hint.style.color = '#f39c12';
+    } else {
+        hint.textContent = `Domyślne z /admin: Top ${siteConfig.defaultCutSize || 4} · ${siteConfig.defaultCutRule === 'soft' ? 'miękki' : 'twardy'}. Zmiana tutaj zapisuje się tylko lokalnie.`;
+        hint.style.color = '#64748b';
+    }
 }
 
 const CUT_SIZE_STORAGE_KEY = 'lorcana_cut_size';
@@ -290,12 +349,14 @@ function setStoredRoundsOverride(eventId, rounds) {
     } catch (e) {}
 }
 
-/** Efektywna liczba rund Swiss: ręczny override (per event) albo PlayHub/API. */
+/** Efektywna liczba rund Swiss: lokalny override → domyślne admina → PlayHub/API. */
 function getEffectiveTotalRounds(data) {
     const activeRound = resolveActiveRound(data);
     const apiRounds = getApiTotalRounds(data);
     const override = getStoredRoundsOverride(data?.eventId);
     if (override != null) return Math.max(override, activeRound);
+    const adminRounds = getAdminSwissRoundsDefault();
+    if (adminRounds != null) return Math.max(adminRounds, activeRound);
     return apiRounds;
 }
 
@@ -305,20 +366,30 @@ function syncRoundsOverrideUi(data) {
     if (!data) return;
     const apiRounds = getApiTotalRounds(data);
     const override = getStoredRoundsOverride(data.eventId);
+    const adminRounds = getAdminSwissRoundsDefault();
     const effective = getEffectiveTotalRounds(data);
     if (input) {
         input.dataset.apiRounds = String(apiRounds);
         input.dataset.eventId = String(data.eventId || '');
-        // Puste pole = tryb auto (PlayHub); wypełnione = override
+        // Puste pole = brak lokalnego override (admin albo PlayHub); wypełnione = lokalny
         input.value = override != null ? String(override) : '';
-        input.placeholder = `Auto: ${apiRounds}`;
+        if (adminRounds != null) {
+            input.placeholder = `Admin: ${adminRounds} (PlayHub: ${apiRounds})`;
+        } else {
+            input.placeholder = `Auto: ${apiRounds}`;
+        }
     }
     if (hint) {
         if (override != null) {
-            hint.textContent = `Ręcznie: ${effective} rund (PlayHub podaje ${apiRounds}). Przycisk „PlayHub” przywraca auto.`;
+            hint.textContent = `Lokalnie: ${effective} rund (PlayHub: ${apiRounds}` +
+                (adminRounds != null ? `, admin: ${adminRounds}` : '') +
+                '). „Wyczyść lokalne” wraca do admina/PlayHub — nie zmienia serwera.';
             hint.style.color = '#f39c12';
+        } else if (adminRounds != null) {
+            hint.textContent = `Domyślne z /admin: ${effective} rund (PlayHub podaje ${apiRounds}). Wpisz liczbę = tylko lokalny override.`;
+            hint.style.color = '#64748b';
         } else {
-            hint.textContent = `Auto z PlayHub: ${apiRounds} rund. Wpisz inną liczbę, jeśli organizatorzy podali złą.`;
+            hint.textContent = `Auto z PlayHub: ${apiRounds} rund. Wpisz inną liczbę = lokalny override (nie wpływa na innych).`;
             hint.style.color = '#64748b';
         }
     }
@@ -357,10 +428,13 @@ function clearRoundsOverride() {
         if (currentSelectedPlayerId) recalculateTieForSelectedPlayer();
     } else {
         const input = document.getElementById('totalRoundsOverride');
-        const hint = document.getElementById('roundsOverrideHint');
         if (input) input.value = '';
+        const adminRounds = getAdminSwissRoundsDefault();
+        const hint = document.getElementById('roundsOverrideHint');
         if (hint) {
-            hint.textContent = 'Domyślnie: wartość z PlayHub. Możesz nadpisać ręcznie.';
+            hint.textContent = adminRounds != null
+                ? `Domyślne z /admin: ${adminRounds} rund (bez lokalnego override).`
+                : 'Domyślnie: wartość z PlayHub / admina. Możesz nadpisać lokalnie.';
             hint.style.color = '#64748b';
         }
     }
@@ -370,6 +444,8 @@ function loadCutPrefsIntoUi() {
     const cutSizeEl = document.getElementById('cutSize');
     const cutRuleEl = document.getElementById('cutRule');
     if (!cutSizeEl && !cutRuleEl) return;
+    // Baseline = admin defaults; localStorage overlays only when user previously changed.
+    applyAdminCutDefaultsToUi();
     try {
         const savedSize = localStorage.getItem(CUT_SIZE_STORAGE_KEY);
         const savedRule = localStorage.getItem(CUT_RULE_STORAGE_KEY);
@@ -381,6 +457,7 @@ function loadCutPrefsIntoUi() {
             cutRuleEl.value = savedRule;
         }
     } catch (e) {}
+    updateCutPrefsHint();
 }
 
 function saveCutPrefsFromUi() {
@@ -397,6 +474,23 @@ function saveCutPrefsFromUi() {
             localStorage.setItem(CUT_RULE_STORAGE_KEY, cutRuleEl.value);
         }
     } catch (e) {}
+    updateCutPrefsHint();
+}
+
+function resetCutPrefsToAdminDefaults() {
+    try {
+        localStorage.removeItem(CUT_SIZE_STORAGE_KEY);
+        localStorage.removeItem(CUT_RULE_STORAGE_KEY);
+    } catch (e) {}
+    applyAdminCutDefaultsToUi();
+    updateCutPrefsHint();
+    lastProcessFingerprint = null;
+    if (!latestData) return;
+    const tracked = normalizeEventIdDigits(lastTrackedEventId);
+    const have = normalizeEventIdDigits(latestData.eventId);
+    if (tracked && have && tracked !== have) return;
+    processStandings(latestData);
+    if (currentSelectedPlayerId) recalculateTieForSelectedPlayer();
 }
 
 function onCutPrefsChanged() {
@@ -1798,9 +1892,11 @@ async function initDefaultEventAndAutoTrack() {
         eventInput.value = cleanId;
         updateActiveEventDisplay(cleanId, siteConfig.predictionAlgorithm);
         try { localStorage.setItem('lorcana_last_event_id', cleanId); } catch (e) {}
-        // Still load algorithm from admin config in background.
+        // Load admin defaults (algo/cut/rounds) without blocking first track.
         fetchSiteConfig().then((cfg) => {
             updateActiveEventDisplay(cleanId, cfg.predictionAlgorithm);
+            loadCutPrefsIntoUi();
+            if (latestData) syncRoundsOverrideUi(latestData);
         }).catch(() => {});
         startTracking();
         return;
@@ -1808,6 +1904,7 @@ async function initDefaultEventAndAutoTrack() {
 
     // 2. Admin-owned active event (source of truth for public visitors).
     await fetchSiteConfig();
+    loadCutPrefsIntoUi();
     if (siteConfig.activeEventId) {
         const id = String(siteConfig.activeEventId);
         eventInput.value = id;
@@ -5579,7 +5676,12 @@ if (typeof module !== 'undefined' && module.exports) {
         prepareTieSimulationContext,
         fingerprintTieContext,
         fetchSiteConfig,
+        applyPublicSiteConfigPayload,
         applySessionEventOverride,
+        resetCutPrefsToAdminDefaults,
+        getAdminSwissRoundsDefault,
+        hasLocalCutSizeOverride,
+        hasLocalCutRuleOverride,
         siteConfig,
         getAdaptiveSimCount,
         shouldGateHeavyUi,

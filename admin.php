@@ -56,14 +56,23 @@ if (admin_is_logged_in() && isset($_POST['save_config'])) {
     admin_require_post();
     $eventId = (int)preg_replace('/\D+/', '', (string)($_POST['activeEventId'] ?? ''));
     $algo = strtolower(trim((string)($_POST['predictionAlgorithm'] ?? 'hybrid')));
+    $cutSize = lorcana_normalize_cut_size($_POST['defaultCutSize'] ?? 4, 4);
+    $cutRule = lorcana_normalize_cut_rule($_POST['defaultCutRule'] ?? 'hard', 'hard');
+    $swissRaw = trim((string)($_POST['defaultSwissRounds'] ?? ''));
+    $swissRounds = ($swissRaw === '') ? null : lorcana_normalize_swiss_rounds($swissRaw);
     if ($eventId <= 0) {
         $error = 'Podaj poprawne ID turnieju.';
     } elseif (!in_array($algo, ['montecarlo', 'hybrid', 'exact'], true)) {
         $error = 'Nieznany algorytm.';
+    } elseif ($swissRaw !== '' && $swissRounds === null) {
+        $error = 'Liczba rund Swiss musi być pusta (PlayHub) albo 1–20.';
     } else {
         lorcana_save_site_config([
             'activeEventId' => $eventId,
             'predictionAlgorithm' => $algo,
+            'defaultCutSize' => $cutSize,
+            'defaultCutRule' => $cutRule,
+            'defaultSwissRounds' => $swissRounds,
             'updatedBy' => 'admin',
         ]);
         if (function_exists('lorcana_track_event')) {
@@ -76,7 +85,11 @@ if (admin_is_logged_in() && isset($_POST['save_config'])) {
             ];
             lorcana_save_tracked_events($map);
         }
-        $flash = 'Zapisano: aktywny turniej #' . $eventId . ', algorytm = ' . $algo . '.';
+        $swissLabel = $swissRounds === null ? 'PlayHub' : (string)$swissRounds;
+        $flash = 'Zapisano: #' . $eventId
+            . ', algorytm=' . $algo
+            . ', cut=' . $cutSize . '/' . $cutRule
+            . ', rundy=' . $swissLabel . '.';
     }
 }
 
@@ -228,10 +241,30 @@ if (admin_is_logged_in()) {
                     <option value="exact" <?= $cfg['predictionAlgorithm'] === 'exact' ? 'selected' : '' ?>>exact — enumeracja gdy mała przestrzeń, inaczej MC</option>
                 </select>
 
+                <label for="defaultCutSize">Domyślny Top Cut — od którego miejsca</label>
+                <input type="number" id="defaultCutSize" name="defaultCutSize" min="2" max="256"
+                       value="<?= (int)$cfg['defaultCutSize'] ?>" required inputmode="numeric">
+
+                <label for="defaultCutRule">Domyślny typ Top Cut</label>
+                <select id="defaultCutRule" name="defaultCutRule">
+                    <option value="hard" <?= $cfg['defaultCutRule'] === 'hard' ? 'selected' : '' ?>>Twardy Cut (sztywne Top X) [ME 2]</option>
+                    <option value="soft" <?= $cfg['defaultCutRule'] === 'soft' ? 'selected' : '' ?>>Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
+                </select>
+
+                <label for="defaultSwissRounds">Domyślna liczba rund Swiss</label>
+                <input type="number" id="defaultSwissRounds" name="defaultSwissRounds" min="1" max="20"
+                       value="<?= $cfg['defaultSwissRounds'] === null ? '' : (int)$cfg['defaultSwissRounds'] ?>"
+                       placeholder="Puste = PlayHub (auto)" inputmode="numeric">
+                <p class="meta" style="margin:-6px 0 14px;">Puste pole = goście bez lokalnego override biorą rundy z PlayHub. Wartość 1–20 = domyślna dla nowych wizyt.</p>
+
                 <button type="submit" name="save_config" value="1">Zapisz konfigurację</button>
             </form>
+            <p class="meta" style="margin-top:12px;">
+                Publiczni użytkownicy mogą nadpisać cut/rundy tylko lokalnie (localStorage) — to <strong>nie zmienia</strong> tych domyślnych ani innych gości.
+                Nowi odwiedzający / po wyczyszczeniu lokalnego override biorą wartości stąd.
+            </p>
             <?php if (!empty($cfg['updatedAt'])): ?>
-                <p class="meta" style="margin-top:12px;">Ostatnia zmiana: <strong><?= htmlspecialchars((string)$cfg['updatedAt'], ENT_QUOTES, 'UTF-8') ?></strong></p>
+                <p class="meta" style="margin-top:8px;">Ostatnia zmiana: <strong><?= htmlspecialchars((string)$cfg['updatedAt'], ENT_QUOTES, 'UTF-8') ?></strong></p>
             <?php endif; ?>
         </div>
 

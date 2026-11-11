@@ -62,11 +62,9 @@ if ($defaultEventId <= 0) {
 }
 
 if (isset($_GET['action']) && $_GET['action'] === 'get_last_event') {
-    echo json_encode([
+    echo json_encode(array_merge(lorcana_public_site_config(), [
         'lastEventId' => $defaultEventId,
-        'activeEventId' => $defaultEventId,
-        'predictionAlgorithm' => $siteConfig['predictionAlgorithm'],
-    ]);
+    ]));
     exit;
 }
 

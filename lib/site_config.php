@@ -1,6 +1,6 @@
 <?php
 /**
- * Shared site settings: active tournament + prediction algorithm.
+ * Shared site settings: active tournament, prediction algorithm, cut/rounds defaults.
  * Persisted as site_config.json (gitignored runtime file).
  */
 
@@ -34,13 +34,59 @@ function lorcana_site_config_defaults() {
     return [
         'activeEventId' => $fallbackEvent,
         'predictionAlgorithm' => 'hybrid',
+        'defaultCutSize' => 4,
+        'defaultCutRule' => 'hard',
+        /** null = goście biorą liczbę rund z PlayHub (gdy brak lokalnego override). */
+        'defaultSwissRounds' => null,
         'updatedAt' => null,
         'updatedBy' => null,
     ];
 }
 
+function lorcana_normalize_cut_size($value, $fallback = 4) {
+    $n = (int)$value;
+    if ($n < 2 || $n > 256) {
+        return (int)$fallback;
+    }
+    return $n;
+}
+
+function lorcana_normalize_cut_rule($value, $fallback = 'hard') {
+    $rule = strtolower(trim((string)$value));
+    if ($rule === 'hard' || $rule === 'soft') {
+        return $rule;
+    }
+    $fb = strtolower(trim((string)$fallback));
+    return ($fb === 'soft') ? 'soft' : 'hard';
+}
+
 /**
- * @return array{activeEventId:int,predictionAlgorithm:string,updatedAt:?string,updatedBy:?string}
+ * @return int|null null = PlayHub auto
+ */
+function lorcana_normalize_swiss_rounds($value) {
+    if ($value === null || $value === '' || $value === false) {
+        return null;
+    }
+    if (is_string($value) && strtolower(trim($value)) === 'auto') {
+        return null;
+    }
+    $n = (int)$value;
+    if ($n < 1 || $n > 20) {
+        return null;
+    }
+    return $n;
+}
+
+/**
+ * @return array{
+ *   activeEventId:int,
+ *   predictionAlgorithm:string,
+ *   defaultCutSize:int,
+ *   defaultCutRule:string,
+ *   defaultSwissRounds:?int,
+ *   updatedAt:?string,
+ *   updatedBy:?string
+ * }
  */
 function lorcana_load_site_config() {
     $defaults = lorcana_site_config_defaults();
@@ -61,9 +107,22 @@ function lorcana_load_site_config() {
     if ($eventId <= 0 || $eventId > 999999999) {
         $eventId = $defaults['activeEventId'];
     }
+    $swiss = array_key_exists('defaultSwissRounds', $data)
+        ? lorcana_normalize_swiss_rounds($data['defaultSwissRounds'])
+        : $defaults['defaultSwissRounds'];
+
     return [
         'activeEventId' => $eventId,
         'predictionAlgorithm' => $algo,
+        'defaultCutSize' => lorcana_normalize_cut_size(
+            $data['defaultCutSize'] ?? $defaults['defaultCutSize'],
+            $defaults['defaultCutSize']
+        ),
+        'defaultCutRule' => lorcana_normalize_cut_rule(
+            $data['defaultCutRule'] ?? $defaults['defaultCutRule'],
+            $defaults['defaultCutRule']
+        ),
+        'defaultSwissRounds' => $swiss,
         'updatedAt' => isset($data['updatedAt']) ? (string)$data['updatedAt'] : null,
         'updatedBy' => isset($data['updatedBy']) ? (string)$data['updatedBy'] : null,
     ];
@@ -86,6 +145,21 @@ function lorcana_save_site_config(array $patch) {
         if (in_array($algo, ['montecarlo', 'hybrid', 'exact'], true)) {
             $current['predictionAlgorithm'] = $algo;
         }
+    }
+    if (array_key_exists('defaultCutSize', $patch)) {
+        $current['defaultCutSize'] = lorcana_normalize_cut_size(
+            $patch['defaultCutSize'],
+            $current['defaultCutSize']
+        );
+    }
+    if (array_key_exists('defaultCutRule', $patch)) {
+        $current['defaultCutRule'] = lorcana_normalize_cut_rule(
+            $patch['defaultCutRule'],
+            $current['defaultCutRule']
+        );
+    }
+    if (array_key_exists('defaultSwissRounds', $patch)) {
+        $current['defaultSwissRounds'] = lorcana_normalize_swiss_rounds($patch['defaultSwissRounds']);
     }
     $current['updatedAt'] = gmdate('c');
     if (isset($patch['updatedBy'])) {
@@ -121,6 +195,9 @@ function lorcana_public_site_config() {
     return [
         'activeEventId' => (int)$cfg['activeEventId'],
         'predictionAlgorithm' => (string)$cfg['predictionAlgorithm'],
+        'defaultCutSize' => (int)$cfg['defaultCutSize'],
+        'defaultCutRule' => (string)$cfg['defaultCutRule'],
+        'defaultSwissRounds' => $cfg['defaultSwissRounds'] === null ? null : (int)$cfg['defaultSwissRounds'],
         'updatedAt' => $cfg['updatedAt'],
     ];
 }

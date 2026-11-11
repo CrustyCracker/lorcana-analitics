@@ -1667,7 +1667,7 @@
             <div class="field-group">
                 <label for="cutSize">3. Top Cut — od którego miejsca</label>
                 <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" inputmode="numeric" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
-                <div class="field-hint">np. 8 = Top 8, 32 = Top 32.</div>
+                <div class="field-hint">np. 8 = Top 8, 32 = Top 32. Domyślne z /admin.</div>
             </div>
             <div class="field-group">
                 <label for="cutRule">4. Typ Top Cut</label>
@@ -1678,14 +1678,18 @@
                 <div class="field-hint">Twardy = dokładnie X miejsc; miękki = X + remisy punktowe.</div>
             </div>
         </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-4px 0 8px;">
+            <button type="button" class="btn-secondary" style="width:auto;height:32px;font-size:12px;" onclick="resetCutPrefsToAdminDefaults()" title="Usuń lokalny override cut i wczytaj domyślne z /admin">Domyślne admina (cut)</button>
+            <div class="field-hint" id="cutPrefsHint" style="margin:0;">Domyślne z /admin — lokalna zmiana nie wpływa na innych.</div>
+        </div>
 
         <div class="field-group" data-control="rounds">
             <label for="totalRoundsOverride">5. Liczba rund Swiss</label>
             <div class="rounds-override-row">
-                <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" inputmode="numeric" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Domyślnie z PlayHub. Wpisz własną liczbę, jeśli organizatorzy podali błędną.">
-                <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść ręczną liczbę rund i wróć do wartości z PlayHub">PlayHub</button>
+                <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" inputmode="numeric" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Bez lokalnego wpisu: domyślne admina, potem PlayHub.">
+                <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść lokalny override rund — wróć do admina / PlayHub">Wyczyść lokalne</button>
             </div>
-            <div class="field-hint" id="roundsOverrideHint">Domyślnie: wartość z PlayHub. Możesz nadpisać ręcznie.</div>
+            <div class="field-hint" id="roundsOverrideHint">Domyślnie: admin lub PlayHub. Lokalny wpis tylko w tej przeglądarce.</div>
         </div>
 
         <div id="status" data-control="status" aria-live="polite" aria-busy="false"><span class="load-status-text">Gotowy do pobierania...</span></div>
@@ -2072,7 +2076,7 @@
 
 
 
-<script src="tie-sim-core.js?v=20261111hybrid1"></script>
-<script src="app.js?v=20261111page1"></script>
+<script src="tie-sim-core.js?v=20261111cut1"></script>
+<script src="app.js?v=20261111cut1"></script>
 </body>
 </html>
