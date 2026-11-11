@@ -1048,13 +1048,19 @@ function changeLivePage(newPage) {
         });
     const totalPages = Math.ceil((list.length || 0) / PAGE_SIZE);
     currentPages.live = Math.max(1, Math.min(newPage, totalPages || 1));
+    const targetTop = (currentPages.live - 1) * PAGE_SIZE * LIVE_ROW_HEIGHT;
+    liveVirtScrollTop = targetTop;
     const viewport = typeof document !== 'undefined' ? document.getElementById('liveStandingsViewport') : null;
     if (viewport) {
-        const targetTop = (currentPages.live - 1) * PAGE_SIZE * LIVE_ROW_HEIGHT;
         viewport.scrollTop = targetTop;
-        liveVirtScrollTop = targetTop;
     }
+    // Invalidate window key so page jumps always re-paint (not only on scroll).
+    liveVirtLastWindowKey = '';
     renderLiveStandingsTable();
+    // After virtual spacers exist, re-apply scroll (browser may have clamped earlier).
+    if (viewport) {
+        viewport.scrollTop = liveVirtScrollTop;
+    }
 }
 
 function onLiveStandingsScroll(ev) {
@@ -1123,6 +1129,21 @@ function getLiveVirtualWindow(totalItems, scrollTop, viewportHeight, rowHeight =
         bottomPad: Math.max(0, (total - end) * rowH),
         domRows: Math.max(0, end - start)
     };
+}
+
+/**
+ * Numer strony LIVE z pozycji scrolla (bez overscanu okna wirtualnego).
+ * win.start jest cofnięty o LIVE_OVERSCAN — nie wolno z niego liczyć active page,
+ * bo „Następna” z 1→2 wracało do 1 i wyglądało jak martwy klik.
+ */
+function getLivePageFromScroll(scrollTop, totalItems, pageSize = PAGE_SIZE, rowHeight = LIVE_ROW_HEIGHT) {
+    const total = Math.max(0, totalItems | 0);
+    if (total === 0) return 1;
+    const size = Math.max(1, pageSize | 0);
+    const rowH = Math.max(1, rowHeight | 0);
+    const totalPages = Math.max(1, Math.ceil(total / size));
+    const firstIndex = Math.max(0, Math.floor((Number(scrollTop) || 0) / rowH));
+    return Math.max(1, Math.min(totalPages, Math.floor(firstIndex / size) + 1));
 }
 
 /**
@@ -2608,13 +2629,15 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
     }
 
     const win = getLiveVirtualWindow(totalItems, liveVirtScrollTop, viewportHeight, LIVE_ROW_HEIGHT, LIVE_OVERSCAN);
-    const windowKey = totalItems + ':' + win.start + ':' + win.end + ':' + ctx.cutSize + ':' + (currentSelectedPlayerId || '');
+    const pageFromScroll = getLivePageFromScroll(liveVirtScrollTop, totalItems);
+    const windowKey = totalItems + ':' + win.start + ':' + win.end + ':' + ctx.cutSize + ':' + (currentSelectedPlayerId || '') + ':p' + pageFromScroll;
     if (fromScroll && windowKey === liveVirtLastWindowKey) {
         return;
     }
     liveVirtLastWindowKey = windowKey;
 
-    currentPages.live = Math.max(1, Math.floor(win.start / PAGE_SIZE) + 1);
+    // Page from scroll index — never from win.start (overscan would pin page 1).
+    currentPages.live = pageFromScroll;
 
     const frag = document.createDocumentFragment();
     if (win.topPad > 0) {
@@ -5588,6 +5611,8 @@ if (typeof module !== 'undefined' && module.exports) {
         LIVE_MAX_DOM_ROWS,
         filterLiveStandingsList,
         getLiveVirtualWindow,
+        getLivePageFromScroll,
+        changeLivePage,
         computeLiveStandingsList,
         derivePlayerStrategy,
         getCutStatusCategory,
