@@ -2,7 +2,13 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const {
     canReuseCachedEventSnapshot,
-    buildDataFingerprint
+    buildDataFingerprint,
+    normalizeEventIdDigits,
+    resetTournamentViewForEventSwitch,
+    getCachedLiveStandings,
+    getLatestData,
+    setLatestDataForTest,
+    getUiApplyGeneration
 } = require('../app.js');
 
 describe('Tournament ID switch — cached snapshot reuse', () => {
@@ -33,5 +39,15 @@ describe('Tournament ID switch — cached snapshot reuse', () => {
         assert.notEqual(a, b);
         assert.match(a, /^1007231::/);
         assert.match(b, /^1233041::/);
+    });
+
+    it('resetTournamentViewForEventSwitch drops latestData and LIVE cache for the new id', () => {
+        setLatestDataForTest({ eventId: 1007231, standings: { standings: [{ player: { id: 1 } }] } });
+        const beforeGen = getUiApplyGeneration();
+        const gen = resetTournamentViewForEventSwitch('1233041');
+        assert.ok(gen > beforeGen);
+        assert.equal(getLatestData(), null);
+        assert.equal(getCachedLiveStandings().length, 0);
+        assert.equal(normalizeEventIdDigits('abc-1233041'), '1233041');
     });
 });

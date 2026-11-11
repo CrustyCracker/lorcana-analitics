@@ -257,10 +257,13 @@ function saveCutPrefsFromUi() {
 function onCutPrefsChanged() {
     saveCutPrefsFromUi();
     lastProcessFingerprint = null;
-    if (latestData) {
-        processStandings(latestData);
-        if (currentSelectedPlayerId) recalculateTieForSelectedPlayer();
-    }
+    if (!latestData) return;
+    // Only mutate the visible cut for the event currently being tracked.
+    const tracked = normalizeEventIdDigits(lastTrackedEventId);
+    const have = normalizeEventIdDigits(latestData.eventId);
+    if (tracked && have && tracked !== have) return;
+    processStandings(latestData);
+    if (currentSelectedPlayerId) recalculateTieForSelectedPlayer();
 }
 
 function shouldGateHeavyUi(playerCount) {
@@ -1099,6 +1102,8 @@ let dataLoadSeq = 0;
 let lastFetchEtags = new Map();
 /** In-flight api.php abort — cancelled when eventId changes / a newer fetch starts. */
 let activeFetchController = null;
+/** Bumped on event-id switch / new apply — late rAF/idle work from a previous event must no-op. */
+let uiApplyGeneration = 0;
 
 /**
  * HTTP 304 / fingerprint "Bez zmian" is only safe when the UI already holds
@@ -1112,6 +1117,96 @@ function canReuseCachedEventSnapshot(requestedEventId, currentData) {
         ? String(currentData.eventId).replace(/\D/g, '')
         : '';
     return Boolean(have && have === want);
+}
+
+function normalizeEventIdDigits(eventId) {
+    return String(eventId || '').replace(/\D/g, '');
+}
+
+function bumpUiApplyGeneration() {
+    uiApplyGeneration += 1;
+    return uiApplyGeneration;
+}
+
+function getUiApplyGeneration() {
+    return uiApplyGeneration;
+}
+
+function stampStandingsEventMarker(eventId) {
+    if (typeof document === 'undefined') return;
+    const marker = normalizeEventIdDigits(eventId);
+    for (const id of ['liveStandingsBody', 'officialStandingsBody', 'pairingsBody']) {
+        const el = document.getElementById(id);
+        if (el) el.dataset.eventId = marker;
+    }
+    const liveSection = document.getElementById('liveStandingsViewport')
+        || document.getElementById('liveStandingsSection');
+    if (liveSection) liveSection.dataset.eventId = marker;
+}
+
+/**
+ * Drop cached standings/pairings so a late deferred render cannot resurrect the
+ * previous tournament, and paint an immediate empty/loading standings shell.
+ */
+function clearStandingsCachesAndDom(nextEventId, opts = {}) {
+    const loading = opts.loading !== false;
+    cachedPairings = [];
+    cachedOfficialStandings = [];
+    cachedLiveStandings = [];
+    cachedFilteredLiveList = [];
+    cachedStandingsMap = new Map();
+    cachedPlayerMatchIndex = null;
+    cachedPlayerMatchIndexEventKey = null;
+    liveVirtScrollTop = 0;
+    liveVirtLastWindowKey = '';
+    if (liveVirtRaf != null) {
+        if (typeof cancelAnimationFrame === 'function') {
+            try { cancelAnimationFrame(liveVirtRaf); } catch (e) {}
+        }
+        liveVirtRaf = null;
+    }
+    currentPages = { pairings: 1, official: 1, live: 1 };
+    simulatedResultsCache = new Map();
+    currentSelectedPlayerId = null;
+
+    if (typeof document === 'undefined') {
+        stampStandingsEventMarker(nextEventId);
+        return;
+    }
+
+    const msg = loading
+        ? 'Ładowanie tabeli dla nowego turnieju…'
+        : 'Brak tabeli dla tego turnieju.';
+    const liveBody = document.getElementById('liveStandingsBody');
+    if (liveBody) {
+        liveBody.innerHTML = `<tr><td colspan="7" style="color: #888; padding: 20px;">${msg}</td></tr>`;
+    }
+    const officialBody = document.getElementById('officialStandingsBody');
+    if (officialBody) {
+        officialBody.innerHTML = `<tr><td colspan="6" style="color: #666; padding: 20px;">${msg}</td></tr>`;
+    }
+    const pairingsBody = document.getElementById('pairingsBody');
+    if (pairingsBody) {
+        pairingsBody.innerHTML = `<tr><td colspan="5" style="color: #888; padding: 20px;">${msg}</td></tr>`;
+    }
+    const bracketPanel = document.getElementById('topCutBracketPanel');
+    if (bracketPanel) bracketPanel.style.display = 'none';
+    const bracketGrid = document.getElementById('topCutBracketGrid');
+    if (bracketGrid) bracketGrid.innerHTML = '';
+    stampStandingsEventMarker(nextEventId);
+}
+
+/**
+ * On tournament ID change: invalidate in-flight apply/deferred paint, abort the
+ * previous fetch, and clear standings UI immediately so old rows cannot linger.
+ */
+function resetTournamentViewForEventSwitch(nextEventId) {
+    bumpUiApplyGeneration();
+    latestData = null;
+    lastProcessFingerprint = null;
+    lastAutoCutSyncedEventId = null;
+    clearStandingsCachesAndDom(nextEventId, { loading: true });
+    return uiApplyGeneration;
 }
 
 function setLoadButtonBusy(busy) {
@@ -1176,12 +1271,18 @@ function cacheMetaFromHeaders(response, fallback = null) {
     };
 }
 
-function scheduleAfterFirstPaint(fn) {
+function scheduleAfterFirstPaint(fn, opts = {}) {
+    const gen = opts.uiGeneration != null ? opts.uiGeneration : uiApplyGeneration;
+    const loadSeq = opts.loadSeq;
     const run = () => {
+        if (gen !== uiApplyGeneration) return;
+        if (loadSeq != null && loadSeq !== dataLoadSeq) return;
         try { fn(); } catch (e) { console.error(e); }
     };
     if (typeof requestAnimationFrame === 'function') {
         requestAnimationFrame(() => {
+            if (gen !== uiApplyGeneration) return;
+            if (loadSeq != null && loadSeq !== dataLoadSeq) return;
             if (typeof requestIdleCallback === 'function') {
                 requestIdleCallback(run, { timeout: 200 });
             } else {
@@ -1251,12 +1352,12 @@ function startTracking(ev) {
         return;
     }
     if (lastTrackedEventId !== null && String(lastTrackedEventId) !== String(eventId)) {
-        // Event changed — cut prefs stay (user choice); drop reuse guards so UI must apply the new id.
-        lastProcessFingerprint = null;
-        lastAutoCutSyncedEventId = null;
+        // Event changed — cut prefs stay (user choice); clear standings shell + invalidate deferred paint.
         dataLoadSeq++; // invalidate in-flight apply/status from the previous id
+        resetTournamentViewForEventSwitch(eventId);
         if (activeFetchController) {
             try { activeFetchController.abort(); } catch (e) {}
+            activeFetchController = null;
         }
     }
     lastTrackedEventId = eventId;
@@ -1370,6 +1471,7 @@ function applyLoadedTournamentData(data, opts = {}) {
     }
 
     const tRender0 = nowPerfMs();
+    const uiGeneration = bumpUiApplyGeneration();
     latestData = data;
     const statsPanel = document.getElementById('statsPanel');
     if (statsPanel) statsPanel.style.display = 'block';
@@ -1383,7 +1485,12 @@ function applyLoadedTournamentData(data, opts = {}) {
 
     // Core first paint: rebuild maps + LIVE table; pairings/secondary DOM deferred.
     processPairings(data, { deferRender: true });
-    processStandings(data, { deferSecondary: true });
+    processStandings(data, {
+        deferSecondary: true,
+        uiGeneration,
+        loadSeq: opts.loadSeq
+    });
+    stampStandingsEventMarker(data.eventId);
 
     const renderCoreMs = nowPerfMs() - tRender0;
     const timingParts = Object.assign({}, opts.timingParts || {}, { render: renderCoreMs });
@@ -1393,6 +1500,7 @@ function applyLoadedTournamentData(data, opts = {}) {
 
     let bubbleId = null;
     const runTieWork = () => {
+        if (uiGeneration !== uiApplyGeneration) return;
         if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
         if (opts.autoSelectBubble) {
             const list = (cachedLiveStandings && cachedLiveStandings.length)
@@ -1411,7 +1519,16 @@ function applyLoadedTournamentData(data, opts = {}) {
 
     // Secondary panels + pairings after first paint (keeps spinner→LIVE snappy).
     scheduleAfterFirstPaint(() => {
+        if (uiGeneration !== uiApplyGeneration) return;
         if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
+        // Refuse to paint secondary panels from a previous event's cached rows.
+        const appliedId = normalizeEventIdDigits(data.eventId);
+        const trackedId = normalizeEventIdDigits(lastTrackedEventId || latestData?.eventId);
+        if (appliedId && trackedId && appliedId !== trackedId) return;
+        if (normalizeEventIdDigits(latestData?.eventId) && appliedId
+            && normalizeEventIdDigits(latestData.eventId) !== appliedId) {
+            return;
+        }
         renderPairingsTable();
         if (cachedLiveStandings && cachedLiveStandings.length) {
             const playerCount = data.playerCount || cachedLiveStandings.length;
@@ -1430,11 +1547,16 @@ function applyLoadedTournamentData(data, opts = {}) {
                 const bracketPanel = document.getElementById('topCutBracketPanel');
                 if (bracketPanel) bracketPanel.style.display = 'none';
             }
+            stampStandingsEventMarker(data.eventId);
+        } else {
+            renderOfficialStandingsTable(data.standings?.standings || [], cutSize, cutRule);
+            stampStandingsEventMarker(data.eventId);
         }
         runTieWork();
-    });
+    }, { uiGeneration, loadSeq: opts.loadSeq });
 
     if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
+    if (uiGeneration !== uiApplyGeneration) return;
 
     const prefix = opts.statusPrefix || 'Zaktualizowano';
     const bubbleNote = opts.autoSelectBubble ? ` | bubble #${cutSize}` : '';
@@ -2065,6 +2187,8 @@ function processStandings(data, opts = {}) {
     const cutRule = document.getElementById('cutRule')?.value || 'hard';
     const rawStandings = data.standings?.standings || [];
     const deferSecondary = Boolean(opts.deferSecondary);
+    const uiGeneration = opts.uiGeneration != null ? opts.uiGeneration : uiApplyGeneration;
+    const loadSeq = opts.loadSeq;
     
     const activeRound = data.activeRound || 1;
     const totalRounds = getEffectiveTotalRounds(data);
@@ -2094,7 +2218,34 @@ function processStandings(data, opts = {}) {
     setElText('roundsLeftInfo', roundsLeftLabel);
     setElText('officialRoundNum', data.standingsRound || "-");
     
-    if (!rawStandings || rawStandings.length === 0) return;
+    if (!rawStandings || rawStandings.length === 0) {
+        // Must clear previous tournament rows — early return used to leave old LIVE DOM mounted.
+        // Keep pairings caches from processPairings; only standings tables go empty.
+        cachedOfficialStandings = [];
+        cachedLiveStandings = [];
+        cachedFilteredLiveList = [];
+        liveVirtLastWindowKey = '';
+        cachedCutContext.cutSize = cutSize;
+        cachedCutContext.cutRule = cutRule;
+        cachedCutContext.activeRound = activeRound;
+        cachedCutContext.totalRounds = totalRounds;
+        setElText('bubbleScore', '—');
+        setElText('projectedBubbleScore', '—');
+        setElText('playersInCut', '0');
+        setElText('tournamentDrawsInfo', '0 (0%)');
+        if (typeof document !== 'undefined') {
+            const liveBody = document.getElementById('liveStandingsBody');
+            if (liveBody) {
+                liveBody.innerHTML = '<tr><td colspan="7" style="color: #888; padding: 20px;">Brak tabeli dla tego turnieju.</td></tr>';
+            }
+            const officialBody = document.getElementById('officialStandingsBody');
+            if (officialBody) {
+                officialBody.innerHTML = '<tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>';
+            }
+        }
+        stampStandingsEventMarker(data.eventId);
+        return;
+    }
 
     const pairingsList = getActivePairingsList(data);
     // Reuse map from processPairings when it was just built for the same payload.
@@ -2200,6 +2351,7 @@ function processStandings(data, opts = {}) {
 
     // 5. LIVE first (virtualized). Secondary panels: caller may defer after first paint.
     renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, totalRounds);
+    stampStandingsEventMarker(data.eventId);
     updatePolesFilterUI();
 
     const playerCount = data.playerCount || liveStandings.length;
@@ -2212,6 +2364,11 @@ function processStandings(data, opts = {}) {
         : (fn) => setTimeout(fn, 0);
 
     deferFn(() => {
+        if (uiGeneration !== uiApplyGeneration) return;
+        if (loadSeq != null && loadSeq !== dataLoadSeq) return;
+        const appliedId = normalizeEventIdDigits(data.eventId);
+        const haveId = normalizeEventIdDigits(latestData?.eventId);
+        if (appliedId && haveId && appliedId !== haveId) return;
         renderPolishAvgPointsTable(liveStandings);
         renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRound, totalRounds);
         renderOfficialStandingsTable(rawStandings, cutSize, cutRule);
@@ -2223,6 +2380,7 @@ function processStandings(data, opts = {}) {
                 bracketPanel.style.display = 'none';
             }
         }
+        stampStandingsEventMarker(data.eventId);
     });
 }
 
@@ -2243,6 +2401,10 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
     const ctx = cachedCutContext;
     const tbody = document.getElementById('liveStandingsBody');
     if (!tbody) return;
+    const markerEventId = normalizeEventIdDigits(
+        (latestData && latestData.eventId != null) ? latestData.eventId : lastTrackedEventId
+    );
+    if (markerEventId) tbody.dataset.eventId = markerEventId;
 
     const list = filterLiveStandingsList(cachedLiveStandings, {
         filterOnlyPoles,
@@ -5245,6 +5407,20 @@ if (typeof module !== 'undefined' && module.exports) {
         applyLoadedTournamentData,
         isTestsPage,
         canReuseCachedEventSnapshot,
-        buildDataFingerprint
+        buildDataFingerprint,
+        normalizeEventIdDigits,
+        bumpUiApplyGeneration,
+        getUiApplyGeneration,
+        resetTournamentViewForEventSwitch,
+        clearStandingsCachesAndDom,
+        stampStandingsEventMarker,
+        processStandings,
+        renderLiveStandingsTable,
+        getCachedLiveStandings: () => cachedLiveStandings,
+        getCachedOfficialStandings: () => cachedOfficialStandings,
+        getLatestData: () => latestData,
+        setLatestDataForTest: (data) => { latestData = data; },
+        setLastTrackedEventIdForTest: (id) => { lastTrackedEventId = id; },
+        getLastTrackedEventId: () => lastTrackedEventId
     };
 }
