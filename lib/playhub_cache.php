@@ -416,6 +416,14 @@ function lorcana_load_auth_token() {
 }
 
 function lorcana_get_default_event_id() {
+    // Prefer admin-owned site_config when available.
+    if (function_exists('lorcana_load_site_config')) {
+        $cfg = lorcana_load_site_config();
+        $id = (int)($cfg['activeEventId'] ?? 0);
+        if ($id > 0) {
+            return $id;
+        }
+    }
     $lastEventFile = lorcana_last_event_file();
     $defaultEventId = file_exists($lastEventFile) ? (int)trim((string)file_get_contents($lastEventFile)) : 873264;
     if ($defaultEventId <= 0) {
@@ -500,7 +508,13 @@ function lorcana_save_tracked_events(array $map) {
     return lorcana_atomic_write_json(lorcana_tracked_events_file(), $clean);
 }
 
-function lorcana_track_event($eventId) {
+/**
+ * Remember event IDs for the background poller.
+ * @param int $eventId
+ * @param array{touchLastEvent?:bool} $options When touchLastEvent=true (legacy/admin),
+ *        also rewrite last_event.txt. Public GETs should pass false so admin owns the live ID.
+ */
+function lorcana_track_event($eventId, array $options = []) {
     $id = (int)$eventId;
     if ($id <= 0) {
         return;
@@ -513,7 +527,12 @@ function lorcana_track_event($eventId) {
         'lastRefreshAt' => $prev['lastRefreshAt'] ?? null,
     ];
     lorcana_save_tracked_events($map);
-    lorcana_set_last_event_id($id);
+    $touchLast = array_key_exists('touchLastEvent', $options)
+        ? !empty($options['touchLastEvent'])
+        : false;
+    if ($touchLast) {
+        lorcana_set_last_event_id($id);
+    }
 }
 
 function lorcana_mark_event_refreshed($eventId) {

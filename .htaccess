@@ -2,7 +2,7 @@
 Options -Indexes
 
 # Blokada bezpośredniego dostępu HTTP do tokenu, cache'u, sekretów, baz SQLite oraz danych webhooka
-<FilesMatch "^(token\.txt|last_event\.txt|cron_key\.txt|tracked_events\.json|cache_.*\.(json|json\.gz|lock|meta\.json)|cache_refresh\.lock|package(-lock)?\.json|\.git.*|README\.md|webhook_.*|marketplace_.*\.json|\.env.*|.*\.sqlite[0-9]?|.*\.db.*)$">
+<FilesMatch "^(token\.txt|last_event\.txt|site_config\.json|cron_key\.txt|tracked_events\.json|cache_.*\.(json|json\.gz|lock|meta\.json|refresh_at)|cache_refresh\.lock|package(-lock)?\.json|\.git.*|README\.md|webhook_.*|marketplace_.*\.json|\.env.*|.*\.sqlite[0-9]?|.*\.db.*)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>

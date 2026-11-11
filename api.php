@@ -14,6 +14,7 @@ header('X-Frame-Options: SAMEORIGIN');
 require_once __DIR__ . '/lib/playhub_cache.php';
 require_once __DIR__ . '/lib/playhub_fetch.php';
 require_once __DIR__ . '/lib/playhub_slim.php';
+require_once __DIR__ . '/lib/site_config.php';
 
 $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 if ($requestMethod === 'OPTIONS') {
@@ -54,10 +55,24 @@ if ($requestMethod === 'POST' && isset($_POST['set_token'])) {
 }
 
 $authToken = lorcana_load_auth_token();
-$defaultEventId = lorcana_get_default_event_id();
+$siteConfig = lorcana_load_site_config();
+$defaultEventId = (int)$siteConfig['activeEventId'];
+if ($defaultEventId <= 0) {
+    $defaultEventId = lorcana_get_default_event_id();
+}
 
 if (isset($_GET['action']) && $_GET['action'] === 'get_last_event') {
-    echo json_encode(["lastEventId" => $defaultEventId]);
+    echo json_encode([
+        'lastEventId' => $defaultEventId,
+        'activeEventId' => $defaultEventId,
+        'predictionAlgorithm' => $siteConfig['predictionAlgorithm'],
+    ]);
+    exit;
+}
+
+if (isset($_GET['action']) && $_GET['action'] === 'get_config') {
+    header('Cache-Control: private, max-age=5, stale-while-revalidate=15');
+    echo json_encode(lorcana_public_site_config());
     exit;
 }
 
@@ -79,6 +94,8 @@ if (isset($_GET['action']) && $_GET['action'] === 'cache_status') {
         'cachedAt' => $cached['mtime'],
         'playerCount' => is_array($cached['data']) ? ($cached['data']['playerCount'] ?? null) : null,
         'displayStatus' => is_array($cached['data']) ? ($cached['data']['displayStatus'] ?? null) : null,
+        'predictionAlgorithm' => $siteConfig['predictionAlgorithm'],
+        'activeEventId' => $defaultEventId,
     ]);
     exit;
 }
@@ -95,7 +112,17 @@ $forceRefresh = isset($_GET['refresh']) || isset($_GET['force']);
 $noCacheLocal = isset($_GET['nocache']) && $isLocalRequest;
 $forceRefresh = $forceRefresh || $noCacheLocal;
 
-lorcana_track_event($eventId);
+// Anti-stampede: coalesce public forced refreshes; always allow local/admin bypass via session later.
+if ($forceRefresh && !$isLocalRequest && !$noCacheLocal) {
+    if (!lorcana_allow_forced_refresh($eventId, false)) {
+        // Serve cache instead of hammering PlayHub (SWR-friendly).
+        $forceRefresh = false;
+        header('X-Lorcana-Refresh-Throttled: 1');
+    }
+}
+
+// Track for poller affinity — do NOT rewrite admin-owned active event id.
+lorcana_track_event($eventId, ['touchLastEvent' => false]);
 
 /**
  * Ensure payload is slimmed; rewrite disk cache when we compacted a fat snapshot.
@@ -366,7 +393,6 @@ if (!$forceRefresh) {
 
         if ($canFast) {
             $status = ($age < $ttl) ? 'HIT' : 'STALE';
-            lorcana_set_last_event_id($eventId);
             $etag = lorcana_api_etag_for_cache($eventId, $mtime);
             $inm = trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
             if ($inm !== '' && $inm === $etag) {
@@ -415,7 +441,6 @@ if (!$forceRefresh) {
             $age = max(0, time() - (int)$ageBase);
             $ttl = lorcana_cache_ttl_seconds($payload);
             $status = ($age < $ttl) ? 'HIT' : 'STALE';
-            lorcana_set_last_event_id($eventId);
 
             $etag = lorcana_api_etag_for_cache($eventId, $mtime);
             $inm = trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));

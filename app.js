@@ -56,6 +56,21 @@ let tieSimWorkerFailed = false;
 let tieSimRequestSeq = 0;
 let tieSimActiveRequestId = 0;
 
+/** Shared site config from admin (active event + algorithm). */
+let siteConfig = {
+    activeEventId: null,
+    predictionAlgorithm: 'hybrid',
+    updatedAt: null
+};
+/** In-memory TIE result cache: fingerprint → { result, at } (per browser tab). */
+const tieSimResultCache = new Map();
+const TIE_SIM_CACHE_MAX = 24;
+const TIE_SIM_CACHE_TTL_MS = 45000;
+let tieRecalcTimer = null;
+/** Staggered poll cadence (~30s + jitter) so ~100 clients don't align. */
+const POLL_BASE_MS = 30000;
+const POLL_JITTER_MS = 4000;
+
 function getTieSimWorker() {
     if (tieSimWorkerFailed || typeof Worker === 'undefined') return null;
     if (tieSimWorker) return tieSimWorker;
@@ -69,14 +84,70 @@ function getTieSimWorker() {
     }
 }
 
+function fingerprintTieContext(ctx) {
+    try {
+        return JSON.stringify({
+            a: ctx.algorithm || 'hybrid',
+            t: ctx.targetId,
+            o: ctx.opponentId,
+            c: ctx.cutSize,
+            r: ctx.cutRule,
+            cr: ctx.currentRound,
+            tr: ctx.totalRounds,
+            ml: ctx.matchesLeft,
+            tb: ctx.targetBasePts,
+            ob: ctx.oppBasePts,
+            fa: ctx.fixedAheadCount,
+            fin: ctx.isCurrentMatchFinished,
+            fd: ctx.fixedMatchDeltas,
+            co: ctx.completedRoundOpponents,
+            um: ctx.liveUnfinishedMatches,
+            sc: ctx.simCount,
+            bp: (ctx.basePlayers || []).map(p => [p.id, p.points, p.baseOmwp, p.gwp, p.ogwp])
+        });
+    } catch (e) {
+        return null;
+    }
+}
+
+function getCachedTieSimResult(fp) {
+    if (!fp) return null;
+    const hit = tieSimResultCache.get(fp);
+    if (!hit) return null;
+    if ((Date.now() - hit.at) > TIE_SIM_CACHE_TTL_MS) {
+        tieSimResultCache.delete(fp);
+        return null;
+    }
+    return hit.result;
+}
+
+function putCachedTieSimResult(fp, result) {
+    if (!fp || !result) return;
+    tieSimResultCache.set(fp, { result, at: Date.now() });
+    while (tieSimResultCache.size > TIE_SIM_CACHE_MAX) {
+        const oldest = tieSimResultCache.keys().next().value;
+        tieSimResultCache.delete(oldest);
+    }
+}
+
 function runTieSimulationAsync(input) {
     return new Promise((resolve, reject) => {
+        const fp = fingerprintTieContext(input);
+        const cached = getCachedTieSimResult(fp);
+        if (cached) {
+            const requestId = ++tieSimRequestSeq;
+            tieSimActiveRequestId = requestId;
+            resolve(Object.assign({}, cached, { fromCache: true }));
+            return;
+        }
         const requestId = ++tieSimRequestSeq;
         tieSimActiveRequestId = requestId;
         const worker = getTieSimWorker();
         if (!worker) {
             try {
-                resolve(getTieSimCore().executePreparedTieSimulation(input));
+                const result = getTieSimCore().executePreparedTieSimulation(input);
+                putCachedTieSimResult(fp, result);
+                resolve(result);
             } catch (err) {
                 reject(err);
             }
@@ -88,7 +159,10 @@ function runTieSimulationAsync(input) {
             worker.removeEventListener('message', onMsg);
             worker.removeEventListener('error', onErr);
             if (msg.error) reject(new Error(msg.error));
-            else resolve(msg.result);
+            else {
+                putCachedTieSimResult(fp, msg.result);
+                resolve(msg.result);
+            }
         };
         const onErr = () => {
             worker.removeEventListener('message', onMsg);
@@ -97,7 +171,9 @@ function runTieSimulationAsync(input) {
             try { worker.terminate(); } catch (e) {}
             tieSimWorker = null;
             try {
-                resolve(getTieSimCore().executePreparedTieSimulation(input));
+                const result = getTieSimCore().executePreparedTieSimulation(input);
+                putCachedTieSimResult(fp, result);
+                resolve(result);
             } catch (fallbackErr) {
                 reject(fallbackErr);
             }
@@ -106,6 +182,58 @@ function runTieSimulationAsync(input) {
         worker.addEventListener('error', onErr);
         worker.postMessage({ requestId, input });
     });
+}
+
+function updateActiveEventDisplay(eventId, algo) {
+    const el = document.getElementById('activeEventDisplay');
+    if (!el) return;
+    const id = String(eventId || '').replace(/\D/g, '') || '—';
+    const algorithm = algo || siteConfig.predictionAlgorithm || 'hybrid';
+    el.textContent = `#${id} · algorytm: ${algorithm}`;
+}
+
+function scheduleTrackingPoll(eventId) {
+    if (trackingInterval) clearInterval(trackingInterval);
+    const jitter = Math.floor(Math.random() * POLL_JITTER_MS);
+    const delay = POLL_BASE_MS + jitter;
+    trackingInterval = setInterval(() => fetchData(eventId), delay);
+}
+
+function applySessionEventOverride() {
+    const overrideEl = document.getElementById('eventIdOverride');
+    const eventInput = document.getElementById('eventId');
+    const raw = String(overrideEl?.value || '').replace(/\D/g, '');
+    if (!raw) {
+        setStatusLoadIdle('Podaj tymczasowe ID turnieju.');
+        return;
+    }
+    if (eventInput) eventInput.value = raw;
+    updateActiveEventDisplay(raw, siteConfig.predictionAlgorithm);
+    startTracking();
+}
+
+async function fetchSiteConfig() {
+    const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
+    try {
+        const res = await fetch(`${apiBase}api.php?action=get_config`, { cache: 'no-cache' });
+        if (!res.ok) throw new Error('config http ' + res.status);
+        const data = await res.json();
+        if (data && data.activeEventId) {
+            siteConfig.activeEventId = Number(data.activeEventId);
+            siteConfig.predictionAlgorithm = data.predictionAlgorithm || 'hybrid';
+            siteConfig.updatedAt = data.updatedAt || null;
+        }
+    } catch (e) {
+        try {
+            const res = await fetch(`${apiBase}api.php?action=get_last_event`, { cache: 'no-cache' });
+            const data = await res.json();
+            if (data && (data.activeEventId || data.lastEventId)) {
+                siteConfig.activeEventId = Number(data.activeEventId || data.lastEventId);
+                siteConfig.predictionAlgorithm = data.predictionAlgorithm || siteConfig.predictionAlgorithm || 'hybrid';
+            }
+        } catch (e2) { /* ignore */ }
+    }
+    return siteConfig;
 }
 
 const CUT_SIZE_STORAGE_KEY = 'lorcana_cut_size';
@@ -1184,6 +1312,7 @@ function clearStandingsCachesAndDom(nextEventId, opts = {}) {
     }
     currentPages = { pairings: 1, official: 1, live: 1 };
     simulatedResultsCache = new Map();
+    tieSimResultCache.clear();
     currentSelectedPlayerId = null;
 
     if (typeof document === 'undefined') {
@@ -1365,16 +1494,23 @@ function resolveLoadElapsedMs(opts = {}) {
 }
 
 function startTracking(ev) {
-    const rawEventId = document.getElementById('eventId')?.value;
+    const rawEventId = document.getElementById('eventId')?.value
+        || siteConfig.activeEventId
+        || '';
     const eventId = String(rawEventId || '').replace(/\D/g, '');
     if (!eventId) {
-        setStatusLoadIdle('Wpisz Event ID turnieju...');
+        setStatusLoadIdle('Brak aktywnego turnieju — ustaw ID w /admin.');
         return;
     }
+    const eventInput = document.getElementById('eventId');
+    if (eventInput) eventInput.value = eventId;
+    updateActiveEventDisplay(eventId, siteConfig.predictionAlgorithm);
+
     if (lastTrackedEventId !== null && String(lastTrackedEventId) !== String(eventId)) {
         // Event changed — cut prefs stay (user choice); clear standings shell + invalidate deferred paint.
         dataLoadSeq++; // invalidate in-flight apply/status from the previous id
         resetTournamentViewForEventSwitch(eventId);
+        tieSimResultCache.clear();
         if (activeFetchController) {
             try { activeFetchController.abort(); } catch (e) {}
             activeFetchController = null;
@@ -1385,11 +1521,10 @@ function startTracking(ev) {
         localStorage.setItem('lorcana_last_event_id', eventId);
     } catch (e) {}
 
-    // Shift+click → force live PlayHub refresh; normal path uses server cache.
+    // Shift+click → force live PlayHub refresh (server-throttled); normal path uses server cache.
     const forceRefresh = Boolean(ev && ev.shiftKey);
     fetchData(eventId, { forceRefresh });
-    if (trackingInterval) clearInterval(trackingInterval);
-    trackingInterval = setInterval(() => fetchData(eventId), 30000);
+    scheduleTrackingPoll(eventId);
 }
 
 function isTestsPage() {
@@ -1454,6 +1589,7 @@ function loadDemo2k12() {
         lastAutoCutSyncedEventId = null;
         currentSelectedPlayerId = null;
         simulatedResultsCache = new Map();
+        tieSimResultCache.clear();
 
         const liveN = data.demoMeta?.liveMatchCount ?? getActivePairingsList(data).length;
         const liveOpen = data.demoMeta?.liveInProgressCount ?? liveN;
@@ -1605,13 +1741,15 @@ async function initDefaultEventAndAutoTrack() {
 
     loadCutPrefsIntoUi();
 
-    // Obsługa wciśnięcia Enter w polu wyszukiwania turnieju
-    eventInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            startTracking();
-        }
-    });
+    const overrideInput = document.getElementById('eventIdOverride');
+    if (overrideInput) {
+        overrideInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applySessionEventOverride();
+            }
+        });
+    }
 
     const urlParams = new URLSearchParams(window.location.search);
 
@@ -1626,52 +1764,46 @@ async function initDefaultEventAndAutoTrack() {
         const testsEventId = urlParams.get('eventId') || urlParams.get('event');
         if (testsEventId && /^\d+$/.test(testsEventId.trim())) {
             eventInput.value = testsEventId.trim();
+            updateActiveEventDisplay(testsEventId.trim(), siteConfig.predictionAlgorithm);
             startTracking();
         }
         return;
     }
 
-    // 1. Sprawdzamy parametr w adresie URL (?eventId=... lub ?event=...)
+    // 1. URL override (?eventId= / ?event=) — tylko sesja, nie zmienia admin config.
     const urlEventId = urlParams.get('eventId') || urlParams.get('event');
     if (urlEventId && /^\d+$/.test(urlEventId.trim())) {
         const cleanId = urlEventId.trim();
         eventInput.value = cleanId;
+        updateActiveEventDisplay(cleanId, siteConfig.predictionAlgorithm);
         try { localStorage.setItem('lorcana_last_event_id', cleanId); } catch (e) {}
+        // Still load algorithm from admin config in background.
+        fetchSiteConfig().then((cfg) => {
+            updateActiveEventDisplay(cleanId, cfg.predictionAlgorithm);
+        }).catch(() => {});
         startTracking();
         return;
     }
 
-    // 2. Lokalny last event — start immediately (don't wait for get_last_event RTT).
+    // 2. Admin-owned active event (source of truth for public visitors).
+    await fetchSiteConfig();
+    if (siteConfig.activeEventId) {
+        const id = String(siteConfig.activeEventId);
+        eventInput.value = id;
+        updateActiveEventDisplay(id, siteConfig.predictionAlgorithm);
+        try { localStorage.setItem('lorcana_last_event_id', id); } catch (e) {}
+        startTracking();
+        return;
+    }
+
+    // 3. Fallback: localStorage last id (legacy).
     let localEventId = null;
     try {
         localEventId = localStorage.getItem('lorcana_last_event_id');
     } catch (e) {}
     if (localEventId && /^\d+$/.test(localEventId.trim())) {
         eventInput.value = localEventId.trim();
-        startTracking();
-        // Background: refresh shared last_event for next visitors; don't block first paint.
-        try {
-            const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
-            fetch(`${apiBase}api.php?action=get_last_event`).catch(() => {});
-        } catch (e) {}
-        return;
-    }
-
-    // 3. No local id — ask server, then start.
-    try {
-        const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
-        const res = await fetch(`${apiBase}api.php?action=get_last_event`);
-        const data = await res.json();
-        if (data && data.lastEventId) {
-            const serverLastEventId = String(data.lastEventId);
-            eventInput.value = serverLastEventId;
-            try { localStorage.setItem('lorcana_last_event_id', serverLastEventId); } catch (e) {}
-        }
-    } catch (err) {
-        // ignore
-    }
-
-    if (eventInput.value && /^\d+$/.test(eventInput.value.trim())) {
+        updateActiveEventDisplay(localEventId.trim(), siteConfig.predictionAlgorithm);
         startTracking();
     }
 }
@@ -2382,6 +2514,7 @@ function processStandings(data, opts = {}) {
     // 4. Bez MC dla całej sali — wcześniej N×600 sims na main thread padało przy ~700.
     // Symulacja TIE liczy się wyłącznie w recalculateTieForSelectedPlayer (wybrany gracz).
     simulatedResultsCache.clear();
+    tieSimResultCache.clear();
 
     // 5. LIVE first (virtualized). Secondary panels: caller may defer after first paint.
     renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, totalRounds);
@@ -2712,7 +2845,11 @@ function showTieSimLoadingBanner() {
     const banner = document.getElementById('tieRecommendationBanner');
     if (!banner) return;
     banner.className = 'recommendation-box rec-risk';
-    banner.innerHTML = '⏳ <strong>Liczenie strategii TIE…</strong> Symulacja Monte Carlo działa w tle (UI pozostaje responsywne).';
+    const algo = siteConfig.predictionAlgorithm || 'hybrid';
+    const label = algo === 'exact'
+        ? 'enumeracja exact / Monte Carlo'
+        : (algo === 'hybrid' ? 'tryb hybrid (exact lub MC)' : 'Monte Carlo');
+    banner.innerHTML = `⏳ <strong>Liczenie strategii TIE…</strong> ${label} w tle (UI pozostaje responsywne).`;
 }
 
 function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch, activeRound, totalRounds, cutSize, timingMs = null) {
@@ -2740,7 +2877,16 @@ function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch
     if (simResults.scoped) {
         scopeNote = ` | scope ${simResults.scopedPlayerCount}/${simResults.fullPlayerCount}`;
     }
-    setElText('selectedPlayerBaseStats', `Stan bazowy: ${targetPlayer.match_points} pkt | OMW: ${baseOmw}% | GW: ${baseGw}% | OGW: ${baseOgw}%${scopeNote}`);
+    let methodNote = '';
+    if (simResults.method === 'exact') {
+        methodNote = ' | exact';
+    } else if (simResults.method === 'montecarlo_fallback') {
+        methodNote = ' | MC (fallback)';
+    } else if (simResults.method === 'montecarlo') {
+        methodNote = ` | MC×${simResults.simCountUsed || '?'}`;
+    }
+    if (simResults.fromCache) methodNote += ' · cache';
+    setElText('selectedPlayerBaseStats', `Stan bazowy: ${targetPlayer.match_points} pkt | OMW: ${baseOmw}% | GW: ${baseGw}% | OGW: ${baseOgw}%${scopeNote}${methodNote}`);
 
     const tieRoundContextEl = document.getElementById('tieRoundContext');
     if (tieRoundContextEl) {
@@ -2812,6 +2958,18 @@ function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch
 }
 
 function recalculateTieForSelectedPlayer() {
+    // Debounce rapid re-entry (poll + click + cut change) — one sim at a time per tab.
+    if (tieRecalcTimer) {
+        clearTimeout(tieRecalcTimer);
+        tieRecalcTimer = null;
+    }
+    tieRecalcTimer = setTimeout(() => {
+        tieRecalcTimer = null;
+        recalculateTieForSelectedPlayerNow();
+    }, 80);
+}
+
+function recalculateTieForSelectedPlayerNow() {
     if (!latestData || !latestData.standings?.standings || !currentSelectedPlayerId) return;
 
     const rawStandings = latestData.standings.standings;
@@ -2986,7 +3144,11 @@ function renderDoubleTiePrompt(sim, targetPlayer, myOpponent, totalRounds) {
         if (sim.chanceTie >= 90) {
             badgeEl.className = 'verdict-badge verdict-yes';
             badgeEl.innerText = `TAK (${sim.chanceTie}%)`;
-            descEl.innerHTML = `🎉 <strong>BARDZO WYSOKA SZANSA (MC):</strong> To ostatnia runda! Remis daje Ci łącznie <strong>${(targetPlayer.livePoints || targetPlayer.match_points) + 1} pkt</strong> i szacunek Monte Carlo <strong>${sim.chanceTie}%</strong> na Top Cut — to nie jest matematyczna pewność.`;
+            const methodLabel = sim.method === 'exact'
+                ? 'enumeracja exact'
+                : 'szacunek Monte Carlo';
+            descEl.innerHTML = `🎉 <strong>BARDZO WYSOKA SZANSA:</strong> To ostatnia runda! Remis daje Ci łącznie <strong>${(targetPlayer.livePoints || targetPlayer.match_points) + 1} pkt</strong> i ${methodLabel} <strong>${sim.chanceTie}%</strong> na Top Cut` +
+                (sim.method === 'exact' ? '.' : ' — to nie jest matematyczna pewność.');
         } else if (sim.chanceTie >= 75) {
             badgeEl.className = 'verdict-badge verdict-maybe';
             badgeEl.innerText = `PRAWDOPODOBNE (${sim.chanceTie}%)`;
@@ -3308,9 +3470,13 @@ function prepareTieSimulationContext(targetPlayer, myOpponent, standings, pairin
     });
 
     const simCount = Math.max(20, Number(simCountOverride) || getAdaptiveSimCount(fullPlayerCount));
+    const algorithm = (typeof siteConfig !== 'undefined' && siteConfig?.predictionAlgorithm)
+        ? siteConfig.predictionAlgorithm
+        : 'hybrid';
 
     return {
         simCount,
+        algorithm,
         targetId,
         opponentId,
         cutSize,
@@ -5388,6 +5554,10 @@ if (typeof module !== 'undefined' && module.exports) {
         formatLoadDuration,
         runLiveTieSimulation,
         prepareTieSimulationContext,
+        fingerprintTieContext,
+        fetchSiteConfig,
+        applySessionEventOverride,
+        siteConfig,
         getAdaptiveSimCount,
         shouldGateHeavyUi,
         resolveActiveRound,

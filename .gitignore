@@ -10,9 +10,11 @@ cache_*.meta.json
 cache_*.lock
 cache_refresh.lock
 tracked_events.json
+site_config.json
 cron_key.txt
 last_event.txt
 token.txt
+cache_*.refresh_at
 
 # GitHub Marketplace Webhook & dane produkcyjne
 marketplace_subscriptions.json

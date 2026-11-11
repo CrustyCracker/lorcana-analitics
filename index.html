@@ -124,6 +124,19 @@
             color: var(--text-dim);
             letter-spacing: 0.02em;
         }
+        .active-event-display {
+            display: flex;
+            align-items: center;
+            min-height: 42px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            border: 1px solid var(--line);
+            background: var(--navy-950);
+            color: var(--gold);
+            font-weight: 700;
+            font-size: 15px;
+            letter-spacing: 0.02em;
+        }
         .field-hint {
             font-size: 11px;
             color: var(--text-mute);
@@ -1631,16 +1644,24 @@
     <p class="hero-tag">Strategia remisu pod Top Cut — na żywo, z bieżących stołów PlayHub.</p>
 </header>
 
-<!-- Mobile order: ID → Load → Cut → Rounds → status → Can I Tie → (Poles przy LIVE) -->
+<!-- Mobile order: aktywny event → Load → Cut → Rounds → status → Can I Tie → (Poles przy LIVE) -->
 <div class="panel" id="topControlPanel">
     <div class="controls-stack">
         <div class="field-group" data-control="event-id">
-            <label for="eventId">1. ID turnieju (PlayHub)</label>
-            <input type="number" id="eventId" placeholder="np. 1007231" autocomplete="off" inputmode="numeric" title="ID turnieju z Ravensburger Play Hub. Wciśnij Enter, aby śledzić">
-            <div class="field-hint">Numer eventu z linku Ravensburger Play.</div>
+            <label for="activeEventDisplay">1. Aktywny turniej</label>
+            <div id="activeEventDisplay" class="active-event-display" aria-live="polite">Ładowanie ID z panelu admina…</div>
+            <input type="hidden" id="eventId" value="" autocomplete="off">
+            <div class="field-hint">ID ustawia admin (<a href="admin.php" style="color:var(--gold);">/admin</a>). Publicznie tylko odczyt — bez przełączania turniejów przez gości.</div>
+            <details id="eventOverrideDetails" style="margin-top:8px;">
+                <summary style="cursor:pointer;color:var(--text-dim);font-size:12px;">Zaawansowane: tymczasowe ID (tylko ta sesja)</summary>
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+                    <input type="number" id="eventIdOverride" placeholder="np. 1007231" autocomplete="off" inputmode="numeric" style="flex:1;min-width:140px;" title="Tymczasowe ID — nie zmienia ustawienia admina">
+                    <button type="button" class="btn-secondary" style="width:auto;height:36px;" onclick="applySessionEventOverride()">Użyj</button>
+                </div>
+            </details>
         </div>
 
-        <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache serwera. Shift+klik: wymuś świeże dane z PlayHub.">2. Odśwież / Śledź Live</button>
+        <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache serwera. Shift+klik: wymuś świeże dane z PlayHub (limitowane).">2. Odśwież / Śledź Live</button>
 
         <div class="controls-pair" data-control="cut">
             <div class="field-group">
@@ -2051,7 +2072,7 @@
 
 
 
-<script src="tie-sim-core.js?v=20261111r2"></script>
-<script src="app.js?v=20261111r5"></script>
+<script src="tie-sim-core.js?v=20261111hybrid1"></script>
+<script src="app.js?v=20261111hybrid1"></script>
 </body>
 </html>
