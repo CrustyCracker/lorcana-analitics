@@ -1097,6 +1097,22 @@ function formatLoadDuration(ms) {
 let dataLoadSeq = 0;
 /** Last ETag per eventId — enables HTTP 304 (skip transfer+JSON parse). */
 let lastFetchEtags = new Map();
+/** In-flight api.php abort — cancelled when eventId changes / a newer fetch starts. */
+let activeFetchController = null;
+
+/**
+ * HTTP 304 / fingerprint "Bez zmian" is only safe when the UI already holds
+ * that event's snapshot. After switching tournament IDs, a cached ETag for the
+ * *new* id must not keep painting the *previous* tournament.
+ */
+function canReuseCachedEventSnapshot(requestedEventId, currentData) {
+    const want = String(requestedEventId || '').replace(/\D/g, '');
+    if (!want) return false;
+    const have = currentData && currentData.eventId != null
+        ? String(currentData.eventId).replace(/\D/g, '')
+        : '';
+    return Boolean(have && have === want);
+}
 
 function setLoadButtonBusy(busy) {
     const btn = document.querySelector('button.btn-load');
@@ -1235,7 +1251,13 @@ function startTracking(ev) {
         return;
     }
     if (lastTrackedEventId !== null && String(lastTrackedEventId) !== String(eventId)) {
-        // event changed — cut prefs stay (user choice)
+        // Event changed — cut prefs stay (user choice); drop reuse guards so UI must apply the new id.
+        lastProcessFingerprint = null;
+        lastAutoCutSyncedEventId = null;
+        dataLoadSeq++; // invalidate in-flight apply/status from the previous id
+        if (activeFetchController) {
+            try { activeFetchController.abort(); } catch (e) {}
+        }
     }
     lastTrackedEventId = eventId;
     try {
@@ -1510,8 +1532,15 @@ async function fetchData(eventId, opts = {}) {
     const loadSeq = ++dataLoadSeq;
     const t0 = nowPerfMs();
     const forceRefresh = Boolean(opts.forceRefresh);
+    const allowNotModifiedRetry = opts.allowNotModifiedRetry !== false;
     setStatusLoadBusy(forceRefresh ? 'Odświeżanie z PlayHub…' : 'Pobieranie (API)…');
+
+    if (activeFetchController) {
+        try { activeFetchController.abort(); } catch (e) {}
+        activeFetchController = null;
+    }
     const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    activeFetchController = controller;
     let abortTimer = null;
     if (controller) {
         abortTimer = setTimeout(() => {
@@ -1526,10 +1555,14 @@ async function fetchData(eventId, opts = {}) {
         // No cache-busting `t=` — ETag / Cache-Control handle freshness (keeps 304 + short HIT max-age useful).
         const refreshQ = forceRefresh ? '&refresh=1' : '';
         const headers = { Accept: 'application/json' };
-        const prevEtag = !forceRefresh ? lastFetchEtags.get(rawEventId) : null;
+        // Only send If-None-Match when UI already shows this event — otherwise a 304 would
+        // keep the previous tournament painted (classic switch-race after round-2 ETag work).
+        const haveSnapshot = canReuseCachedEventSnapshot(rawEventId, latestData);
+        const prevEtag = (!forceRefresh && haveSnapshot) ? lastFetchEtags.get(rawEventId) : null;
         if (prevEtag) headers['If-None-Match'] = prevEtag;
         const fetchOpts = {
             headers,
+            cache: haveSnapshot ? 'default' : 'no-cache',
             ...(controller ? { signal: controller.signal } : {})
         };
         const tApi0 = nowPerfMs();
@@ -1542,6 +1575,21 @@ async function fetchData(eventId, opts = {}) {
         // 304: snapshot unchanged — skip JSON download/parse and UI recompute.
         if (response.status === 304) {
             if (loadSeq !== dataLoadSeq) return;
+            if (!canReuseCachedEventSnapshot(rawEventId, latestData)) {
+                // Browser/CDN conditional without matching UI — drop ETag and force a body once.
+                lastFetchEtags.delete(rawEventId);
+                if (allowNotModifiedRetry && loadSeq === dataLoadSeq) {
+                    return fetchData(rawEventId, {
+                        forceRefresh: false,
+                        allowNotModifiedRetry: false
+                    });
+                }
+                setStatusLoadIdle('Brak snapshotu dla nowego ID — odśwież ponownie.', nowPerfMs() - t0, {
+                    error: true,
+                    cacheMeta: headerCacheMeta
+                });
+                return;
+            }
             setStatusLoadIdle('Bez zmian · ' + new Date().toLocaleTimeString(), nowPerfMs() - t0, {
                 cacheMeta: headerCacheMeta || {
                     status: response.headers.get('X-Lorcana-Cache') || 'HIT',
@@ -1571,8 +1619,19 @@ async function fetchData(eventId, opts = {}) {
             return;
         }
 
-        if (data.lastEventId) {
-            try { localStorage.setItem('lorcana_last_event_id', String(data.lastEventId)); } catch (e) {}
+        // Prefer the requested id — never let a stale/global lastEventId clobber the user's choice.
+        try {
+            localStorage.setItem('lorcana_last_event_id', rawEventId);
+        } catch (e) {}
+
+        // Guard: body must match the id we asked for (wrong CDN/cache body would look like "stuck").
+        if (data.eventId != null && String(data.eventId).replace(/\D/g, '') !== rawEventId) {
+            setStatusLoadIdle(
+                `BŁĄD: API zwróciło event ${data.eventId} zamiast ${rawEventId}.`,
+                nowPerfMs() - t0,
+                { error: true, cacheMeta }
+            );
+            return;
         }
 
         if (lastAutoCutSyncedEventId !== String(safeEventId) && data.roundsMatches) {
@@ -1589,7 +1648,7 @@ async function fetchData(eventId, opts = {}) {
         const cutSize = parseInt(document.getElementById('cutSize')?.value || '4');
         const cutRule = document.getElementById('cutRule')?.value || 'hard';
         const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
-        if (fingerprint === lastProcessFingerprint) {
+        if (fingerprint === lastProcessFingerprint && canReuseCachedEventSnapshot(rawEventId, latestData)) {
             if (loadSeq !== dataLoadSeq) return;
             setStatusLoadIdle('Bez zmian · ' + new Date().toLocaleTimeString(), nowPerfMs() - t0, {
                 cacheMeta,
@@ -1607,9 +1666,11 @@ async function fetchData(eventId, opts = {}) {
             timingParts: { api: apiMs, parse: parseMs, server: cacheMeta?.serverTimingMs }
         });
     } catch (error) {
-        console.error("Błąd pobierania danych:", error);
         if (loadSeq !== dataLoadSeq) return;
         const aborted = error && (error.name === 'AbortError' || error.code === 20);
+        // Newer fetch / event-switch aborted us — stay quiet (that load owns the status line).
+        if (aborted && activeFetchController !== controller) return;
+        console.error("Błąd pobierania danych:", error);
         setStatusLoadIdle(
             aborted ? 'Timeout pobierania (zimny PlayHub >3 min). Spróbuj ponownie.' : 'Błąd komunikacji z serwerem.',
             nowPerfMs() - t0,
@@ -1617,6 +1678,7 @@ async function fetchData(eventId, opts = {}) {
         );
     } finally {
         if (abortTimer) clearTimeout(abortTimer);
+        if (activeFetchController === controller) activeFetchController = null;
     }
 }
 
@@ -5181,6 +5243,8 @@ if (typeof module !== 'undefined' && module.exports) {
         syncRoundsOverrideUi,
         loadDemo2k12,
         applyLoadedTournamentData,
-        isTestsPage
+        isTestsPage,
+        canReuseCachedEventSnapshot,
+        buildDataFingerprint
     };
 }

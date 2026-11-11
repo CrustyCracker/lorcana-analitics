@@ -170,14 +170,16 @@ function lorcana_api_cache_control_header($status, $age = null, $ttl = null) {
 }
 
 /**
- * ETag from cache file identity (mtime+size+slim), NOT response body —
+ * ETag from eventId + cache file identity (mtime+size+slim), NOT response body —
  * age lives in headers so ETag stays stable across seconds.
+ * eventId is required so two tournaments with coincidentally identical mtime/size
+ * never share a validator (client 304 must not cross event boundaries).
  */
 function lorcana_api_etag_for_cache($eventId, $mtime = null) {
     $path = lorcana_cache_file($eventId);
     $mtime = $mtime !== null ? (int)$mtime : (int)(@filemtime($path) ?: 0);
     $size = (int)(@filesize($path) ?: 0);
-    return '"' . dechex($mtime) . '-' . dechex($size) . '-s' . LORCANA_PAYLOAD_SLIM_VERSION . '"';
+    return '"' . (int)$eventId . '-' . dechex($mtime) . '-' . dechex($size) . '-s' . LORCANA_PAYLOAD_SLIM_VERSION . '"';
 }
 
 function lorcana_api_send_cache_headers($status, $age, $ttl, $mtime, $etag = null, $slimVersion = null) {
