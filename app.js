@@ -1105,14 +1105,76 @@ function setLoadButtonBusy(busy) {
     btn.setAttribute('aria-busy', busy ? 'true' : 'false');
 }
 
-function setStatusLoadBusy(message) {
+function setStatusLoadBusy(message, phaseTiming = null) {
     const el = document.getElementById('status');
     if (!el) return;
     el.classList.add('is-loading');
     el.classList.remove('is-error');
     el.setAttribute('aria-busy', 'true');
-    el.innerHTML = `<span class="load-spinner" aria-hidden="true"></span><span class="load-status-text">${escapeHtml(message || 'Ładowanie…')}</span>`;
+    const phasePill = phaseTiming
+        ? `<span class="load-timing-pill" title="Trwa ładowanie — podział czasu na bieżąco">${escapeHtml(phaseTiming)}</span>`
+        : '';
+    el.innerHTML = `<span class="load-spinner" aria-hidden="true"></span><span class="load-status-text">${escapeHtml(message || 'Ładowanie…')}</span>${phasePill}`;
     setLoadButtonBusy(true);
+}
+
+function formatSplitTimingPills(parts) {
+    if (!parts || typeof parts !== 'object') return '';
+    const pills = [];
+    const order = [
+        ['api', 'API'],
+        ['parse', 'parse'],
+        ['render', 'UI'],
+        ['server', 'PHP']
+    ];
+    for (const [key, label] of order) {
+        const ms = parts[key];
+        if (ms == null || !Number.isFinite(Number(ms))) continue;
+        pills.push(`<span class="load-timing-pill load-timing-${escapeHtml(key)}" title="${escapeHtml(label)}">${escapeHtml(label)} ${escapeHtml(formatLoadDuration(ms))}</span>`);
+    }
+    return pills.join('');
+}
+
+function parseServerTimingHeader(value) {
+    if (!value) return null;
+    const totalMatch = String(value).match(/(?:^|,\s*)total;dur=([0-9.]+)/i);
+    if (!totalMatch) return null;
+    const n = Number(totalMatch[1]);
+    return Number.isFinite(n) ? n : null;
+}
+
+function cacheMetaFromHeaders(response, fallback = null) {
+    if (!response || !response.headers) return fallback;
+    const status = response.headers.get('X-Lorcana-Cache');
+    const ageHdr = response.headers.get('X-Lorcana-Cache-Age');
+    const ttlHdr = response.headers.get('X-Lorcana-Cache-TTL');
+    if (!status && ageHdr == null && ttlHdr == null) return fallback;
+    return {
+        status: status || (fallback && fallback.status) || null,
+        ageSeconds: ageHdr != null ? Number(ageHdr) : (fallback && fallback.ageSeconds),
+        ttlSeconds: ttlHdr != null ? Number(ttlHdr) : (fallback && fallback.ttlSeconds),
+        fastHit: response.headers.get('X-Lorcana-Fast-Hit') || null,
+        serverTimingMs: parseServerTimingHeader(
+            response.headers.get('X-Lorcana-Server-Timing') || response.headers.get('Server-Timing')
+        )
+    };
+}
+
+function scheduleAfterFirstPaint(fn) {
+    const run = () => {
+        try { fn(); } catch (e) { console.error(e); }
+    };
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+            if (typeof requestIdleCallback === 'function') {
+                requestIdleCallback(run, { timeout: 200 });
+            } else {
+                setTimeout(run, 0);
+            }
+        });
+        return;
+    }
+    setTimeout(run, 0);
 }
 
 function formatCacheAgeLabel(cacheMeta) {
@@ -1137,14 +1199,21 @@ function setStatusLoadIdle(message, elapsedMs, opts = {}) {
     el.classList.toggle('is-error', Boolean(opts.error));
     el.setAttribute('aria-busy', 'false');
     const hasTiming = elapsedMs != null && Number.isFinite(Number(elapsedMs));
-    const timing = hasTiming
-        ? `<span class="load-timing-pill" title="Pełny cykl klienta: sieć (fetch api.php) + parse JSON + przeliczenie tabel/UI — nie sam RTT">⏱ cykl ${escapeHtml(formatLoadDuration(elapsedMs))}</span>`
+    const split = formatSplitTimingPills(opts.timingParts);
+    const timing = split || (hasTiming
+        ? `<span class="load-timing-pill" title="Pełny cykl klienta: API + parse JSON + UI">⏱ cykl ${escapeHtml(formatLoadDuration(elapsedMs))}</span>`
+        : '');
+    const totalPill = split && hasTiming
+        ? `<span class="load-timing-pill" title="Suma API + parse + UI">cykl ${escapeHtml(formatLoadDuration(elapsedMs))}</span>`
         : '';
     const cacheLabel = formatCacheAgeLabel(opts.cacheMeta);
-    const cachePill = cacheLabel
-        ? `<span class="load-cache-pill" title="Wiek snapshotu cache na serwerze">${escapeHtml(cacheLabel)}</span>`
+    const fast = opts.cacheMeta && opts.cacheMeta.fastHit
+        ? ` · ${opts.cacheMeta.fastHit}`
         : '';
-    el.innerHTML = `<span class="load-status-text">${escapeHtml(message || '')}</span>${timing}${cachePill}`;
+    const cachePill = cacheLabel
+        ? `<span class="load-cache-pill" title="Wiek snapshotu cache na serwerze">${escapeHtml(cacheLabel)}${escapeHtml(fast)}</span>`
+        : '';
+    el.innerHTML = `<span class="load-status-text">${escapeHtml(message || '')}</span>${timing}${totalPill}${cachePill}`;
     setLoadButtonBusy(false);
 }
 
@@ -1263,16 +1332,22 @@ function loadDemo2k12() {
 
 /**
  * Wspólna ścieżka po fetch API / demo: process + opcjonalny auto-wybór bubble.
+ * First paint: LIVE standings ASAP; pairings / Polish / bracket / TIE after paint.
  */
 function applyLoadedTournamentData(data, opts = {}) {
     const loadMs = resolveLoadElapsedMs(opts);
     if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
 
     if (!data || data.error) {
-        setStatusLoadIdle('BŁĄD: ' + (data?.error || 'brak danych'), loadMs, { error: true });
+        setStatusLoadIdle('BŁĄD: ' + (data?.error || 'brak danych'), loadMs, {
+            error: true,
+            timingParts: opts.timingParts || null,
+            cacheMeta: opts.cacheMeta || null
+        });
         return;
     }
 
+    const tRender0 = nowPerfMs();
     latestData = data;
     const statsPanel = document.getElementById('statsPanel');
     if (statsPanel) statsPanel.style.display = 'block';
@@ -1284,32 +1359,67 @@ function applyLoadedTournamentData(data, opts = {}) {
     const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
     lastProcessFingerprint = fingerprint;
 
-    processPairings(data);
-    processStandings(data);
+    // Core first paint: rebuild maps + LIVE table; pairings/secondary DOM deferred.
+    processPairings(data, { deferRender: true });
+    processStandings(data, { deferSecondary: true });
+
+    const renderCoreMs = nowPerfMs() - tRender0;
+    const timingParts = Object.assign({}, opts.timingParts || {}, { render: renderCoreMs });
+    if (opts.cacheMeta && opts.cacheMeta.serverTimingMs != null) {
+        timingParts.server = opts.cacheMeta.serverTimingMs;
+    }
 
     let bubbleId = null;
-    if (opts.autoSelectBubble) {
-        const list = (cachedLiveStandings && cachedLiveStandings.length)
-            ? cachedLiveStandings
-            : (data.standings?.standings || []);
-        const idx = Math.min(Math.max(0, cutSize - 1), list.length - 1);
-        const bubble = list[idx];
-        bubbleId = bubble?.player?.id || bubble?.id || null;
-        if (bubbleId != null) {
-            // selectPlayerForTie odpala Can I Tie + timing
-            selectPlayerForTie(bubbleId);
+    const runTieWork = () => {
+        if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
+        if (opts.autoSelectBubble) {
+            const list = (cachedLiveStandings && cachedLiveStandings.length)
+                ? cachedLiveStandings
+                : (data.standings?.standings || []);
+            const idx = Math.min(Math.max(0, cutSize - 1), list.length - 1);
+            const bubble = list[idx];
+            bubbleId = bubble?.player?.id || bubble?.id || null;
+            if (bubbleId != null) {
+                selectPlayerForTie(bubbleId);
+            }
+        } else if (currentSelectedPlayerId) {
+            recalculateTieForSelectedPlayer();
         }
-    } else if (currentSelectedPlayerId) {
-        recalculateTieForSelectedPlayer();
-    }
+    };
+
+    // Secondary panels + pairings after first paint (keeps spinner→LIVE snappy).
+    scheduleAfterFirstPaint(() => {
+        if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
+        renderPairingsTable();
+        if (cachedLiveStandings && cachedLiveStandings.length) {
+            const playerCount = data.playerCount || cachedLiveStandings.length;
+            renderPolishAvgPointsTable(cachedLiveStandings);
+            renderCutLineBreakdownPanel(
+                cachedLiveStandings,
+                cachedCutContext.cutSize,
+                cachedCutContext.cutRule,
+                cachedCutContext.activeRound,
+                cachedCutContext.totalRounds
+            );
+            renderOfficialStandingsTable(data.standings?.standings || [], cutSize, cutRule);
+            if (!shouldGateHeavyUi(playerCount)) {
+                renderTopCutBracketPanel(cachedLiveStandings, cutSize);
+            } else {
+                const bracketPanel = document.getElementById('topCutBracketPanel');
+                if (bracketPanel) bracketPanel.style.display = 'none';
+            }
+        }
+        runTieWork();
+    });
 
     if (opts.loadSeq != null && opts.loadSeq !== dataLoadSeq) return;
 
     const prefix = opts.statusPrefix || 'Zaktualizowano';
-    const bubbleNote = bubbleId != null ? ` | bubble #${cutSize} id=${bubbleId}` : '';
+    const bubbleNote = opts.autoSelectBubble ? ` | bubble #${cutSize}` : '';
     const finalMs = resolveLoadElapsedMs(opts);
     setStatusLoadIdle(`${prefix}${bubbleNote} · ${new Date().toLocaleTimeString()}`, finalMs, {
-        cacheMeta: opts.cacheMeta || data?._cache || null
+        cacheMeta: opts.cacheMeta || data?._cache || null,
+        timingParts
     });
 }
 
@@ -1358,19 +1468,26 @@ async function initDefaultEventAndAutoTrack() {
         return;
     }
 
-    // 2. Tymczasowo podstawiamy ostatni turniej zapamiętany lokalnie w przeglądarce (jeśli istnieje)
+    // 2. Lokalny last event — start immediately (don't wait for get_last_event RTT).
     let localEventId = null;
     try {
         localEventId = localStorage.getItem('lorcana_last_event_id');
     } catch (e) {}
     if (localEventId && /^\d+$/.test(localEventId.trim())) {
         eventInput.value = localEventId.trim();
+        startTracking();
+        // Background: refresh shared last_event for next visitors; don't block first paint.
+        try {
+            const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
+            fetch(`${apiBase}api.php?action=get_last_event`).catch(() => {});
+        } catch (e) {}
+        return;
     }
 
-    // 3. Pobieramy z serwera turniej, który ostatnio wpisał jakikolwiek użytkownik (last_event.txt)
+    // 3. No local id — ask server, then start.
     try {
         const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
-        const res = await fetch(`${apiBase}api.php?action=get_last_event&t=${Date.now()}`);
+        const res = await fetch(`${apiBase}api.php?action=get_last_event`);
         const data = await res.json();
         if (data && data.lastEventId) {
             const serverLastEventId = String(data.lastEventId);
@@ -1378,10 +1495,9 @@ async function initDefaultEventAndAutoTrack() {
             try { localStorage.setItem('lorcana_last_event_id', serverLastEventId); } catch (e) {}
         }
     } catch (err) {
-        // Fallback do wartości lokalnej
+        // ignore
     }
 
-    // 4. Jeśli pole ma wartość, automatycznie rozpoczynamy śledzenie
     if (eventInput.value && /^\d+$/.test(eventInput.value.trim())) {
         startTracking();
     }
@@ -1394,7 +1510,7 @@ async function fetchData(eventId, opts = {}) {
     const loadSeq = ++dataLoadSeq;
     const t0 = nowPerfMs();
     const forceRefresh = Boolean(opts.forceRefresh);
-    setStatusLoadBusy(forceRefresh ? 'Odświeżanie z PlayHub…' : 'Pobieranie z cache…');
+    setStatusLoadBusy(forceRefresh ? 'Odświeżanie z PlayHub…' : 'Pobieranie (API)…');
     const controller = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     let abortTimer = null;
     if (controller) {
@@ -1407,40 +1523,51 @@ async function fetchData(eventId, opts = {}) {
         const safeEventId = encodeURIComponent(rawEventId);
         const apiBase = (typeof window !== 'undefined' && window.LORCANA_API_BASE) ? String(window.LORCANA_API_BASE) : '';
         // Default: server disk cache (SWR). Optional force → ?refresh=1 (slow live PlayHub).
+        // No cache-busting `t=` — ETag / Cache-Control handle freshness (keeps 304 + short HIT max-age useful).
         const refreshQ = forceRefresh ? '&refresh=1' : '';
-        const headers = {};
+        const headers = { Accept: 'application/json' };
         const prevEtag = !forceRefresh ? lastFetchEtags.get(rawEventId) : null;
         if (prevEtag) headers['If-None-Match'] = prevEtag;
         const fetchOpts = {
             headers,
             ...(controller ? { signal: controller.signal } : {})
         };
-        const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}${refreshQ}&t=${Date.now()}`, fetchOpts);
+        const tApi0 = nowPerfMs();
+        const response = await fetch(`${apiBase}api.php?eventId=${safeEventId}${refreshQ}`, fetchOpts);
+        const apiMs = nowPerfMs() - tApi0;
         const newEtag = response.headers.get('ETag');
         if (newEtag) lastFetchEtags.set(rawEventId, newEtag);
+        const headerCacheMeta = cacheMetaFromHeaders(response);
 
         // 304: snapshot unchanged — skip JSON download/parse and UI recompute.
         if (response.status === 304) {
             if (loadSeq !== dataLoadSeq) return;
-            const ageHdr = response.headers.get('X-Lorcana-Cache-Age');
-            const ttlHdr = response.headers.get('X-Lorcana-Cache-TTL');
-            const statusHdr = response.headers.get('X-Lorcana-Cache') || 'HIT';
             setStatusLoadIdle('Bez zmian · ' + new Date().toLocaleTimeString(), nowPerfMs() - t0, {
-                cacheMeta: {
-                    status: statusHdr,
-                    ageSeconds: ageHdr != null ? Number(ageHdr) : null,
-                    ttlSeconds: ttlHdr != null ? Number(ttlHdr) : null
-                }
+                cacheMeta: headerCacheMeta || {
+                    status: response.headers.get('X-Lorcana-Cache') || 'HIT',
+                    ageSeconds: null,
+                    ttlSeconds: null
+                },
+                timingParts: { api: apiMs, parse: 0, render: 0, server: headerCacheMeta?.serverTimingMs }
             });
             return;
         }
 
+        setStatusLoadBusy('Parsowanie JSON…', `API ${formatLoadDuration(apiMs)}`);
+        const tParse0 = nowPerfMs();
         const data = await response.json();
+        const parseMs = nowPerfMs() - tParse0;
 
         if (loadSeq !== dataLoadSeq) return;
 
+        const cacheMeta = cacheMetaFromHeaders(response, data._cache || null) || data._cache || null;
+
         if (data.error) {
-            setStatusLoadIdle('BŁĄD: ' + data.error, nowPerfMs() - t0, { error: true });
+            setStatusLoadIdle('BŁĄD: ' + data.error, nowPerfMs() - t0, {
+                error: true,
+                cacheMeta,
+                timingParts: { api: apiMs, parse: parseMs, server: cacheMeta?.serverTimingMs }
+            });
             return;
         }
 
@@ -1465,16 +1592,19 @@ async function fetchData(eventId, opts = {}) {
         if (fingerprint === lastProcessFingerprint) {
             if (loadSeq !== dataLoadSeq) return;
             setStatusLoadIdle('Bez zmian · ' + new Date().toLocaleTimeString(), nowPerfMs() - t0, {
-                cacheMeta: data._cache || null
+                cacheMeta,
+                timingParts: { api: apiMs, parse: parseMs, render: 0, server: cacheMeta?.serverTimingMs }
             });
             return;
         }
 
+        setStatusLoadBusy('Render LIVE…', `API ${formatLoadDuration(apiMs)} · parse ${formatLoadDuration(parseMs)}`);
         applyLoadedTournamentData(data, {
             statusPrefix: 'Zaktualizowano',
             loadStartedAt: t0,
             loadSeq,
-            cacheMeta: data._cache || null
+            cacheMeta,
+            timingParts: { api: apiMs, parse: parseMs, server: cacheMeta?.serverTimingMs }
         });
     } catch (error) {
         console.error("Błąd pobierania danych:", error);
@@ -1661,7 +1791,7 @@ function getActivePairingsList(data) {
 // TABELA MECZÓW LIVE
 // -------------------------------------------------------------
 
-function processPairings(data) {
+function processPairings(data, opts = {}) {
     setElText('pairingsRoundNum', data.activeRound || "-");
     const pairingsList = getActivePairingsList(data);
     const standingsList = data.standings?.standings || [];
@@ -1691,7 +1821,9 @@ function processPairings(data) {
         setElText('matchesProgress', `${completedCount}/${n} wpisane`);
     }
 
-    renderPairingsTable();
+    if (!opts.deferRender) {
+        renderPairingsTable();
+    }
 }
 
 function renderPairingsTable() {
@@ -1866,10 +1998,11 @@ function calculateTournamentDrawStats(data, pairingsList) {
     return { drawMatches, totalMatches, pct };
 }
 
-function processStandings(data) {
+function processStandings(data, opts = {}) {
     const cutSize = parseInt(document.getElementById('cutSize')?.value || '4');
     const cutRule = document.getElementById('cutRule')?.value || 'hard';
     const rawStandings = data.standings?.standings || [];
+    const deferSecondary = Boolean(opts.deferSecondary);
     
     const activeRound = data.activeRound || 1;
     const totalRounds = getEffectiveTotalRounds(data);
@@ -2003,16 +2136,20 @@ function processStandings(data) {
     // Symulacja TIE liczy się wyłącznie w recalculateTieForSelectedPlayer (wybrany gracz).
     simulatedResultsCache.clear();
 
-    // 5. LIVE first (virtualized) — defer secondary panels to next frame (fewer jank cycles).
+    // 5. LIVE first (virtualized). Secondary panels: caller may defer after first paint.
     renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, totalRounds);
     updatePolesFilterUI();
 
     const playerCount = data.playerCount || liveStandings.length;
-    const deferSecondary = typeof requestAnimationFrame === 'function'
+    if (deferSecondary) {
+        return;
+    }
+
+    const deferFn = typeof requestAnimationFrame === 'function'
         ? requestAnimationFrame
         : (fn) => setTimeout(fn, 0);
 
-    deferSecondary(() => {
+    deferFn(() => {
         renderPolishAvgPointsTable(liveStandings);
         renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRound, totalRounds);
         renderOfficialStandingsTable(rawStandings, cutSize, cutRule);

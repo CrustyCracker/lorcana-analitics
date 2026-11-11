@@ -115,24 +115,12 @@ function lorcana_api_ensure_slim(array $payload, $eventId) {
 }
 
 /**
- * Build JSON body + cache headers. Returns body string (does not echo).
+ * Build JSON body (cache meta stays in headers for the fast HIT path).
+ * Slow path still embeds `_cache` for older clients.
  */
 function lorcana_api_build_body(array $payload, $status, $age, $ttl, $mtime) {
     $meta = lorcana_cache_meta($status, $age, $ttl, $mtime);
     $out = lorcana_attach_cache_meta($payload, $meta);
-    header('X-Lorcana-Cache: ' . $status);
-    if ($age !== null) {
-        header('X-Lorcana-Cache-Age: ' . (int)$age);
-    }
-    if ($ttl !== null) {
-        header('X-Lorcana-Cache-TTL: ' . (int)$ttl);
-    }
-    if ($mtime) {
-        header('X-Lorcana-Cache-At: ' . gmdate('c', (int)$mtime));
-    }
-    if (!empty($payload['_slimVersion'])) {
-        header('X-Lorcana-Slim: ' . (int)$payload['_slimVersion']);
-    }
     return json_encode($out, JSON_UNESCAPED_UNICODE);
 }
 
@@ -157,9 +145,33 @@ function lorcana_api_maybe_gzip($body) {
     return [$gz, true];
 }
 
+function lorcana_api_client_accepts_gzip() {
+    $accept = $_SERVER['HTTP_ACCEPT_ENCODING'] ?? '';
+    return stripos($accept, 'gzip') !== false;
+}
+
+/**
+ * Cache-Control for SWR JSON: always revalidate via ETag (live refresh safe).
+ * Short private freshness only when remaining soft-TTL is known and > 0.
+ */
+function lorcana_api_cache_control_header($status, $age = null, $ttl = null) {
+    $age = $age !== null ? (int)$age : null;
+    $ttl = $ttl !== null ? (int)$ttl : null;
+    if ($status === 'HIT' && $ttl !== null && $ttl > 0 && $age !== null && $age >= 0) {
+        $remain = max(0, $ttl - $age);
+        // Cap browser freshness so live Swiss still revalidates often; ETag covers correctness.
+        $maxAge = min(15, $remain);
+        if ($maxAge > 0) {
+            return 'private, max-age=' . $maxAge . ', stale-while-revalidate=' . max($maxAge, min(30, $ttl));
+        }
+    }
+    // STALE / MISS / unknown: must revalidate; ETag enables cheap 304.
+    return 'private, no-cache, must-revalidate';
+}
+
 /**
  * ETag from cache file identity (mtime+size+slim), NOT response body —
- * body embeds ageSeconds which would defeat 304 every second.
+ * age lives in headers so ETag stays stable across seconds.
  */
 function lorcana_api_etag_for_cache($eventId, $mtime = null) {
     $path = lorcana_cache_file($eventId);
@@ -168,12 +180,12 @@ function lorcana_api_etag_for_cache($eventId, $mtime = null) {
     return '"' . dechex($mtime) . '-' . dechex($size) . '-s' . LORCANA_PAYLOAD_SLIM_VERSION . '"';
 }
 
-/**
- * 304 Not Modified — client keeps prior JSON; no body transfer/parse.
- */
-function lorcana_api_finish_not_modified($etag, $status, $age, $ttl, $mtime) {
-    header('ETag: ' . $etag);
-    header('Cache-Control: private, no-cache');
+function lorcana_api_send_cache_headers($status, $age, $ttl, $mtime, $etag = null, $slimVersion = null) {
+    if ($etag) {
+        header('ETag: ' . $etag);
+    }
+    header('Cache-Control: ' . lorcana_api_cache_control_header($status, $age, $ttl));
+    header('Vary: Accept-Encoding, If-None-Match');
     header('X-Lorcana-Cache: ' . $status);
     if ($age !== null) {
         header('X-Lorcana-Cache-Age: ' . (int)$age);
@@ -184,44 +196,13 @@ function lorcana_api_finish_not_modified($etag, $status, $age, $ttl, $mtime) {
     if ($mtime) {
         header('X-Lorcana-Cache-At: ' . gmdate('c', (int)$mtime));
     }
-    http_response_code(304);
-    header('Content-Length: 0');
-    header('Connection: close');
-    ignore_user_abort(true);
-    if (function_exists('fastcgi_finish_request')) {
-        @fastcgi_finish_request();
-    } elseif (function_exists('litespeed_finish_request')) {
-        @litespeed_finish_request();
-    } else {
-        while (ob_get_level() > 0) {
-            @ob_end_flush();
-        }
-        @flush();
+    if ($slimVersion !== null && $slimVersion !== '') {
+        header('X-Lorcana-Slim: ' . (int)$slimVersion);
     }
-    return 'not_modified';
 }
 
-/**
- * Send body and close the client connection so SWR revalidate cannot block the browser.
- */
-function lorcana_api_finish_response($body, $etag = null) {
-    $body = (string)$body;
-    if ($etag) {
-        header('ETag: ' . $etag);
-        header('Cache-Control: private, no-cache');
-    }
-
-    list($out, $gzipped) = lorcana_api_maybe_gzip($body);
-    if ($gzipped) {
-        header('Content-Encoding: gzip');
-        header('Vary: Accept-Encoding');
-    }
-    header('Content-Length: ' . strlen($out));
-    header('Connection: close');
-    echo $out;
-
+function lorcana_api_finish_connection() {
     ignore_user_abort(true);
-
     if (function_exists('fastcgi_finish_request')) {
         @fastcgi_finish_request();
         return 'sent';
@@ -230,12 +211,65 @@ function lorcana_api_finish_response($body, $etag = null) {
         @litespeed_finish_request();
         return 'sent';
     }
-
     while (ob_get_level() > 0) {
         @ob_end_flush();
     }
     @flush();
     return 'sent';
+}
+
+/**
+ * 304 Not Modified — client keeps prior JSON; no body transfer/parse.
+ */
+function lorcana_api_finish_not_modified($etag, $status, $age, $ttl, $mtime, $slimVersion = null) {
+    lorcana_api_send_cache_headers($status, $age, $ttl, $mtime, $etag, $slimVersion);
+    http_response_code(304);
+    header('Content-Length: 0');
+    header('Connection: close');
+    return lorcana_api_finish_connection();
+}
+
+/**
+ * Stream a disk file (JSON or pre-gzipped) and close the client connection.
+ */
+function lorcana_api_finish_file($path, $etag, $status, $age, $ttl, $mtime, $gzipped = false, $slimVersion = null) {
+    $path = (string)$path;
+    $size = (int)(@filesize($path) ?: 0);
+    lorcana_api_send_cache_headers($status, $age, $ttl, $mtime, $etag, $slimVersion);
+    if ($gzipped) {
+        header('Content-Encoding: gzip');
+    }
+    header('Content-Length: ' . $size);
+    header('Connection: close');
+    if ($size > 0) {
+        @readfile($path);
+    } else {
+        echo '';
+    }
+    return lorcana_api_finish_connection();
+}
+
+/**
+ * Send body and close the client connection so SWR revalidate cannot block the browser.
+ */
+function lorcana_api_finish_response($body, $etag = null, $status = null, $age = null, $ttl = null, $mtime = null, $slimVersion = null) {
+    $body = (string)$body;
+    if ($status !== null) {
+        lorcana_api_send_cache_headers($status, $age, $ttl, $mtime, $etag, $slimVersion);
+    } elseif ($etag) {
+        header('ETag: ' . $etag);
+        header('Cache-Control: private, no-cache, must-revalidate');
+    }
+
+    list($out, $gzipped) = lorcana_api_maybe_gzip($body);
+    if ($gzipped) {
+        header('Content-Encoding: gzip');
+        header('Vary: Accept-Encoding, If-None-Match');
+    }
+    header('Content-Length: ' . strlen($out));
+    header('Connection: close');
+    echo $out;
+    return lorcana_api_finish_connection();
 }
 
 /**
@@ -270,49 +304,161 @@ function lorcana_api_revalidate_async($eventId, $authToken, $allowLocalSslFallba
     return 'inline';
 }
 
+$apiTimingStart = microtime(true);
+
+/**
+ * Emit Server-Timing so the UI can split PHP vs network vs parse/render.
+ */
+function lorcana_api_emit_server_timing($phasesMs) {
+    $parts = [];
+    foreach ($phasesMs as $name => $ms) {
+        $parts[] = $name . ';dur=' . round((float)$ms, 1);
+    }
+    if ($parts) {
+        header('Server-Timing: ' . implode(', ', $parts));
+        header('X-Lorcana-Server-Timing: ' . implode(', ', $parts));
+    }
+}
+
 // --- SWR path: cache file exists → NEVER block on PlayHub (HIT or STALE) ---
 if (!$forceRefresh) {
-    $cached = lorcana_read_cache($eventId);
-    if ($cached['exists'] && $cached['raw'] !== '' && is_array($cached['data'])) {
-        $ensured = lorcana_api_ensure_slim($cached['data'], $eventId);
-        $payload = $ensured['payload'];
-        $mtime = @filemtime(lorcana_cache_file($eventId)) ?: ($cached['mtime'] ?? time());
-        // Age relative to original snapshot when we only rewrote slim (mtime may bump).
-        $ageBase = $ensured['rewrote'] ? ($cached['mtime'] ?? $mtime) : $mtime;
-        $age = max(0, time() - (int)$ageBase);
-        $ttl = lorcana_cache_ttl_seconds($payload);
-        $status = ($age < $ttl) ? 'HIT' : 'STALE';
-        lorcana_set_last_event_id($eventId);
+    $tStat0 = microtime(true);
+    $stat = lorcana_stat_cache($eventId);
+    $statMs = (microtime(true) - $tStat0) * 1000;
 
-        $etag = lorcana_api_etag_for_cache($eventId, $mtime);
-        $inm = trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
-        if ($inm !== '' && $inm === $etag) {
-            lorcana_api_finish_not_modified($etag, $status, $age, $ttl, $mtime);
+    if ($stat['exists'] && $stat['size'] > 0) {
+        $mtime = $stat['mtime'] ?? time();
+        $age = $stat['age'] !== null ? (int)$stat['age'] : max(0, time() - (int)$mtime);
+        $sidecar = lorcana_read_cache_meta_sidecar($eventId);
+        $slimVersion = isset($sidecar['slimVersion']) ? (int)$sidecar['slimVersion'] : null;
+        $ttl = isset($sidecar['ttlSeconds']) ? (int)$sidecar['ttlSeconds'] : null;
+
+        // Fast path: already-slim snapshot → stream disk bytes (prefer prebuilt .gz).
+        $canFast = $slimVersion === LORCANA_PAYLOAD_SLIM_VERSION && $ttl !== null;
+        $rawForSidecar = null;
+        $peekMs = 0;
+        if (!$canFast) {
+            // Peek head+tail without loading the full multi-MB snapshot into PHP.
+            $tPeek0 = microtime(true);
+            $head = '';
+            $tail = '';
+            $fp = @fopen($stat['path'], 'rb');
+            if ($fp) {
+                $head = (string)@fread($fp, 2500);
+                $size = (int)$stat['size'];
+                if ($size > 800) {
+                    @fseek($fp, max(0, $size - 800));
+                    $tail = (string)@fread($fp, 800);
+                } else {
+                    $tail = $head;
+                }
+                @fclose($fp);
+            }
+            $peekMs = (microtime(true) - $tPeek0) * 1000;
+            $slimVersion = lorcana_raw_peek_slim_version($tail !== '' ? $tail : $head);
+            if ($slimVersion === LORCANA_PAYLOAD_SLIM_VERSION && ($head !== '' || $tail !== '')) {
+                $ttl = lorcana_raw_peek_ttl_seconds($head !== '' ? $head : $tail);
+                $canFast = true;
+            }
+        }
+
+        if ($canFast) {
+            $status = ($age < $ttl) ? 'HIT' : 'STALE';
+            lorcana_set_last_event_id($eventId);
+            $etag = lorcana_api_etag_for_cache($eventId, $mtime);
+            $inm = trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+            if ($inm !== '' && $inm === $etag) {
+                lorcana_api_emit_server_timing([
+                    'stat' => $statMs,
+                    'total' => (microtime(true) - $apiTimingStart) * 1000,
+                ]);
+                lorcana_api_finish_not_modified($etag, $status, $age, $ttl, $mtime, $slimVersion);
+                if ($status === 'STALE') {
+                    lorcana_api_revalidate_async($eventId, $authToken, $isLocalRequest);
+                }
+                exit;
+            }
+
+            $serveGz = lorcana_api_client_accepts_gzip() && lorcana_cache_gz_is_fresh($eventId);
+            $servePath = $serveGz ? lorcana_cache_gz_file($eventId) : $stat['path'];
+            lorcana_api_emit_server_timing([
+                'stat' => $statMs,
+                'peek' => $peekMs,
+                'mode' => $serveGz ? 1 : 0,
+                'total' => (microtime(true) - $apiTimingStart) * 1000,
+            ]);
+            header('X-Lorcana-Fast-Hit: ' . ($serveGz ? 'gz' : 'raw'));
+            lorcana_api_finish_file($servePath, $etag, $status, $age, $ttl, $mtime, $serveGz, $slimVersion);
+
+            // Warm missing sidecars after the client already has the body.
+            if ($sidecar === null || !lorcana_cache_gz_is_fresh($eventId)) {
+                @lorcana_ensure_cache_sidecars($eventId);
+            }
+
             if ($status === 'STALE') {
                 lorcana_api_revalidate_async($eventId, $authToken, $isLocalRequest);
             }
             exit;
         }
 
-        $body = lorcana_api_build_body($payload, $status, $age, $ttl, $mtime);
-        lorcana_api_finish_response($body, $etag);
+        // Slow HIT path: decode + ensure-slim (legacy fat snapshots only).
+        $tDecode0 = microtime(true);
+        $cached = lorcana_read_cache($eventId);
+        $decodeMs = (microtime(true) - $tDecode0) * 1000;
+        if ($cached['exists'] && $cached['raw'] !== '' && is_array($cached['data'])) {
+            $ensured = lorcana_api_ensure_slim($cached['data'], $eventId);
+            $payload = $ensured['payload'];
+            $mtime = @filemtime(lorcana_cache_file($eventId)) ?: ($cached['mtime'] ?? time());
+            $ageBase = $ensured['rewrote'] ? ($cached['mtime'] ?? $mtime) : $mtime;
+            $age = max(0, time() - (int)$ageBase);
+            $ttl = lorcana_cache_ttl_seconds($payload);
+            $status = ($age < $ttl) ? 'HIT' : 'STALE';
+            lorcana_set_last_event_id($eventId);
 
-        // Revalidate only when soft-TTL expired — after the client already has the snapshot.
-        if ($status === 'STALE') {
-            lorcana_api_revalidate_async($eventId, $authToken, $isLocalRequest);
+            $etag = lorcana_api_etag_for_cache($eventId, $mtime);
+            $inm = trim((string)($_SERVER['HTTP_IF_NONE_MATCH'] ?? ''));
+            $slimVersion = (int)($payload['_slimVersion'] ?? 0);
+            if ($inm !== '' && $inm === $etag) {
+                lorcana_api_emit_server_timing([
+                    'stat' => $statMs,
+                    'decode' => $decodeMs,
+                    'total' => (microtime(true) - $apiTimingStart) * 1000,
+                ]);
+                lorcana_api_finish_not_modified($etag, $status, $age, $ttl, $mtime, $slimVersion);
+                if ($status === 'STALE') {
+                    lorcana_api_revalidate_async($eventId, $authToken, $isLocalRequest);
+                }
+                exit;
+            }
+
+            $body = lorcana_api_build_body($payload, $status, $age, $ttl, $mtime);
+            lorcana_api_emit_server_timing([
+                'stat' => $statMs,
+                'decode' => $decodeMs,
+                'total' => (microtime(true) - $apiTimingStart) * 1000,
+            ]);
+            lorcana_api_finish_response($body, $etag, $status, $age, $ttl, $mtime, $slimVersion);
+
+            if ($ensured['rewrote'] || !lorcana_cache_gz_is_fresh($eventId)) {
+                @lorcana_ensure_cache_sidecars($eventId, null, $payload);
+            }
+
+            if ($status === 'STALE') {
+                lorcana_api_revalidate_async($eventId, $authToken, $isLocalRequest);
+            }
+            exit;
         }
-        exit;
     }
 
     // File present but unreadable/corrupt: still do not block on PlayHub for default GETs.
-    if ($cached['exists']) {
+    if ($stat['exists']) {
         http_response_code(503);
         $err = json_encode([
             'error' => 'Cache snapshot damaged; try Shift+click refresh or wait for poller.',
-            '_cache' => lorcana_cache_meta('ERROR', $cached['age'], null, $cached['mtime']),
+            '_cache' => lorcana_cache_meta('ERROR', $stat['age'], null, $stat['mtime']),
         ]);
-        lorcana_api_finish_response($err);
-        if ($cached['age'] === null || $cached['age'] > 5) {
+        lorcana_api_finish_response($err, null, 'ERROR', $stat['age'], null, $stat['mtime']);
+        if ($stat['age'] === null || $stat['age'] > 5) {
             lorcana_api_revalidate_async($eventId, $authToken, $isLocalRequest);
         }
         exit;
@@ -335,7 +481,11 @@ if (!empty($refreshed['ok']) && !empty($refreshed['payload'])) {
     // Only label MISS when this was a cold fill (no prior file). Forced refresh stays MISS too (explicit).
     $body = lorcana_api_build_body($payload, 'MISS', 0, $ttl, $mtime);
     $etag = lorcana_api_etag_for_cache($eventId, $mtime);
-    lorcana_api_finish_response($body, $etag);
+    $slimVersion = (int)($payload['_slimVersion'] ?? 0);
+    lorcana_api_emit_server_timing([
+        'total' => (microtime(true) - $apiTimingStart) * 1000,
+    ]);
+    lorcana_api_finish_response($body, $etag, 'MISS', 0, $ttl, $mtime, $slimVersion);
     exit;
 }
 
@@ -347,8 +497,9 @@ if ($cached['exists'] && is_array($cached['data'])) {
     $ttl = lorcana_cache_ttl_seconds($payload);
     $mtime = @filemtime(lorcana_cache_file($eventId)) ?: ($cached['mtime'] ?? time());
     $etag = lorcana_api_etag_for_cache($eventId, $mtime);
+    $slimVersion = (int)($payload['_slimVersion'] ?? 0);
     $body = lorcana_api_build_body($payload, 'STALE', $cached['age'], $ttl, $mtime);
-    lorcana_api_finish_response($body, $etag);
+    lorcana_api_finish_response($body, $etag, 'STALE', $cached['age'], $ttl, $mtime, $slimVersion);
     exit;
 }
 

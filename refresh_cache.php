@@ -64,29 +64,71 @@ function lorcana_is_local_http() {
         || ($remoteIp !== '' && filter_var($remoteIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false);
 }
 
+/**
+ * Collect event IDs to keep warm, prioritized for active / recently requested.
+ * @return int[]
+ */
 function lorcana_collect_event_ids($explicitEventId = null) {
-    $ids = [];
+    $scored = [];
+    $bump = function ($id, $score) use (&$scored) {
+        $id = (int)$id;
+        if ($id <= 0) {
+            return;
+        }
+        $scored[$id] = max($score, $scored[$id] ?? 0);
+    };
+
     if ($explicitEventId) {
-        $ids[(int)$explicitEventId] = true;
+        $bump($explicitEventId, 1000);
     }
+
+    $now = time();
     foreach (lorcana_load_tracked_events() as $row) {
         $id = (int)($row['eventId'] ?? 0);
-        if ($id > 0) {
-            $ids[$id] = true;
+        if ($id <= 0) {
+            continue;
         }
+        $lastReq = (int)($row['lastRequestAt'] ?? 0);
+        $recency = $lastReq > 0 ? max(0, 500 - (int)floor(($now - $lastReq) / 60)) : 50;
+        $bump($id, 200 + $recency);
     }
+
     $last = lorcana_get_default_event_id();
     if ($last > 0) {
-        $ids[$last] = true;
+        $bump($last, 400);
     }
-    // Also pick up any existing cache_*.json files (recent tournaments)
+
+    // Existing cache files — prefer live/incomplete via meta sidecar when present.
     $files = glob(LORCANA_CACHE_ROOT . '/cache_*.json') ?: [];
     foreach ($files as $f) {
-        if (preg_match('/cache_(\d+)\.json$/', $f, $m)) {
-            $ids[(int)$m[1]] = true;
+        if (!preg_match('/cache_(\d+)\.json$/', $f, $m)) {
+            continue;
         }
+        $id = (int)$m[1];
+        $score = 20;
+        $meta = lorcana_read_cache_meta_sidecar($id);
+        if (is_array($meta)) {
+            $completed = !empty($meta['isCompleted'])
+                || in_array(strtolower((string)($meta['displayStatus'] ?? '')), ['complete', 'completed', 'finished'], true);
+            if (!$completed) {
+                $score = 300; // live / in-progress → keep warm first
+            } else {
+                $score = 40;
+            }
+            // Ensure gzip/meta sidecars stay present for fast HIT.
+            if (!lorcana_cache_gz_is_fresh($id)) {
+                @lorcana_ensure_cache_sidecars($id);
+            }
+        } else {
+            // No meta yet — warm sidecars opportunistically so next browser HIT is fast.
+            @lorcana_ensure_cache_sidecars($id);
+            $score = 80;
+        }
+        $bump($id, $score);
     }
-    return array_map('intval', array_keys($ids));
+
+    arsort($scored, SORT_NUMERIC);
+    return array_map('intval', array_keys($scored));
 }
 
 /**
@@ -98,6 +140,13 @@ function lorcana_run_refresh_pass($eventIds, $force = false, $allowLocalSsl = fa
     $results = [];
     $authToken = lorcana_load_auth_token();
 
+    // Cap per pass so shared-hosting cron stays inside typical 60–120s limits;
+    // highest-priority (live / recent) IDs come first from lorcana_collect_event_ids().
+    $maxPerPass = 8;
+    if (count($eventIds) > $maxPerPass) {
+        $eventIds = array_slice(array_values($eventIds), 0, $maxPerPass);
+    }
+
     foreach ($eventIds as $eventId) {
         $t0 = microtime(true);
         $res = lorcana_refresh_event_cache($eventId, [
@@ -107,6 +156,11 @@ function lorcana_run_refresh_pass($eventIds, $force = false, $allowLocalSsl = fa
             'authToken' => $authToken,
         ]);
         $ms = (int)round((microtime(true) - $t0) * 1000);
+        if (!empty($res['ok']) && !empty($res['payload'])) {
+            @lorcana_ensure_cache_sidecars($eventId, null, $res['payload']);
+        } elseif (!empty($res['ok'])) {
+            @lorcana_ensure_cache_sidecars($eventId);
+        }
         $results[] = [
             'eventId' => $eventId,
             'ok' => !empty($res['ok']),
@@ -116,6 +170,7 @@ function lorcana_run_refresh_pass($eventIds, $force = false, $allowLocalSsl = fa
             'ms' => $ms,
             'playerCount' => isset($res['payload']['playerCount']) ? $res['payload']['playerCount'] : null,
             'ttl' => isset($res['payload']) ? lorcana_cache_ttl_seconds($res['payload']) : ($res['ttl'] ?? null),
+            'gzFresh' => lorcana_cache_gz_is_fresh($eventId),
         ];
     }
 

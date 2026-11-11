@@ -2,7 +2,7 @@
 Options -Indexes
 
 # Blokada bezpośredniego dostępu HTTP do tokenu, cache'u, sekretów, baz SQLite oraz danych webhooka
-<FilesMatch "^(token\.txt|last_event\.txt|cron_key\.txt|tracked_events\.json|cache_.*\.(json|lock)|cache_refresh\.lock|package(-lock)?\.json|\.git.*|README\.md|webhook_.*|marketplace_.*\.json|\.env.*|.*\.sqlite[0-9]?|.*\.db.*)$">
+<FilesMatch "^(token\.txt|last_event\.txt|cron_key\.txt|tracked_events\.json|cache_.*\.(json|json\.gz|lock|meta\.json)|cache_refresh\.lock|package(-lock)?\.json|\.git.*|README\.md|webhook_.*|marketplace_.*\.json|\.env.*|.*\.sqlite[0-9]?|.*\.db.*)$">
     <IfModule mod_authz_core.c>
         Require all denied
     </IfModule>
@@ -28,4 +28,14 @@ Options -Indexes
 # Static asset compression (JS/CSS/HTML) — helps shared-hosting first paint
 <IfModule mod_deflate.c>
     AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json text/javascript
+</IfModule>
+
+# Long-cache fingerprinted JS/CSS (?v=mtime in index.html). HTML stays short-lived.
+<IfModule mod_headers.c>
+    <FilesMatch "\.(js|css)$">
+        Header set Cache-Control "public, max-age=604800, stale-while-revalidate=86400"
+    </FilesMatch>
+    <FilesMatch "\.(html?)$">
+        Header set Cache-Control "public, max-age=60, stale-while-revalidate=600"
+    </FilesMatch>
 </IfModule>
