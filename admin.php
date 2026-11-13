@@ -136,7 +136,7 @@ if (admin_is_logged_in()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Admin — Lorcana Should I TIE?</title>
+    <title>Admin — Analityka Lorcany</title>
     <style>
         :root {
             --bg: #0b1220;
@@ -205,7 +205,7 @@ if (admin_is_logged_in()) {
     <div class="topnav">
         <div>
             <h1>Panel admina</h1>
-            <p class="sub">Lorcana Should I TIE? — konfiguracja live</p>
+            <p class="sub">Analityka Lorcany — konfiguracja live</p>
         </div>
         <div>
             <a href="index.html">← Strona publiczna</a>
