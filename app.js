@@ -2217,6 +2217,67 @@ function formatStandingsPlayerName(player) {
     return displayName;
 }
 
+/** Fallback hex when PlayHub omits hex_code on slimmed ink symbols. */
+const INK_HEX_FALLBACKS = {
+    amber: '#FFBF00',
+    amethyst: '#9966CC',
+    emerald: '#50C878',
+    ruby: '#E0115F',
+    sapphire: '#0F52BA',
+    steel: '#71797E'
+};
+
+/**
+ * Compact ink pairings from slim payload (standing.inks / UES.inks / player.inks).
+ * @returns {Array<{key:string,name:string,hex?:string|null}>}
+ */
+function getPlayerInks(playerOrStanding) {
+    if (!playerOrStanding || typeof playerOrStanding !== 'object') return [];
+    const candidates = [
+        playerOrStanding.inks,
+        playerOrStanding.user_event_status?.inks,
+        playerOrStanding.player?.inks
+    ];
+    for (let i = 0; i < candidates.length; i++) {
+        const list = candidates[i];
+        if (Array.isArray(list) && list.length > 0) {
+            return list.slice(0, 2).filter(ink => ink && (ink.key || ink.name));
+        }
+    }
+    return [];
+}
+
+function resolveInkHex(ink) {
+    if (!ink || typeof ink !== 'object') return '#888888';
+    const raw = ink.hex || ink.hex_code || '';
+    if (typeof raw === 'string' && /^#?[0-9A-Fa-f]{6}$/.test(raw)) {
+        return raw.startsWith('#') ? raw : `#${raw}`;
+    }
+    const key = String(ink.key || ink.name || '').toLowerCase();
+    return INK_HEX_FALLBACKS[key] || '#888888';
+}
+
+/** Small Lorcana ink dots for standings / LIVE rows (no remote images). */
+function renderInkBadgesHtml(inks) {
+    const list = Array.isArray(inks) ? inks.slice(0, 2) : [];
+    if (!list.length) return '';
+    const title = escapeHtml(list.map(i => i.name || i.key || '').filter(Boolean).join(' / '));
+    const dots = list.map(ink => {
+        const hex = escapeHtml(resolveInkHex(ink));
+        const name = escapeHtml(ink.name || ink.key || '');
+        return `<span class="ink-dot" style="background:${hex}" title="${name}"></span>`;
+    }).join('');
+    return `<span class="ink-pair" title="${title}">${dots}</span>`;
+}
+
+function formatPlayerCellHtml(player, formattedName, { strong = false } = {}) {
+    const safeName = escapeHtml(formattedName || '');
+    const nameHtml = strong ? `<strong class="player-name-text">${safeName}</strong>` : `<span class="player-name-text">${safeName}</span>`;
+    const inkHtml = renderInkBadgesHtml(getPlayerInks(player));
+    if (!inkHtml) return nameHtml;
+    return `<span class="player-cell-with-inks">${inkHtml}${nameHtml}</span>`;
+}
+
 function extractPairingsList(raw) {
     if (!raw) return [];
     if (Array.isArray(raw)) return raw;
@@ -2390,12 +2451,18 @@ function renderPairingsTable() {
         const safeName1 = escapeHtml(name1);
         const safeName2 = escapeHtml(name2);
         const safeTableNum = escapeHtml(tableNum);
+        const inkSrc1 = p1?.raw || raw1 || p1;
+        const inkSrc2 = isBye ? null : (p2?.raw || raw2 || p2);
+        const cell1 = formatPlayerCellHtml(inkSrc1, name1);
+        const cell2 = isBye
+            ? `<span class="player-name-text">${safeName2}</span>`
+            : formatPlayerCellHtml(inkSrc2, name2);
 
         tr.innerHTML = `
             <td><strong>#${safeTableNum}</strong></td>
-            <td class="player-cell-truncate" style="${p1Style}" title="${safeName1}">${safeName1}</td>
+            <td class="player-cell-truncate" style="${p1Style}" title="${safeName1}">${cell1}</td>
             <td class="score-box">${displayScore}</td>
-            <td class="player-cell-truncate" style="${p2Style}" title="${safeName2}">${safeName2}</td>
+            <td class="player-cell-truncate" style="${p2Style}" title="${safeName2}">${cell2}</td>
             <td>${statusBadge}</td>
         `;
         frag.appendChild(tr);
@@ -2572,11 +2639,14 @@ function processStandings(data, opts = {}) {
     const liveStandings = new Array(standings.length);
     for (let i = 0; i < standings.length; i++) {
         const p = standings[i];
-        const delta = liveScoreDeltas.get(String(p.player.id)) || 0;
+        const playerId = p.player?.id ?? p.id;
+        const delta = liveScoreDeltas.get(String(playerId)) || 0;
+        const inks = getPlayerInks(p);
         liveStandings[i] = {
             id: p.id,
             player: p.player,
             user_event_status: p.user_event_status,
+            inks: inks.length ? inks : undefined,
             match_points: p.match_points,
             record: p.record,
             match_record: p.match_record,
@@ -2747,18 +2817,19 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
     for (let i = win.start; i < win.end; i++) {
         const player = list[i];
         const displayRank = player.liveRank || (i + 1);
+        const playerId = player.player?.id ?? player.id;
         const tr = document.createElement('tr');
         tr.className = "clickable-row";
         tr.style.height = LIVE_ROW_HEIGHT + 'px';
         tr.title = "Kliknij, aby otworzyć szczegóły w module Can I take a TIE";
-        tr.onclick = () => selectPlayerForTie(player.player.id);
+        tr.onclick = () => selectPlayerForTie(playerId);
 
         const formattedName = formatStandingsPlayerName(player);
         const omwp = ((player.opponent_match_win_percentage || 0) * 100).toFixed(1) + "%";
         const gwp = ((player.game_win_percentage || 0) * 100).toFixed(1) + "%";
         const ogwp = ((player.opponent_game_win_percentage || 0) * 100).toFixed(1) + "%";
 
-        const cached = simulatedResultsCache.get(String(player.player.id));
+        const cached = simulatedResultsCache.get(String(playerId));
         const sim = cached?.sim;
 
         const inCut = (displayRank <= ctx.cutSize);
@@ -2771,17 +2842,18 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
         }
 
         tr.className += " " + rowClass;
-        if (currentSelectedPlayerId && String(player.player.id) === String(currentSelectedPlayerId)) {
+        if (currentSelectedPlayerId && String(playerId) === String(currentSelectedPlayerId)) {
             tr.style.outline = "2px solid #3498db";
             tr.style.backgroundColor = "rgba(52, 152, 219, 0.2)";
         }
 
         const safeName = escapeHtml(formattedName);
-        const safePlayerId = escapeJsAttr(player.player.id);
+        const safePlayerId = escapeJsAttr(playerId);
+        const nameCellHtml = formatPlayerCellHtml(player, formattedName, { strong: true });
 
         tr.innerHTML =
             '<td><strong>' + displayRank + '</strong></td>' +
-            '<td class="player-cell-truncate" style="text-align: left;" title="' + safeName + '"><strong>' + safeName + '</strong></td>' +
+            '<td class="player-cell-truncate" style="text-align: left;" title="' + safeName + '">' + nameCellHtml + '</td>' +
             '<td>' + pointsDisplay + '</td>' +
             '<td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="event.stopPropagation(); openOmwpInspector(\'' + safePlayerId + '\')">' + omwp + ' / ' + gwp + ' / ' + ogwp + ' \uD83D\uDD0D</td>' +
             '<td><strong>' + ptsNeededText + '</strong></td>' +
@@ -2856,11 +2928,12 @@ function renderOfficialStandingsTable(standings, cutSize, cutRule) {
         const tr = document.createElement('tr');
         const formattedName = formatStandingsPlayerName(player);
         const safeName = escapeHtml(formattedName);
-        const safePlayerId = escapeJsAttr(player.player.id);
+        const safePlayerId = escapeJsAttr(player.player?.id ?? player.id);
         const safeRecord = escapeHtml(player.record || player.match_record || "-");
         const omwp = ((player.opponent_match_win_percentage || 0) * 100).toFixed(1) + "%";
         const gwp = ((player.game_win_percentage || 0) * 100).toFixed(1) + "%";
         const ogwp = ((player.opponent_game_win_percentage || 0) * 100).toFixed(1) + "%";
+        const nameCellHtml = formatPlayerCellHtml(player, formattedName);
         
         const inCut = ctx.cutRule === 'soft' 
             ? player.match_points >= bubbleScore 
@@ -2869,7 +2942,7 @@ function renderOfficialStandingsTable(standings, cutSize, cutRule) {
         tr.className = inCut ? "safe" : (player.match_points >= bubbleScore ? "bubble" : "dead");
         tr.innerHTML = `
             <td>${displayRank}</td>
-            <td class="player-cell-truncate" style="text-align: left;" title="${safeName}">${safeName}</td>
+            <td class="player-cell-truncate" style="text-align: left;" title="${safeName}">${nameCellHtml}</td>
             <td><strong>${player.match_points}</strong></td>
             <td>${safeRecord}</td>
             <td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="openOmwpInspector('${safePlayerId}')">${omwp} / ${gwp} / ${ogwp} 🔍</td>
@@ -5725,6 +5798,12 @@ if (typeof module !== 'undefined' && module.exports) {
         resolvePlayer,
         getMatchParticipant,
         getMatchScores,
+        getPlayerInks,
+        resolveInkHex,
+        renderInkBadgesHtml,
+        formatPlayerCellHtml,
+        formatStandingsPlayerName,
+        INK_HEX_FALLBACKS,
         getDefaultTotalRounds,
         getApiTotalRounds,
         getEffectiveTotalRounds,

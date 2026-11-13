@@ -554,19 +554,31 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
             $standingsData = $standingsBundle['standings'] ?? null;
         }
 
-        $fetched = lorcana_fetch_all_paginated_matches_for_rounds($toFetch, $authToken, $allowLocalSslFallback);
+        // Sequential per-round fetch + immediate slim: ink-pairing descriptors with
+        // signed image URLs are ~2.5MB/round; parallel keep-all OOMs shared hosts.
         foreach ($toFetch as $rNum => $safeRoundId) {
-            $mData = $fetched[$rNum] ?? null;
+            $mData = lorcana_fetch_all_paginated_matches($safeRoundId, $authToken, $allowLocalSslFallback);
             if ($mData) {
+                $rawMatches = $mData['results'] ?? $mData['data'] ?? $mData;
+                $slimMatches = lorcana_slim_matches_list($rawMatches);
+                unset($mData, $rawMatches);
                 $roundsMatches[$rNum] = [
                     'round_number' => $rNum,
                     'round_id' => $safeRoundId,
                     'status' => $eligibleRounds[$rNum]['status'],
-                    'matches' => $mData['results'] ?? $mData['data'] ?? $mData
+                    'matches' => $slimMatches,
                 ];
                 if ($pairingsRoundId && $safeRoundId === (int)$pairingsRoundId) {
-                    $pairingsData = $mData;
+                    // Placeholder only — final slim collapses active pairings to sourceRound.
+                    $pairingsData = [
+                        'sourceRound' => $rNum,
+                        'count' => is_array($slimMatches['results'] ?? null)
+                            ? count($slimMatches['results'])
+                            : (is_array($slimMatches) ? count($slimMatches) : 0),
+                        'results' => [],
+                    ];
                 }
+                unset($slimMatches);
             }
         }
     } elseif ($standingsUrl) {
@@ -575,7 +587,16 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
     }
 
     if ($pairingsRoundId && !$pairingsData) {
-        $pairingsData = lorcana_fetch_all_paginated_matches($pairingsRoundId, $authToken, $allowLocalSslFallback);
+        $rawPairings = lorcana_fetch_all_paginated_matches($pairingsRoundId, $authToken, $allowLocalSslFallback);
+        if ($rawPairings) {
+            $pairingsData = lorcana_slim_matches_list($rawPairings);
+            unset($rawPairings);
+        }
+    }
+
+    // Slim standings early (drops profile picture URLs) before building the payload.
+    if (is_array($standingsData)) {
+        $standingsData = lorcana_slim_standings($standingsData);
     }
 
     $displayStatus = strtolower($eventData['display_status'] ?? '');
@@ -600,7 +621,7 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
         'roundsMatches' => $roundsMatches
     ];
 
-    // Strip profile/media bloat before disk + wire — keeps TIE fields intact.
+    // Strip residual bloat + harvest compact ink pairings onto standings rows.
     $payload = lorcana_slim_event_payload($payload);
 
     return ['ok' => true, 'payload' => $payload];

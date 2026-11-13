@@ -6,22 +6,104 @@
  */
 
 if (!defined('LORCANA_PAYLOAD_SLIM_VERSION')) {
-    define('LORCANA_PAYLOAD_SLIM_VERSION', 1);
+    // v2: keep compact ink pairings (deck_descriptor_label → inks[]) without signed image URLs.
+    define('LORCANA_PAYLOAD_SLIM_VERSION', 2);
 }
 
-function lorcana_slim_player_ref($player) {
+/**
+ * Compact PlayHub deck_descriptor_label into [{key,name,hex}, ...] (max 2 inks).
+ * Drops signed GCS symbol image URLs that inflate ink-pairing events (~2.5MB/round).
+ *
+ * @param mixed $ddl
+ * @return array<int, array{key:string,name:string,hex:?string}>|null
+ */
+function lorcana_slim_deck_descriptor($ddl) {
+    if (!is_array($ddl)) {
+        return null;
+    }
+
+    $inks = [];
+    $seen = [];
+
+    $push = function ($key, $name = null, $hex = null) use (&$inks, &$seen) {
+        $key = strtolower(trim((string)$key));
+        if ($key === '' || isset($seen[$key])) {
+            return;
+        }
+        $seen[$key] = true;
+        $display = trim((string)($name ?? ''));
+        if ($display === '') {
+            $display = ucfirst($key);
+        }
+        $hexOut = null;
+        if (is_string($hex) && preg_match('/^#?[0-9A-Fa-f]{6}$/', $hex)) {
+            $hexOut = str_starts_with($hex, '#') ? $hex : ('#' . $hex);
+        }
+        $inks[] = [
+            'key' => $key,
+            'name' => $display,
+            'hex' => $hexOut,
+        ];
+    };
+
+    $parts = $ddl['parts'] ?? null;
+    if (is_array($parts)) {
+        foreach ($parts as $part) {
+            if (!is_array($part)) {
+                continue;
+            }
+            $symbols = $part['symbols'] ?? null;
+            if (is_array($symbols) && count($symbols) > 0) {
+                foreach ($symbols as $sym) {
+                    if (!is_array($sym)) {
+                        continue;
+                    }
+                    $push(
+                        $sym['symbol_key'] ?? $sym['name'] ?? '',
+                        $sym['name'] ?? null,
+                        $sym['hex_code'] ?? $sym['hex'] ?? null
+                    );
+                }
+                continue;
+            }
+            $value = $part['value'] ?? $part['display'] ?? '';
+            if (is_string($value) && $value !== '') {
+                foreach (preg_split('/\s*,\s*/', $value) as $piece) {
+                    $push($piece);
+                }
+            }
+        }
+    }
+
+    if (!$inks && !empty($ddl['label']) && is_string($ddl['label'])) {
+        foreach (preg_split('/\s*,\s*/', $ddl['label']) as $piece) {
+            $push($piece);
+        }
+    }
+
+    if (!$inks) {
+        return null;
+    }
+    return array_slice($inks, 0, 2);
+}
+
+function lorcana_slim_player_ref($player, $inks = null) {
     if ($player === null || $player === '') {
         return null;
     }
     if (is_int($player) || (is_string($player) && ctype_digit($player))) {
-        return (int)$player;
+        $idOnly = (int)$player;
+        if (is_array($inks) && $inks) {
+            return ['id' => $idOnly, 'inks' => $inks];
+        }
+        return $idOnly;
     }
     if (!is_array($player)) {
         return null;
     }
     $id = $player['id'] ?? $player['player_id'] ?? $player['user_id'] ?? null;
     $name = $player['best_identifier'] ?? $player['name'] ?? null;
-    if ($id === null && $name === null) {
+    if ($id === null && $name === null && !(is_array($inks) && $inks)) {
         return null;
     }
     $out = [];
@@ -30,6 +112,11 @@ function lorcana_slim_player_ref($player) {
     }
     if ($name !== null && $name !== '') {
         $out['best_identifier'] = (string)$name;
+    }
+    $existingInks = is_array($player['inks'] ?? null) ? $player['inks'] : null;
+    $useInks = is_array($inks) && $inks ? $inks : $existingInks;
+    if (is_array($useInks) && $useInks) {
+        $out['inks'] = array_slice($useInks, 0, 2);
     }
     return $out;
 }
@@ -71,19 +158,26 @@ function lorcana_slim_match(array $match) {
             if (!is_array($rel)) {
                 continue;
             }
+            $ues = is_array($rel['user_event_status'] ?? null) ? $rel['user_event_status'] : [];
+            $inks = lorcana_slim_deck_descriptor($ues['deck_descriptor_label'] ?? null);
+            if ($inks === null && is_array($rel['player']['inks'] ?? null)) {
+                $inks = array_slice($rel['player']['inks'], 0, 2);
+            }
             // Prefer nested player.id (PlayHub user id) — UES id is a different namespace.
-            $player = lorcana_slim_player_ref($rel['player'] ?? null);
-            if ($player === null && isset($rel['user_event_status']) && is_array($rel['user_event_status'])) {
-                $ues = $rel['user_event_status'];
+            $player = lorcana_slim_player_ref($rel['player'] ?? null, $inks);
+            if ($player === null && $ues) {
                 $nick = $ues['best_identifier'] ?? null;
-                $pid = $ues['user']['id'] ?? $ues['id'] ?? null;
-                if ($pid !== null || $nick) {
+                $pid = $ues['user']['id'] ?? null;
+                if ($pid !== null || $nick || $inks) {
                     $player = [];
                     if ($pid !== null) {
                         $player['id'] = is_numeric($pid) ? (int)$pid : $pid;
                     }
                     if ($nick) {
                         $player['best_identifier'] = (string)$nick;
+                    }
+                    if ($inks) {
+                        $player['inks'] = $inks;
                     }
                 }
             }
@@ -154,9 +248,20 @@ function lorcana_slim_matches_list($matches) {
     return $out;
 }
 
-function lorcana_slim_standing(array $row) {
-    $player = lorcana_slim_player_ref($row['player'] ?? null);
+function lorcana_slim_standing(array $row, $inks = null) {
+    $rowInks = is_array($row['inks'] ?? null) ? $row['inks'] : null;
     $uesIn = is_array($row['user_event_status'] ?? null) ? $row['user_event_status'] : [];
+    $uesInks = is_array($uesIn['inks'] ?? null) ? $uesIn['inks'] : null;
+    $ddlInks = lorcana_slim_deck_descriptor($uesIn['deck_descriptor_label'] ?? null);
+    $useInks = null;
+    foreach ([$inks, $rowInks, $uesInks, $ddlInks] as $candidate) {
+        if (is_array($candidate) && $candidate) {
+            $useInks = array_slice($candidate, 0, 2);
+            break;
+        }
+    }
+
+    $player = lorcana_slim_player_ref($row['player'] ?? null, $useInks);
     $userIn = is_array($uesIn['user'] ?? null) ? $uesIn['user'] : [];
 
     $ues = [];
@@ -188,6 +293,9 @@ function lorcana_slim_standing(array $row) {
                 $ues['user'] = $user;
             }
         }
+        if ($useInks) {
+            $ues['inks'] = $useInks;
+        }
     }
 
     $out = [
@@ -204,10 +312,160 @@ function lorcana_slim_standing(array $row) {
     if ($ues) {
         $out['user_event_status'] = $ues;
     }
+    if ($useInks) {
+        $out['inks'] = $useInks;
+    }
     if (isset($row['round_number'])) {
         $out['round_number'] = $row['round_number'];
     }
     return $out;
+}
+
+/**
+ * Harvest compact inks from slimmed (or raw) match lists → playerId => inks[].
+ *
+ * @param mixed $roundsMatches
+ * @return array<string, array<int, array{key:string,name:string,hex:?string}>>
+ */
+function lorcana_collect_player_inks($roundsMatches) {
+    $map = [];
+    if (!is_array($roundsMatches)) {
+        return $map;
+    }
+
+    $ingestMatch = function ($match) use (&$map) {
+        if (!is_array($match)) {
+            return;
+        }
+        $rels = $match['player_match_relationships'] ?? null;
+        if (is_array($rels)) {
+            foreach ($rels as $rel) {
+                if (!is_array($rel)) {
+                    continue;
+                }
+                $player = $rel['player'] ?? null;
+                $inks = null;
+                if (is_array($player) && is_array($player['inks'] ?? null)) {
+                    $inks = $player['inks'];
+                }
+                if ($inks === null) {
+                    $ues = is_array($rel['user_event_status'] ?? null) ? $rel['user_event_status'] : [];
+                    $inks = lorcana_slim_deck_descriptor($ues['deck_descriptor_label'] ?? null);
+                }
+                if (!is_array($inks) || !$inks) {
+                    continue;
+                }
+                $pid = null;
+                if (is_array($player) && isset($player['id'])) {
+                    $pid = $player['id'];
+                } elseif (is_int($player) || (is_string($player) && ctype_digit($player))) {
+                    $pid = $player;
+                }
+                if ($pid === null) {
+                    continue;
+                }
+                $map[(string)$pid] = array_slice($inks, 0, 2);
+            }
+        }
+        // Also accept already-slimmed players[] objects that carry inks.
+        if (isset($match['players']) && is_array($match['players'])) {
+            foreach ($match['players'] as $p) {
+                if (!is_array($p) || !isset($p['id']) || !is_array($p['inks'] ?? null)) {
+                    continue;
+                }
+                $map[(string)$p['id']] = array_slice($p['inks'], 0, 2);
+            }
+        }
+    };
+
+    foreach ($roundsMatches as $rData) {
+        if (!is_array($rData)) {
+            continue;
+        }
+        // roundsMatches[n].matches or a bare match list / pairings wrapper
+        $matches = $rData['matches'] ?? $rData;
+        if (isset($matches['results']) && is_array($matches['results'])) {
+            $matches = $matches['results'];
+        }
+        if (!is_array($matches)) {
+            continue;
+        }
+        // Guard: associative meta wrapper without numeric match rows
+        $isList = array_keys($matches) === range(0, count($matches) - 1);
+        if (!$isList && !isset($rData['matches'])) {
+            continue;
+        }
+        foreach ($matches as $m) {
+            $ingestMatch($m);
+        }
+    }
+
+    return $map;
+}
+
+/**
+ * Attach harvested inks onto standings rows (top-level + UES + player).
+ *
+ * @param mixed $standings
+ * @param array $inkMap
+ * @return mixed
+ */
+function lorcana_apply_inks_to_standings($standings, array $inkMap) {
+    if (!is_array($standings) || !$inkMap) {
+        return $standings;
+    }
+
+    $applyRow = function (array $row) use ($inkMap) {
+        if (is_array($row['inks'] ?? null) && $row['inks']) {
+            return $row;
+        }
+        $ids = [];
+        if (isset($row['player']['id'])) {
+            $ids[] = (string)$row['player']['id'];
+        }
+        if (isset($row['user_event_status']['user']['id'])) {
+            $ids[] = (string)$row['user_event_status']['user']['id'];
+        }
+        if (isset($row['id'])) {
+            $ids[] = (string)$row['id'];
+        }
+        $inks = null;
+        foreach ($ids as $id) {
+            if (isset($inkMap[$id])) {
+                $inks = $inkMap[$id];
+                break;
+            }
+        }
+        if (!$inks) {
+            return $row;
+        }
+        $row['inks'] = $inks;
+        if (isset($row['player']) && is_array($row['player'])) {
+            $row['player']['inks'] = $inks;
+        }
+        if (isset($row['user_event_status']) && is_array($row['user_event_status'])) {
+            $row['user_event_status']['inks'] = $inks;
+        }
+        return $row;
+    };
+
+    if (isset($standings['standings']) && is_array($standings['standings'])) {
+        foreach ($standings['standings'] as $i => $row) {
+            if (is_array($row)) {
+                $standings['standings'][$i] = $applyRow($row);
+            }
+        }
+        return $standings;
+    }
+
+    if (array_keys($standings) === range(0, count($standings) - 1)) {
+        foreach ($standings as $i => $row) {
+            if (is_array($row)) {
+                $standings[$i] = $applyRow($row);
+            }
+        }
+    }
+    return $standings;
 }
 
 function lorcana_slim_standings($standings) {
@@ -243,10 +501,6 @@ function lorcana_slim_standings($standings) {
 function lorcana_slim_event_payload(array $payload) {
     if ((int)($payload['_slimVersion'] ?? 0) === LORCANA_PAYLOAD_SLIM_VERSION) {
         return $payload;
-    }
-
-    if (isset($payload['standings'])) {
-        $payload['standings'] = lorcana_slim_standings($payload['standings']);
     }
 
     $activeRound = (int)($payload['activeRound'] ?? 0);
@@ -291,6 +545,71 @@ function lorcana_slim_event_payload(array $payload) {
         $payload['pairings'] = lorcana_slim_matches_list($payload['pairings']);
     }
 
+    $inkMap = lorcana_collect_player_inks($payload['roundsMatches'] ?? null);
+    if (!$inkMap && isset($payload['pairings'])) {
+        $inkMap = lorcana_collect_player_inks(['pairings' => ['matches' => $payload['pairings']]]);
+    }
+
+    if (isset($payload['standings'])) {
+        $payload['standings'] = lorcana_slim_standings($payload['standings']);
+        $payload['standings'] = lorcana_apply_inks_to_standings($payload['standings'], $inkMap);
+    }
+
+    if ($inkMap) {
+        $payload['hasInkPairings'] = true;
+        // Inks live on standings for UI; strip duplicates from match player refs to shrink wire.
+        if (isset($payload['roundsMatches']) && is_array($payload['roundsMatches'])) {
+            $payload['roundsMatches'] = lorcana_strip_match_player_inks($payload['roundsMatches']);
+        }
+    }
+
     $payload['_slimVersion'] = LORCANA_PAYLOAD_SLIM_VERSION;
     return $payload;
+}
+
+/**
+ * Remove player.inks from slimmed match relationships after harvest to standings.
+ *
+ * @param array $roundsMatches
+ * @return array
+ */
+function lorcana_strip_match_player_inks(array $roundsMatches) {
+    foreach ($roundsMatches as $rNum => $rData) {
+        if (!is_array($rData)) {
+            continue;
+        }
+        $matches = $rData['matches'] ?? null;
+        if (!is_array($matches)) {
+            continue;
+        }
+        $list = isset($matches['results']) && is_array($matches['results']) ? $matches['results'] : $matches;
+        if (!is_array($list)) {
+            continue;
+        }
+        foreach ($list as $i => $m) {
+            if (!is_array($m)) {
+                continue;
+            }
+            if (isset($m['player_match_relationships']) && is_array($m['player_match_relationships'])) {
+                foreach ($m['player_match_relationships'] as $j => $rel) {
+                    if (isset($rel['player']['inks'])) {
+                        unset($list[$i]['player_match_relationships'][$j]['player']['inks']);
+                    }
+                }
+            }
+            if (isset($m['players']) && is_array($m['players'])) {
+                foreach ($m['players'] as $j => $p) {
+                    if (is_array($p) && isset($p['inks'])) {
+                        unset($list[$i]['players'][$j]['inks']);
+                    }
+                }
+            }
+        }
+        if (isset($matches['results'])) {
+            $roundsMatches[$rNum]['matches']['results'] = $list;
+        } else {
+            $roundsMatches[$rNum]['matches'] = $list;
+        }
+    }
+    return $roundsMatches;
 }
