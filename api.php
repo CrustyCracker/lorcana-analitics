@@ -327,6 +327,7 @@ function lorcana_api_revalidate_async($eventId, $authToken, $allowLocalSslFallba
         'blocking' => false,
         'allowLocalSslFallback' => $allowLocalSslFallback,
         'authToken' => $authToken,
+        'roundsMode' => 'critical',
     ]);
     return 'inline';
 }
@@ -490,13 +491,16 @@ if (!$forceRefresh) {
     }
 }
 
-// Force refresh or true cold miss (no cache file): synchronous PlayHub fetch
+// Force refresh or true cold miss (no cache file): synchronous PlayHub fetch.
+// critical = standings + active round only — required for live DLC-scale events
+// (10+ Swiss rounds of ink-pairing matches otherwise time out → empty UI).
 lorcana_raise_fetch_time_limit();
 $refreshed = lorcana_refresh_event_cache($eventId, [
     'force' => true,
     'blocking' => true,
     'allowLocalSslFallback' => $isLocalRequest,
     'authToken' => $authToken,
+    'roundsMode' => 'critical',
 ]);
 
 if (!empty($refreshed['ok']) && !empty($refreshed['payload'])) {

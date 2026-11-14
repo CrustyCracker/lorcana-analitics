@@ -442,14 +442,72 @@ function lorcana_fetch_all_paginated_matches_for_rounds($roundIdsByKey, $token =
 }
 
 /**
+ * Pick which Swiss rounds to pull match lists for.
+ * critical = active/pairings + latest standings round (fast cold-fill for list + inks).
+ * all = every eligible round (OMWP history / full snapshot).
+ *
+ * @param array<int,int> $toFetch roundNumber => roundId
+ * @param int $activeRoundNumber
+ * @param int|null $pairingsRoundId
+ * @param string $roundsMode critical|all
+ * @param int $standingsRoundNumber
+ * @return array<int,int>
+ */
+function lorcana_select_rounds_to_fetch(
+    array $toFetch,
+    $activeRoundNumber,
+    $pairingsRoundId,
+    $roundsMode = 'all',
+    $standingsRoundNumber = 0
+) {
+    if ($roundsMode !== 'critical' || empty($toFetch)) {
+        return $toFetch;
+    }
+    $keep = [];
+    $activeRoundNumber = (int)$activeRoundNumber;
+    $standingsRoundNumber = (int)$standingsRoundNumber;
+    if ($activeRoundNumber > 0 && isset($toFetch[$activeRoundNumber])) {
+        $keep[$activeRoundNumber] = (int)$toFetch[$activeRoundNumber];
+    }
+    if ($standingsRoundNumber > 0 && isset($toFetch[$standingsRoundNumber])) {
+        $keep[$standingsRoundNumber] = (int)$toFetch[$standingsRoundNumber];
+    }
+    if ($pairingsRoundId) {
+        foreach ($toFetch as $rNum => $rid) {
+            if ((int)$rid === (int)$pairingsRoundId) {
+                $keep[(int)$rNum] = (int)$rid;
+            }
+        }
+    }
+    if (!$keep) {
+        $maxR = max(array_map('intval', array_keys($toFetch)));
+        $keep[$maxR] = (int)$toFetch[$maxR];
+    }
+    ksort($keep, SORT_NUMERIC);
+    return $keep;
+}
+
+/**
  * Live fetch from PlayHub and build the aggregated event payload (no disk I/O).
+ *
+ * Options:
+ *   roundsMode: 'critical' (active round only — fast list) | 'all' (full history)
  *
  * @return array{ok:bool,payload?:array,error?:string,httpCode?:int}
  */
-function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSslFallback = false) {
+function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSslFallback = false, $options = []) {
     $eventId = (int)$eventId;
     if ($eventId <= 0) {
         return ['ok' => false, 'error' => 'Nieprawidłowy identyfikator turnieju (eventId).', 'httpCode' => 400];
+    }
+
+    if (!is_array($options)) {
+        $options = [];
+    }
+    // null = auto (critical when many Swiss rounds — DLC-scale cold fills time out otherwise)
+    $roundsModeOpt = $options['roundsMode'] ?? null;
+    if ($roundsModeOpt !== 'critical' && $roundsModeOpt !== 'all') {
+        $roundsModeOpt = null;
     }
 
     lorcana_raise_fetch_time_limit();
@@ -535,6 +593,7 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
     $standingsData = null;
     $pairingsData = null;
     $roundsMatches = [];
+    $roundsMode = $roundsModeOpt ?? 'all';
 
     $standingsUrl = null;
     if ($standingsRoundId) {
@@ -553,6 +612,21 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
             $standingsBundle = lorcana_fetch_urls_parallel(['standings' => $standingsUrl], $authToken, $allowLocalSslFallback);
             $standingsData = $standingsBundle['standings'] ?? null;
         }
+
+        // DLC-scale (~1600 players, 10+ Swiss rounds): fetching every match list
+        // sequentially still times out on shared hosts even after per-round slim.
+        // critical = active/pairings round only → standings list + current pairings/inks.
+        $roundsMode = $roundsModeOpt;
+        if ($roundsMode === null) {
+            $roundsMode = count($toFetch) > 3 ? 'critical' : 'all';
+        }
+        $toFetch = lorcana_select_rounds_to_fetch(
+            $toFetch,
+            $activeRoundNumber,
+            $pairingsRoundId,
+            $roundsMode,
+            $standingsRoundNumber
+        );
 
         // Sequential per-round fetch + immediate slim: ink-pairing descriptors with
         // signed image URLs are ~2.5MB/round; parallel keep-all OOMs shared hosts.
@@ -615,6 +689,8 @@ function lorcana_build_event_payload($eventId, $authToken = null, $allowLocalSsl
         'standingsRound' => $standingsRoundNumber,
         'activeRound' => $activeRoundNumber,
         'totalRounds' => $totalRounds,
+        'roundsFetchMode' => $roundsMode,
+        'roundsFetched' => array_map('intval', array_keys($roundsMatches)),
         'hasTokenConfigured' => !empty($authToken),
         'standings' => $standingsData,
         'pairings' => $pairingsData,
@@ -663,7 +739,11 @@ function lorcana_refresh_event_cache($eventId, $options = []) {
             }
         }
 
-        $built = lorcana_build_event_payload($eventId, $authToken, $allowLocalSslFallback);
+        $buildOpts = [];
+        if (isset($options['roundsMode'])) {
+            $buildOpts['roundsMode'] = $options['roundsMode'];
+        }
+        $built = lorcana_build_event_payload($eventId, $authToken, $allowLocalSslFallback, $buildOpts);
         if (empty($built['ok'])) {
             return [
                 'ok' => false,
