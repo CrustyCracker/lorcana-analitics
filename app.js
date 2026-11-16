@@ -2352,6 +2352,10 @@ function applyLoadedTournamentData(data, opts = {}) {
     const fingerprint = buildDataFingerprint(data, cutSize, cutRule);
     lastProcessFingerprint = fingerprint;
 
+    // Harvest ink pairings into localStorage before standings paint so dots
+    // survive after the active round rolls forward (critical roundsMode).
+    harvestPlayerInksFromData(data);
+
     // Core first paint: rebuild maps + LIVE table; pairings/secondary DOM deferred.
     processPairings(data, { deferRender: true });
     processStandings(data, {
@@ -2410,6 +2414,7 @@ function applyLoadedTournamentData(data, opts = {}) {
             );
             renderOfficialStandingsTable(data.standings?.standings || [], cutSize, cutRule);
             maybeRefreshDrawnBracket(cachedLiveStandings, cutSize);
+            renderTournamentMetaPanel(data, cachedLiveStandings);
             stampStandingsEventMarker(data.eventId);
         } else {
             // Empty/upcoming: clear secondary panels the same way LIVE already clears.
@@ -2422,6 +2427,7 @@ function applyLoadedTournamentData(data, opts = {}) {
                 cachedCutContext.totalRounds || 0
             );
             renderOfficialStandingsTable(data.standings?.standings || [], cutSize, cutRule);
+            renderTournamentMetaPanel(data, data.standings?.standings || []);
             stampStandingsEventMarker(data.eventId);
         }
         runTieWork();
@@ -2825,11 +2831,111 @@ const INK_HEX_FALLBACKS = {
     steel: '#71797E'
 };
 
+/** localStorage: one JSON map per event — keys are playerId, values are compact inks[]. */
+const PLAYER_INKS_STORAGE_PREFIX = 'lorcana_player_inks_v1_';
+/** In-memory mirror: eventIdDigits → Map(playerId → compact inks). */
+const playerInksMemoryByEvent = new Map();
+
+function playerInksStorageKey(eventId) {
+    const id = normalizeEventIdDigits(eventId);
+    if (!id) return null;
+    return PLAYER_INKS_STORAGE_PREFIX + id;
+}
+
+function normalizeCompactInks(inks) {
+    if (!Array.isArray(inks)) return [];
+    const out = [];
+    for (let i = 0; i < inks.length && out.length < 2; i++) {
+        const ink = inks[i];
+        if (!ink || typeof ink !== 'object') continue;
+        const key = String(ink.key || ink.name || '').trim().toLowerCase();
+        const name = String(ink.name || ink.key || '').trim();
+        if (!key && !name) continue;
+        out.push({
+            key: key || name.toLowerCase(),
+            name: name || key,
+            hex: resolveInkHex(ink)
+        });
+    }
+    return out;
+}
+
+function extractPlayerIdForInks(obj) {
+    if (obj == null) return null;
+    if (typeof obj === 'number' || (typeof obj === 'string' && /^\d+$/.test(obj))) {
+        return String(obj);
+    }
+    if (typeof obj !== 'object') return null;
+    const id = obj.player?.id ?? obj.id ?? obj.player_id ?? obj.user_id ?? null;
+    return id != null && id !== '' ? String(id) : null;
+}
+
+function loadPlayerInksCache(eventId) {
+    const eid = normalizeEventIdDigits(eventId);
+    if (!eid) return new Map();
+    if (playerInksMemoryByEvent.has(eid)) {
+        return playerInksMemoryByEvent.get(eid);
+    }
+    const map = new Map();
+    const key = playerInksStorageKey(eid);
+    try {
+        if (key && typeof localStorage !== 'undefined') {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    for (const [pid, inks] of Object.entries(parsed)) {
+                        const n = normalizeCompactInks(inks);
+                        if (n.length) map.set(String(pid), n);
+                    }
+                }
+            }
+        }
+    } catch (e) { /* ignore corrupt / private mode */ }
+    playerInksMemoryByEvent.set(eid, map);
+    return map;
+}
+
+function persistPlayerInksCache(eventId, map) {
+    const eid = normalizeEventIdDigits(eventId);
+    const key = playerInksStorageKey(eid);
+    if (!eid || !key || !map) return;
+    playerInksMemoryByEvent.set(eid, map);
+    const obj = {};
+    for (const [pid, inks] of map.entries()) {
+        const n = normalizeCompactInks(inks);
+        if (n.length) obj[String(pid)] = n;
+    }
+    try {
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key, JSON.stringify(obj));
+        }
+    } catch (e) { /* quota / private mode */ }
+}
+
+function rememberPlayerInks(eventId, playerId, inks) {
+    const n = normalizeCompactInks(inks);
+    const pid = playerId != null ? String(playerId) : null;
+    const eid = normalizeEventIdDigits(eventId);
+    if (!n.length || !pid || !eid) return false;
+    const map = loadPlayerInksCache(eid);
+    map.set(pid, n);
+    persistPlayerInksCache(eid, map);
+    return true;
+}
+
+function lookupCachedPlayerInks(eventId, playerId) {
+    const pid = playerId != null ? String(playerId) : null;
+    const eid = normalizeEventIdDigits(eventId);
+    if (!pid || !eid) return [];
+    return loadPlayerInksCache(eid).get(pid) || [];
+}
+
 /**
- * Compact ink pairings from slim payload (standing.inks / UES.inks / player.inks).
+ * Compact ink pairings from slim payload only (no localStorage fallback).
  * @returns {Array<{key:string,name:string,hex?:string|null}>}
  */
-function getPlayerInks(playerOrStanding) {
+function getPlayerInksFromPayload(playerOrStanding) {
     if (!playerOrStanding || typeof playerOrStanding !== 'object') return [];
     const candidates = [
         playerOrStanding.inks,
@@ -2839,10 +2945,227 @@ function getPlayerInks(playerOrStanding) {
     for (let i = 0; i < candidates.length; i++) {
         const list = candidates[i];
         if (Array.isArray(list) && list.length > 0) {
-            return list.slice(0, 2).filter(ink => ink && (ink.key || ink.name));
+            return normalizeCompactInks(list);
         }
     }
     return [];
+}
+
+/**
+ * Compact ink pairings: live payload first, then localStorage cache (eventId+playerId).
+ * @returns {Array<{key:string,name:string,hex?:string|null}>}
+ */
+function getPlayerInks(playerOrStanding, opts = {}) {
+    const live = getPlayerInksFromPayload(playerOrStanding);
+    if (live.length) return live;
+    const eventId = opts.eventId ?? latestData?.eventId;
+    const pid = opts.playerId ?? extractPlayerIdForInks(playerOrStanding);
+    if (eventId && pid != null) {
+        return lookupCachedPlayerInks(eventId, pid);
+    }
+    return [];
+}
+
+/**
+ * Scan standings / pairings / roundsMatches for ink pairings and merge into
+ * localStorage keyed by eventId → { playerId: inks[] }.
+ */
+function harvestPlayerInksFromData(data) {
+    if (!data) return { harvested: 0, totalCached: 0 };
+    const eventId = data.eventId;
+    const eid = normalizeEventIdDigits(eventId);
+    if (!eid) return { harvested: 0, totalCached: 0 };
+
+    const map = loadPlayerInksCache(eid);
+    let harvested = 0;
+
+    const ingest = (obj, explicitId) => {
+        if (!obj && explicitId == null) return;
+        const pid = explicitId != null ? String(explicitId) : extractPlayerIdForInks(obj);
+        const inks = getPlayerInksFromPayload(obj || {});
+        if (!pid || !inks.length) return;
+        if (!map.has(pid)) harvested += 1;
+        map.set(pid, inks);
+    };
+
+    const ingestMatch = (match) => {
+        if (!match || typeof match !== 'object') return;
+        ingest(getMatchParticipant(match, 1));
+        ingest(getMatchParticipant(match, 2));
+        const rels = match.player_match_relationships;
+        if (Array.isArray(rels)) {
+            for (let i = 0; i < rels.length; i++) {
+                const rel = rels[i];
+                if (!rel || typeof rel !== 'object') continue;
+                const pid = extractPlayerIdForInks(rel.player) || extractPlayerIdForInks(rel);
+                ingest({
+                    player: rel.player,
+                    user_event_status: rel.user_event_status,
+                    inks: rel.player?.inks || rel.user_event_status?.inks
+                }, pid);
+            }
+        }
+    };
+
+    const standings = data.standings?.standings || [];
+    for (let i = 0; i < standings.length; i++) ingest(standings[i]);
+
+    const pairings = getActivePairingsList(data);
+    for (let i = 0; i < pairings.length; i++) ingestMatch(pairings[i]);
+
+    if (data.roundsMatches && typeof data.roundsMatches === 'object') {
+        const rounds = Object.values(data.roundsMatches);
+        for (let r = 0; r < rounds.length; r++) {
+            const rData = rounds[r];
+            const matches = extractPairingsList(rData?.matches ?? rData);
+            for (let m = 0; m < matches.length; m++) ingestMatch(matches[m]);
+        }
+    }
+
+    persistPlayerInksCache(eid, map);
+    return { harvested, totalCached: map.size };
+}
+
+function inkPairingSortKey(inks) {
+    const list = normalizeCompactInks(inks);
+    if (!list.length) return '';
+    return list.map(i => i.key).slice().sort().join('/');
+}
+
+/**
+ * Field meta: unique players with known ink pairings (standings ∪ cache).
+ */
+function computeTournamentInkMeta(eventId, standingsList) {
+    const rows = Array.isArray(standingsList) ? standingsList : [];
+    const eid = normalizeEventIdDigits(eventId);
+    const cache = eid ? loadPlayerInksCache(eid) : new Map();
+    const pairCounts = new Map();
+    const inkCounts = new Map();
+    let known = 0;
+    const seen = new Set();
+
+    const bumpPair = (inks) => {
+        const list = normalizeCompactInks(inks);
+        if (!list.length) return false;
+        known += 1;
+        const key = inkPairingSortKey(list);
+        const label = list.map(i => i.name || i.key).join(' / ');
+        const prev = pairCounts.get(key) || { key, label, inks: list, count: 0 };
+        prev.count += 1;
+        pairCounts.set(key, prev);
+        for (let i = 0; i < list.length; i++) {
+            const ink = list[i];
+            const ik = ink.key;
+            const ip = inkCounts.get(ik) || { key: ik, name: ink.name || ik, hex: ink.hex, count: 0 };
+            ip.count += 1;
+            inkCounts.set(ik, ip);
+        }
+        return true;
+    };
+
+    for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const pid = extractPlayerIdForInks(row);
+        if (pid) seen.add(pid);
+        const live = getPlayerInksFromPayload(row);
+        if (live.length) bumpPair(live);
+        else if (pid && cache.has(pid)) bumpPair(cache.get(pid));
+    }
+
+    // Cached players not (yet) in standings still count toward field meta.
+    for (const [pid, inks] of cache.entries()) {
+        if (seen.has(pid)) continue;
+        bumpPair(inks);
+    }
+
+    const totalPlayers = Math.max(rows.length, known);
+    const pairs = Array.from(pairCounts.values())
+        .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))
+        .map(p => ({
+            ...p,
+            pct: known > 0 ? Math.round((p.count / known) * 1000) / 10 : 0
+        }));
+    const singles = Array.from(inkCounts.values())
+        .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+        .map(s => ({
+            ...s,
+            pct: known > 0 ? Math.round((s.count / known) * 1000) / 10 : 0
+        }));
+
+    return {
+        eventId: eid,
+        totalPlayers,
+        known,
+        unknown: Math.max(0, rows.length - known),
+        pairs,
+        singles
+    };
+}
+
+function renderTournamentMetaPanel(data, standingsList) {
+    if (typeof document === 'undefined') return;
+    const root = document.getElementById('tournamentMetaRoot');
+    if (!root) return;
+
+    const eventId = data?.eventId;
+    const list = Array.isArray(standingsList)
+        ? standingsList
+        : (data?.standings?.standings || []);
+    const meta = computeTournamentInkMeta(eventId, list);
+
+    if (!meta.known) {
+        root.innerHTML = `
+            <div class="tournament-meta-empty">
+                Brak jeszcze rozpoznanych atramentów w tym evencie.
+                Pojawią się, gdy PlayHub poda ink pairings (albo gdy wrócisz do wcześniej widzianej rundy — cache lokalny).
+            </div>`;
+        root.hidden = false;
+        return;
+    }
+
+    const maxPair = meta.pairs.reduce((m, p) => Math.max(m, p.count), 0) || 1;
+    const pairsHtml = meta.pairs.map(p => {
+        const width = Math.max(4, Math.round((p.count / maxPair) * 100));
+        const dots = renderInkBadgesHtml(p.inks);
+        return `<div class="meta-bar-row" title="${escapeHtml(p.label)}: ${p.count} (${p.pct}%)">
+            <div class="meta-bar-label">${dots}<span class="meta-bar-name">${escapeHtml(p.label)}</span></div>
+            <div class="meta-bar-track"><div class="meta-bar-fill" style="width:${width}%"></div></div>
+            <div class="meta-bar-stat"><strong>${p.count}</strong><span>${p.pct}%</span></div>
+        </div>`;
+    }).join('');
+
+    const maxInk = meta.singles.reduce((m, s) => Math.max(m, s.count), 0) || 1;
+    const singlesHtml = meta.singles.map(s => {
+        const width = Math.max(4, Math.round((s.count / maxInk) * 100));
+        const hex = escapeHtml(resolveInkHex(s));
+        return `<div class="meta-bar-row meta-bar-row--ink" title="${escapeHtml(s.name)}: ${s.count}">
+            <div class="meta-bar-label">
+                <span class="ink-dot" style="background:${hex}" title="${escapeHtml(s.name)}"></span>
+                <span class="meta-bar-name">${escapeHtml(s.name)}</span>
+            </div>
+            <div class="meta-bar-track"><div class="meta-bar-fill" style="width:${width}%;background:${hex}"></div></div>
+            <div class="meta-bar-stat"><strong>${s.count}</strong><span>${s.pct}%</span></div>
+        </div>`;
+    }).join('');
+
+    root.innerHTML = `
+        <div class="tournament-meta-summary">
+            Znamy atramenty dla <strong>${meta.known}</strong>
+            z <strong>${meta.totalPlayers}</strong> graczy
+            ${meta.unknown > 0 ? `(brak danych: ${meta.unknown})` : ''}.
+            Procenty liczone względem graczy z znanym deckiem.
+        </div>
+        <div class="tournament-meta-grid">
+            <div class="tournament-meta-col">
+                <h4 class="tournament-meta-col-title">Pary atramentów</h4>
+                <div class="meta-bar-list">${pairsHtml}</div>
+            </div>
+            <div class="tournament-meta-col">
+                <h4 class="tournament-meta-col-title">Udział kolorów</h4>
+                <div class="meta-bar-list">${singlesHtml}</div>
+            </div>
+        </div>`;
+    root.hidden = false;
 }
 
 function resolveInkHex(ink) {
@@ -2868,10 +3191,10 @@ function renderInkBadgesHtml(inks) {
     return `<span class="ink-pair" title="${title}">${dots}</span>`;
 }
 
-function formatPlayerCellHtml(player, formattedName, { strong = false } = {}) {
+function formatPlayerCellHtml(player, formattedName, { strong = false, eventId = null } = {}) {
     const safeName = escapeHtml(formattedName || '');
     const nameHtml = strong ? `<strong class="player-name-text">${safeName}</strong>` : `<span class="player-name-text">${safeName}</span>`;
-    const inkHtml = renderInkBadgesHtml(getPlayerInks(player));
+    const inkHtml = renderInkBadgesHtml(getPlayerInks(player, { eventId: eventId || latestData?.eventId }));
     if (!inkHtml) return nameHtml;
     return `<span class="player-cell-with-inks">${inkHtml}${nameHtml}</span>`;
 }
@@ -3234,12 +3557,14 @@ function processStandings(data, opts = {}) {
     }
 
     // 2. LIVE STANDINGS — shallow row (no object spread of full standing)
+    const eventIdForInks = data.eventId;
     const liveStandings = new Array(standings.length);
     for (let i = 0; i < standings.length; i++) {
         const p = standings[i];
         const playerId = p.player?.id ?? p.id;
         const delta = liveScoreDeltas.get(String(playerId)) || 0;
-        const inks = getPlayerInks(p);
+        // Merge payload inks with localStorage cache so dots survive round rolls.
+        const inks = getPlayerInks(p, { eventId: eventIdForInks, playerId });
         liveStandings[i] = {
             id: p.id,
             player: p.player,
@@ -6768,11 +7093,25 @@ if (typeof module !== 'undefined' && module.exports) {
         getMatchParticipant,
         getMatchScores,
         getPlayerInks,
+        getPlayerInksFromPayload,
         resolveInkHex,
         renderInkBadgesHtml,
         formatPlayerCellHtml,
         formatStandingsPlayerName,
         INK_HEX_FALLBACKS,
+        PLAYER_INKS_STORAGE_PREFIX,
+        playerInksStorageKey,
+        normalizeCompactInks,
+        extractPlayerIdForInks,
+        loadPlayerInksCache,
+        persistPlayerInksCache,
+        rememberPlayerInks,
+        lookupCachedPlayerInks,
+        harvestPlayerInksFromData,
+        computeTournamentInkMeta,
+        renderTournamentMetaPanel,
+        inkPairingSortKey,
+        playerInksMemoryByEvent,
         getDefaultTotalRounds,
         getApiTotalRounds,
         getEffectiveTotalRounds,

@@ -20,7 +20,7 @@ describe('Can I Tie — cel strategii (Top 8 / Top 16 / Continentals)', () => {
         assert.match(indexHtml, /data-tie-goal="top16"/);
         assert.match(indexHtml, /data-tie-goal="continentals"/);
         assert.match(indexHtml, /id="playerSearchInput"/);
-        assert.match(indexHtml, /app\.js\?v=20261116tiegoal1/);
+        assert.match(indexHtml, /app\.js\?v=20261116inkmeta1/);
     });
 
     it('mapuje preset Continentals na soft Top 32 (równe punkty)', () => {
