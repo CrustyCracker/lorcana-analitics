@@ -1797,48 +1797,56 @@
         .prize-item__note { font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.35; }
         .prize-empty { color: var(--text-mute); font-size: 13px; }
         .prize-chips {
-            display: flex;
+            display: inline-flex;
             flex-wrap: wrap;
-            gap: 3px;
+            gap: 4px;
             align-items: center;
-            max-width: 240px;
+            max-width: 280px;
+            white-space: normal;
         }
         .prize-chips--empty { color: var(--text-mute); font-size: 12px; }
-        .prize-chips-cell { text-align: left; vertical-align: middle; }
+        .prize-chips-cell {
+            text-align: left;
+            vertical-align: middle;
+            white-space: normal;
+            min-width: 168px;
+        }
         .prize-chip {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            min-width: 26px;
-            height: 18px;
-            padding: 0 5px;
+            min-width: 28px;
+            height: 20px;
+            padding: 0 6px;
             border-radius: 4px;
-            font-size: 10px;
-            font-weight: 700;
-            letter-spacing: 0.02em;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.03em;
             line-height: 1;
             white-space: nowrap;
+            opacity: 1;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
         }
+        /* Solid fills so chips stay readable on .safe / .bubble / .dead row tints */
         .prize-chip--locked {
-            background: rgba(46, 204, 113, 0.18);
-            color: #2ecc71;
-            border: 1px solid rgba(46, 204, 113, 0.45);
+            background: #1f8f55;
+            color: #f3fff8;
+            border: 1px solid #3ddc84;
         }
         .prize-chip--play {
-            background: rgba(243, 156, 18, 0.18);
-            color: #f39c12;
-            border: 1px solid rgba(243, 156, 18, 0.45);
+            background: #b86a0a;
+            color: #fff8eb;
+            border: 1px solid #f0b040;
         }
         .prize-chip--missed {
-            background: rgba(231, 76, 60, 0.14);
-            color: #e74c3c;
-            border: 1px solid rgba(231, 76, 60, 0.35);
-            opacity: 0.88;
+            background: #8b2e28;
+            color: #ffe8e6;
+            border: 1px solid #e57368;
         }
         .prize-chip--neutral {
-            background: rgba(148, 163, 184, 0.12);
-            color: #cbd5e1;
-            border: 1px solid rgba(148, 163, 184, 0.28);
+            background: #2a3548;
+            color: #e8eef7;
+            border: 1px solid #7f8ea3;
         }
         .prize-chips-legend {
             display: flex;
@@ -2378,8 +2386,8 @@
 
 
 
-<script src="tie-sim-core.js?v=20261116dlc1"></script>
-<script src="prize-ladders.js?v=20261116dlc1"></script>
-<script src="app.js?v=20261116dlc1"></script>
+<script src="tie-sim-core.js?v=20261116chips2"></script>
+<script src="prize-ladders.js?v=20261116chips2"></script>
+<script src="app.js?v=20261116chips2"></script>
 </body>
 </html>

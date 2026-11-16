@@ -8,7 +8,7 @@ const PAGE_SIZE = 32;
 /** Powyżej tego N wyłączamy ciężkie panele UI (bracket); rada TIE działa zawsze. */
 const LARGE_EVENT_PLAYER_THRESHOLD = 400;
 /** Virtual window LIVE: stała wysokość wiersza + overscan — max DOM rows ≪ N. */
-const LIVE_ROW_HEIGHT = 52;
+const LIVE_ROW_HEIGHT = 56;
 const LIVE_VIEWPORT_ROWS = 16;
 const LIVE_OVERSCAN = 6;
 const LIVE_MAX_DOM_ROWS = LIVE_VIEWPORT_ROWS + LIVE_OVERSCAN * 2;
@@ -349,15 +349,20 @@ function getPrizeChipEvalContext() {
 
 function renderPrizeStatusChipsHtml(playerId, evalCtx = null) {
     const api = getPrizeLaddersApi();
-    if (!api || typeof api.evaluatePlayerTableChips !== 'function') return '';
+    if (!api || typeof api.evaluatePlayerTableChips !== 'function') {
+        return '<span class="prize-chips prize-chips--empty" title="Brak prize-ladders.js (odśwież cache)">?</span>';
+    }
     const ctx = evalCtx || getPrizeChipEvalContext();
-    const pack = api.evaluatePlayerTableChips(ctx.mode, ctx.standings, playerId, ctx.opts);
-    if (!pack.chips || pack.chips.length === 0) return '<span class="prize-chips prize-chips--empty">—</span>';
+    const mode = ctx.mode || getActiveTournamentMode();
+    const pack = api.evaluatePlayerTableChips(mode, ctx.standings, playerId, ctx.opts);
+    if (!pack.chips || pack.chips.length === 0) {
+        return '<span class="prize-chips prize-chips--empty" title="' + escapeHtml(pack.emptyReason || ('Brak chipów dla ' + mode)) + '">—</span>';
+    }
     const bits = pack.chips.map((c) => {
         const tip = escapeHtml(`${c.title}: ${api.statusLabelPl(c.status)}${c.note ? ' — ' + c.note : ''}`);
         return `<span class="prize-chip ${c.className}" title="${tip}">${escapeHtml(c.chip)}</span>`;
     });
-    return `<div class="prize-chips" aria-label="Status nagród">${bits.join('')}</div>`;
+    return `<div class="prize-chips" data-prize-mode="${escapeHtml(mode)}" aria-label="Status nagród">${bits.join('')}</div>`;
 }
 
 function renderPrizeChipsLegendHtml(mode) {
