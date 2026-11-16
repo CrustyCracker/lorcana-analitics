@@ -4480,6 +4480,285 @@ function recalculateNextRoundPairingsPredictor(sim, targetPlayer, activeRound, t
 // KALKULATOR ROZKŁADU KOSZYKÓW PUNKTOWYCH (CUT LINE BREAKDOWN)
 // -------------------------------------------------------------
 
+/**
+ * Soft-cut intentional-draw inflation hint.
+ *
+ * For soft invitations (Top X + equal points), mutual IDs on score S lock both
+ * players onto S+1 and can raise the soft threshold. Returns how many of those
+ * mirror tables must finish decisive (W/L, not ID) so the soft threshold stays
+ * at S instead of S+1 — same math as DLC ME1 R15 (33v33 → 34).
+ *
+ * Works on live open mirrors and/or already-completed intentional draws.
+ */
+function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize = 32) {
+    if (!liveStandings || liveStandings.length === 0) return null;
+    const size = Math.max(2, Math.min(256, Number(cutSize) || 32));
+
+    const ptsById = new Map();
+    const nameById = new Map();
+    for (const p of liveStandings) {
+        const id = p?.player?.id ?? p?.id;
+        if (id == null) continue;
+        const key = String(id);
+        const pts = Number(p.livePoints ?? p.match_points ?? 0);
+        ptsById.set(key, pts);
+        nameById.set(key, formatStandingsPlayerName(p));
+    }
+    if (ptsById.size < size) return null;
+
+    const sortedPts = [...ptsById.values()].sort((a, b) => b - a);
+    const currentThresh = sortedPts[size - 1];
+    const currentInvites = sortedPts.filter((p) => p >= currentThresh).length;
+
+    const matches = Array.isArray(pairingsList) ? pairingsList : extractPairingsList(pairingsList);
+    const mirrorsByScore = new Map();
+
+    const pushMirror = (score, entry) => {
+        if (!Number.isFinite(score) || score < 0) return;
+        if (!mirrorsByScore.has(score)) mirrorsByScore.set(score, []);
+        mirrorsByScore.get(score).push(entry);
+    };
+
+    for (const match of matches) {
+        if (!match || match.match_is_bye || match.is_bye) continue;
+        const status = String(match.status || match.state || '').toUpperCase();
+        const { hasScore, winnerId } = getMatchScores(match);
+        const isDraw = Boolean(
+            match.match_is_intentional_draw
+            || match.match_is_unintentional_draw
+            || status === 'DRAW'
+        );
+        const isComplete = status === 'COMPLETE' || status === 'FINISHED' || status === 'COMPLETED'
+            || winnerId != null || hasScore || isDraw;
+        const isIntentional = Boolean(match.match_is_intentional_draw);
+
+        const raw1 = getMatchParticipant(match, 1);
+        const raw2 = getMatchParticipant(match, 2);
+        const id1 = raw1 && typeof raw1 === 'object'
+            ? (raw1.id ?? raw1.player?.id ?? null)
+            : raw1;
+        const id2 = raw2 && typeof raw2 === 'object'
+            ? (raw2.id ?? raw2.player?.id ?? null)
+            : raw2;
+        if (id1 == null || id2 == null) continue;
+        const k1 = String(id1);
+        const k2 = String(id2);
+        if (!ptsById.has(k1) || !ptsById.has(k2)) continue;
+
+        const cur1 = ptsById.get(k1);
+        const cur2 = ptsById.get(k2);
+        const table = match.table_number ?? match.tableNumber ?? null;
+
+        if (!isComplete) {
+            // Open match: live points are still pre-match.
+            if (cur1 === cur2) {
+                pushMirror(cur1, {
+                    table,
+                    state: 'open',
+                    intentional: false,
+                    score: cur1,
+                    players: [
+                        { id: id1, name: nameById.get(k1) || `#${id1}`, pts: cur1 },
+                        { id: id2, name: nameById.get(k2) || `#${id2}`, pts: cur2 }
+                    ]
+                });
+            }
+            continue;
+        }
+
+        // Completed intentional draw with equal current points ⇒ mirror from score-1.
+        if (isIntentional && cur1 === cur2 && cur1 > 0) {
+            pushMirror(cur1 - 1, {
+                table,
+                state: 'locked_id',
+                intentional: true,
+                score: cur1 - 1,
+                players: [
+                    { id: id1, name: nameById.get(k1) || `#${id1}`, pts: cur1 },
+                    { id: id2, name: nameById.get(k2) || `#${id2}`, pts: cur2 }
+                ]
+            });
+        }
+    }
+
+    if (mirrorsByScore.size === 0) {
+        return {
+            cutSize: size,
+            relevant: false,
+            reason: 'no_mirrors',
+            currentThresh,
+            currentInvites,
+            mirrorScore: null,
+            bandPts: null,
+            lockedIdTables: 0,
+            openMirrorTables: 0,
+            mirrorTables: 0,
+            geBandNow: currentInvites,
+            geBandIfAllId: currentInvites,
+            geBandIfAllPlay: currentInvites,
+            minTablesMustPlay: 0,
+            projectedThreshIfAllId: currentThresh,
+            projectedThreshIfAllPlay: currentThresh,
+            projectedInvitesIfAllId: currentInvites,
+            projectedInvitesIfAllPlay: currentInvites,
+            tables: []
+        };
+    }
+
+    // Prefer mirrors that feed the current soft threshold (S → S+1 = thresh).
+    let mirrorScore = currentThresh - 1;
+    if (!mirrorsByScore.has(mirrorScore)) {
+        // Else pick open/locked mirror score closest below threshold, else densest.
+        const candidates = [...mirrorsByScore.keys()].sort((a, b) => b - a);
+        mirrorScore = candidates.find((s) => s < currentThresh) ?? candidates[0];
+    }
+
+    const tables = mirrorsByScore.get(mirrorScore) || [];
+    const lockedIdTables = tables.filter((t) => t.state === 'locked_id').length;
+    const openMirrorTables = tables.filter((t) => t.state === 'open').length;
+    const mirrorTables = tables.length;
+    const bandPts = mirrorScore + 1;
+
+    // Rewind locked IDs to pre-draw points for a clean projection.
+    const basePts = new Map(ptsById);
+    for (const t of tables) {
+        if (t.state !== 'locked_id') continue;
+        for (const pl of t.players) {
+            const k = String(pl.id);
+            basePts.set(k, mirrorScore);
+        }
+    }
+
+    const countGe = (map, band) => {
+        let n = 0;
+        for (const v of map.values()) if (v >= band) n++;
+        return n;
+    };
+    const softThreshOf = (map) => {
+        const arr = [...map.values()].sort((a, b) => b - a);
+        if (arr.length < size) return arr[arr.length - 1] ?? 0;
+        return arr[size - 1];
+    };
+    const softInvitesOf = (map) => {
+        const th = softThreshOf(map);
+        return countGe(map, th);
+    };
+
+    const applyAllId = () => {
+        const m = new Map(basePts);
+        for (const t of tables) {
+            for (const pl of t.players) m.set(String(pl.id), mirrorScore + 1);
+        }
+        return m;
+    };
+    const applyAllPlay = () => {
+        const m = new Map(basePts);
+        for (const t of tables) {
+            const a = String(t.players[0].id);
+            const b = String(t.players[1].id);
+            m.set(a, mirrorScore + 3);
+            m.set(b, mirrorScore);
+        }
+        return m;
+    };
+    const applyMixed = (playCount) => {
+        const m = new Map(basePts);
+        tables.forEach((t, idx) => {
+            const a = String(t.players[0].id);
+            const b = String(t.players[1].id);
+            if (idx < playCount) {
+                m.set(a, mirrorScore + 3);
+                m.set(b, mirrorScore);
+            } else {
+                m.set(a, mirrorScore + 1);
+                m.set(b, mirrorScore + 1);
+            }
+        });
+        return m;
+    };
+
+    const ifAllId = applyAllId();
+    const ifAllPlay = applyAllPlay();
+    const geBandIfAllId = countGe(ifAllId, bandPts);
+    const geBandIfAllPlay = countGe(ifAllPlay, bandPts);
+    const geBandNow = countGe(ptsById, bandPts);
+
+    // Min decisive results among these mirrors so soft threshold stays at mirrorScore
+    // (i.e. fewer than cutSize players reach bandPts).
+    let minTablesMustPlay = 0;
+    if (geBandIfAllId >= size) {
+        minTablesMustPlay = mirrorTables; // fallback if even all-play can't drop
+        for (let k = 0; k <= mirrorTables; k++) {
+            const ge = countGe(applyMixed(k), bandPts);
+            if (ge < size) {
+                minTablesMustPlay = k;
+                break;
+            }
+        }
+        // If all-play still has ge >= size, threshold cannot fall via these tables alone.
+        if (countGe(ifAllPlay, bandPts) >= size) {
+            minTablesMustPlay = null; // impossible with this mirror set
+        }
+    }
+
+    return {
+        cutSize: size,
+        relevant: mirrorTables > 0,
+        reason: mirrorTables > 0 ? 'ok' : 'no_mirrors',
+        currentThresh,
+        currentInvites,
+        mirrorScore,
+        bandPts,
+        lockedIdTables,
+        openMirrorTables,
+        mirrorTables,
+        geBandNow,
+        geBandIfAllId,
+        geBandIfAllPlay,
+        minTablesMustPlay,
+        projectedThreshIfAllId: softThreshOf(ifAllId),
+        projectedThreshIfAllPlay: softThreshOf(ifAllPlay),
+        projectedInvitesIfAllId: softInvitesOf(ifAllId),
+        projectedInvitesIfAllPlay: softInvitesOf(ifAllPlay),
+        tables: tables.map((t) => ({
+            table: t.table,
+            state: t.state,
+            players: t.players.map((p) => p.name)
+        }))
+    };
+}
+
+function formatSoftCutIdInflationHtml(info) {
+    if (!info || !info.relevant) return '';
+    const playLabel = info.minTablesMustPlay == null
+        ? 'te mirory same nie zbiją progu'
+        : (info.minTablesMustPlay === 0
+            ? '0 — próg już nie zależy od tych ID'
+            : `≥ ${info.minTablesMustPlay} z ${info.mirrorTables}`);
+
+    const riskColor = (info.minTablesMustPlay != null && info.minTablesMustPlay > 0)
+        ? '#f39c12'
+        : '#2ecc71';
+
+    return `
+        <div class="cut-metric-card soft-id-inflation-card" style="grid-column: 1 / -1; border-left: 3px solid ${riskColor};">
+            <div class="metric-label">Anti-ID soft cut — ile stołów musi GRAĆ</div>
+            <div class="metric-val" style="color: ${riskColor}; font-size: 15px;">
+                Mirory ${info.mirrorScore} pkt → pas ${info.bandPts}: ${playLabel}
+            </div>
+            <div class="metric-sub">
+                Soft Top ${info.cutSize}: teraz próg <strong>${info.currentThresh}</strong> pkt (${info.currentInvites} zaproszeń).
+                Lustrzane stoły na ${info.mirrorScore}:
+                <strong>${info.lockedIdTables}</strong> już ID,
+                <strong>${info.openMirrorTables}</strong> otwarte.
+                Gdyby wszystkie wzięły ID → próg <strong>${info.projectedThreshIfAllId}</strong> (${info.projectedInvitesIfAllId} inv.);
+                gdyby wszystkie grały W/L → próg <strong>${info.projectedThreshIfAllPlay}</strong> (${info.projectedInvitesIfAllPlay} inv.).
+                Każdy wynik zamiast ID zdejmuje 1 osobę z pasa ≥${info.bandPts}; żeby soft próg został na ${info.mirrorScore}, potrzeba &lt;${info.cutSize} graczy na ≥${info.bandPts}.
+            </div>
+        </div>
+    `;
+}
+
 function calculateCutLineBreakdown(liveStandings, cutSize = 4, cutRule = 'hard') {
     if (!liveStandings || liveStandings.length === 0) {
         return null;
@@ -4597,7 +4876,7 @@ function calculateCutLineBreakdown(liveStandings, cutSize = 4, cutRule = 'hard')
     };
 }
 
-function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRound, totalRounds) {
+function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRound, totalRounds, pairingsList = null) {
     const panel = document.getElementById('cutBreakdownPanel');
     const gridEl = document.getElementById('cutBreakdownMetricsGrid');
     const rowEl = document.getElementById('cutBreakdownBracketsRow');
@@ -4617,7 +4896,9 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
     setElText('breakdownCutSizeLabel', cutSize);
 
     if (subtitleEl) {
-        if (bd.missingFromBubbleBracket > 0) {
+        if (cutRule === 'soft') {
+            subtitleEl.innerHTML = `Miękki cut: wszyscy z <strong>≥ ${bd.bubblePts} pkt</strong> dostają soft-slot (obecnie ${bd.lockedAboveCount + bd.totalInBubbleBracket} os.). Hard TB i tak tnie nagrody rzeczowe.`;
+        } else if (bd.missingFromBubbleBracket > 0) {
             subtitleEl.innerHTML = `W koszyku <strong>${bd.bubblePts} pkt</strong> o ostatnie <strong>${bd.spotsForBubbleBracket}</strong> miejsc walczy <strong>${bd.totalInBubbleBracket}</strong> graczy (odpada ${bd.missingFromBubbleBracket} na tiebreakerach OMW%)`;
         } else {
             subtitleEl.innerHTML = `Wszyscy gracze z dorobkiem <strong>>= ${bd.bubblePts} pkt</strong> mieszczą się obecnie w Top ${cutSize}`;
@@ -4630,6 +4911,12 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
             <div class="metric-sub">${bd.firstOut.points} pkt | OMW: <strong>${bd.firstOut.omwp.toFixed(2)}%</strong> ${bd.firstOut.samePointsAsBubble ? `<span style="color:#f39c12;">(-${bd.firstOut.omwpGap.toFixed(2)}% do Cutu)</span>` : ''}</div>
         `
         : `<div class="metric-val" style="color: #888;">Brak graczy poza Cut</div><div class="metric-sub">-</div>`;
+
+    const pairings = pairingsList != null ? pairingsList : (cachedPairings || []);
+    const inflation = cutRule === 'soft'
+        ? calculateSoftCutIdInflation(liveStandings, pairings, cutSize)
+        : null;
+    const inflationHtml = cutRule === 'soft' ? formatSoftCutIdInflationHtml(inflation) : '';
 
     gridEl.innerHTML = `
         <div class="cut-metric-card">
@@ -4651,6 +4938,7 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
             <div class="metric-label">🎯 Pierwszy Poza Cut (Sniper)</div>
             ${firstOutHtml}
         </div>
+        ${inflationHtml}
     `;
 
     const visibleBrackets = bd.brackets.filter(b => b.points >= Math.max(0, bd.bubblePts - 6));
@@ -5810,6 +6098,8 @@ if (typeof module !== 'undefined' && module.exports) {
         getPlayerHistoricalMatches,
 
         calculateCutLineBreakdown,
+        calculateSoftCutIdInflation,
+        formatSoftCutIdInflationHtml,
         getBracketSeedOrder,
         getBracketStageLabel,
         generateTopCutBracket,
