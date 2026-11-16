@@ -186,6 +186,10 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(html, /Ile musi grać na tym paśmie/);
         assert.match(html, /≥ 7 stołów \(14 osób\) na 33 pkt/);
         assert.match(html, /33 pkt/);
+        assert.match(html, /Dlaczego nie „4 stoły = −8 osób”\?/);
+        assert.match(html, /1 zagrany stół = −1 osoba/);
+        assert.match(html, /Po 4 zagranych: 38−4 = <strong>34<\/strong>/);
+        assert.match(html, /Dopiero po 7: 38−7 = <strong>31<\/strong>/);
 
         // Live path: unfinished equal-score mirrors counted as open.
         const liveStandings = [];

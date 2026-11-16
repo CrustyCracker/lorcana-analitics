@@ -5681,7 +5681,8 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
                     Gdy na bubble pojawią się mirory (np. 33v33), pokażemy:
                     (1) <strong>najniższy soft cut w punktach</strong>, jaki da się jeszcze złapać, jeśli dość osób zagra W/L zamiast ID;
                     (2) <strong>ile stołów / osób</strong> na tym paśmie musi grać, żeby zejść do tego progu.
-                    Krótko: ID pompują próg w górę; wynik (W/L) zdejmuje 1 osobę z wyższego pasa na stół.
+                    Krótko: ID pompują próg w górę. Wynik (W/L) zdejmuje z pasa ≥(S+1) <strong>tylko 1 osobę na stół</strong>
+                    (nie 2 — wygrany i tak zostaje wyżej). Dlatego często trzeba więcej stołów niż „połowa nadmiaru”.
                 </div>
             </div>
         `;
@@ -5691,10 +5692,13 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
     const people = info.minPeopleMustPlay;
     const minCut = info.minAchievableSoftCut;
     const band = info.mirrorScore;
+    const high = info.bandPts;
+    const cut = info.cutSize;
+    const geAllId = info.geBandIfAllId;
     let headline;
     let riskTone = 'ok';
     if (must == null) {
-        headline = `Te ${info.mirrorTables} lustrzane stoły same nie zbiją soft progu — nawet gdyby wszystkie grały, próg zostaje przy ${minCut} pkt (za mało, by zejść poniżej Top ${info.cutSize} na ≥${info.bandPts}).`;
+        headline = `Te ${info.mirrorTables} lustrzane stoły same nie zbiją soft progu — nawet gdyby wszystkie grały, próg zostaje przy ${minCut} pkt (za mało, by zejść poniżej Top ${cut} na ≥${high}).`;
         riskTone = 'warn';
     } else if (must === 0) {
         headline = `Soft próg EUC nie zależy już od tych ID — 0 stołów musi grać. Minimalny soft cut z tych mirorów: ${minCut} pkt.`;
@@ -5718,9 +5722,30 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
             ? `0 stołów / 0 osób`
             : `≥ ${must} stołów / ${people} osób na ${band} pkt`);
 
+    // Layman trap: people think 1 played table removes 2 from ≥band. It removes 1.
+    let whyNotHalfHtml = '';
+    if (must != null && must > 0 && Number.isFinite(geAllId)) {
+        const afterFour = geAllId - 4;
+        const afterMust = geAllId - must;
+        whyNotHalfHtml = `
+                <div class="soft-euc-play-hint__why">
+                    <strong>Dlaczego nie „4 stoły = −8 osób”?</strong>
+                    Soft cut patrzy na pas <strong>≥${high}</strong> (nie „dokładnie ${high}”).
+                    Na stole ${band}v${band}: ID → obie osoby na ${high}; W/L → wygrany ${band}+3 (zostaje w ≥${high}),
+                    przegrany zostaje na ${band} (wypada). Czyli <strong>1 zagrany stół = −1 osoba</strong> z ≥${high}, nie −2.
+                    Start przy samym ID: <strong>${geAllId}</strong> osób na ≥${high}.
+                    Po 4 zagranych: ${geAllId}−4 = <strong>${afterFour}</strong>
+                    ${afterFour >= cut
+                        ? `(nadal ≥ Top ${cut} → próg dalej ${high})`
+                        : `(już &lt; Top ${cut})`}.
+                    Dopiero po ${must}: ${geAllId}−${must} = <strong>${afterMust}</strong> (&lt; ${cut}) → próg spada do <strong>${minCut}</strong>.
+                </div>
+        `;
+    }
+
     return `
         <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--${riskTone}">
-            <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale · Top ${info.cutSize}</div>
+            <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale · Top ${cut}</div>
             <div class="soft-euc-play-hint__title">Minimalny soft cut i ile stołów musi grać</div>
             <div class="soft-euc-play-hint__stats">
                 <div class="soft-euc-play-hint__stat">
@@ -5737,14 +5762,15 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
             <div class="soft-euc-play-hint__answer" style="color: ${riskTone === 'warn' ? '#f59e0b' : '#34d399'};">
                 ${escapeHtml(headline)}
             </div>
+            ${whyNotHalfHtml}
             <div class="soft-euc-play-hint__body">
-                Lustrzane stoły na <strong>${band} pkt</strong> (ID → pas <strong>${info.bandPts}</strong>):
+                Lustrzane stoły na <strong>${band} pkt</strong> (ID → pas <strong>${high}</strong>):
                 ${lockedBit}, ${openBit}.
                 Teraz soft próg = <strong>${info.currentThresh} pkt</strong> (${info.currentInvites} zaproszeń).
                 Gdyby wszystkie te mirory wzięły ID → próg <strong>${info.projectedThreshIfAllId}</strong>
                 (${info.projectedInvitesIfAllId} inv.); gdyby wszystkie grały → próg <strong>${info.projectedThreshIfAllPlay}</strong>
                 (${info.projectedInvitesIfAllPlay} inv.).
-                Każdy wynik zamiast ID zdejmuje <strong>1 osobę</strong> z pasa ≥${info.bandPts}
+                Każdy wynik zamiast ID zdejmuje <strong>1 osobę</strong> z pasa ≥${high}
                 (wygrany zostaje wyżej, przegrany spada) — bez ekstra nagrody rzeczowej za samo ID, tylko soft invite.
             </div>
         </div>
