@@ -26,18 +26,19 @@
             blurb: 'Zaproszenie EUC/NAC: Top 32 + wszyscy z tą samą liczbą punktów (bez TB). Nagrody rzeczowe: dokładne miejsce po TB.',
             inviteSoftTopN: 32,
             day2MinPoints: 18,
+            // Top Cut drabinka = hard Top 8; soft EUC = osobny próg (inv), nie soft cut drabinki.
             rungs: [
-                { id: 'part', kind: 'participation', category: 'promo', short: 'Promo za udział', detail: 'Ursula – Deceiver' },
-                { id: 'w3', kind: 'wins', wins: 3, category: 'promo', short: 'Promo za 3 wygrane', detail: 'Be Prepared' },
-                { id: 'd2', kind: 'day2_points', minPoints: 18, category: 'mat', short: 'Mata Day 2', detail: 'Be Prepared (awans do Day 2)' },
-                { id: 't64', kind: 'hard_rank', topN: 64, category: 'promo', short: 'Promo Top 64', detail: 'Gaston – Superior Archer (po TB)' },
-                { id: 't32promo', kind: 'hard_rank', topN: 32, category: 'promo', short: 'Promo Top 32', detail: 'Madam Mim – Resourceful Trickster (po TB)' },
-                { id: 'inv', kind: 'soft_invite', topN: 32, category: 'invite', short: 'Zaproszenie EUC/NAC', detail: 'Top 32 + równi punktami (bez TB)' },
-                { id: 't16', kind: 'hard_rank', topN: 16, category: 'mat', short: 'Mata Top 16', detail: 'Madam Mim – Resourceful Trickster (po TB)' },
-                { id: 't8', kind: 'hard_rank', topN: 8, category: 'promo', short: 'Karta /250 Top 8', detail: 'Hades – Dark Usurper' },
-                { id: 't4', kind: 'hard_rank', topN: 4, category: 'cut', short: 'Uncut foil Top 4', detail: 'Niepocięty arkusz foil' },
-                { id: 't2', kind: 'hard_rank', topN: 2, category: 'cut', short: 'Full foil set Top 2', detail: 'Pełny set foil najnowszego dodatku' },
-                { id: 't1', kind: 'hard_rank', topN: 1, category: 'cut', short: 'Trofeum + Worlds', detail: '1. miejsce: trofeum i zaproszenie Worlds 2027' }
+                { id: 'part', kind: 'participation', category: 'promo', short: 'Promo za udział', detail: 'Ursula – Deceiver', tableChip: false },
+                { id: 'w3', kind: 'wins', wins: 3, category: 'promo', short: '🦁 Be Prepared (3W)', detail: 'Promo Be Prepared za 3 wygrane', tableChip: true, chip: '🦁', chipTitle: 'Be Prepared — 3 wygrane' },
+                { id: 'd2', kind: 'day2_points', minPoints: 18, category: 'mat', short: 'DAY2 mata', detail: 'Be Prepared (awans do Day 2)', tableChip: true, chip: 'DAY2', chipTitle: 'Day 2 — mata Be Prepared' },
+                { id: 't64', kind: 'hard_rank', topN: 64, category: 'promo', short: 'Promo Top 64', detail: 'Gaston – Superior Archer (po TB)', tableChip: true, chip: 'T64', chipTitle: 'Promo Top 64 (Gaston)' },
+                { id: 't32promo', kind: 'hard_rank', topN: 32, category: 'promo', short: 'Promo Top 32', detail: 'Madam Mim – Resourceful Trickster (po TB)', tableChip: true, chip: 'T32', chipTitle: 'Promo Top 32 (Madam Mim)' },
+                { id: 'inv', kind: 'soft_invite', topN: 32, category: 'invite', short: 'EUC soft (T32+remisy)', detail: 'Top 32 + równi punktami (bez TB)', tableChip: true, chip: 'EUC', chipTitle: 'Zaproszenie EUC/NAC — Top 32 + remisy' },
+                { id: 't16', kind: 'hard_rank', topN: 16, category: 'mat', short: 'Mata Top 16', detail: 'Madam Mim – Resourceful Trickster (po TB)', tableChip: true, chip: 'T16', chipTitle: 'Mata Top 16 (Madam Mim)' },
+                { id: 't8', kind: 'hard_rank', topN: 8, category: 'promo', short: 'Top Cut /250', detail: 'Hades – Dark Usurper — ścisłe Top 8 po TB', tableChip: true, chip: 'T8', chipTitle: 'Top Cut (hard Top 8) — Hades /250' },
+                { id: 't4', kind: 'hard_rank', topN: 4, category: 'cut', short: 'Uncut foil Top 4', detail: 'Niepocięty arkusz foil', tableChip: false },
+                { id: 't2', kind: 'hard_rank', topN: 2, category: 'cut', short: 'Full foil set Top 2', detail: 'Pełny set foil najnowszego dodatku', tableChip: false },
+                { id: 't1', kind: 'hard_rank', topN: 1, category: 'cut', short: 'Trofeum + Worlds', detail: '1. miejsce: trofeum i zaproszenie Worlds 2027', tableChip: false }
             ]
         },
         MAIN2: {
@@ -46,16 +47,17 @@
             blurb: 'Zaproszenie EUC/NAC TYLKO ścisłe Top 8 po TB. Top 32 dostaje promo bez zaproszenia. Nagrody rzeczowe zawsze po TB.',
             inviteSoftTopN: null,
             day2MinPoints: 18,
+            // ME2: EUC tylko hard Top 8 (bez soft Top32). Chip T8 pominięty — ten sam próg co EUC.
             rungs: [
-                { id: 'part', kind: 'participation', category: 'promo', short: 'Promo za udział', detail: 'Karta promo za start' },
-                { id: 'w3', kind: 'wins', wins: 3, category: 'promo', short: 'Promo za 3 wygrane', detail: 'Promo za 3 wygrane mecze' },
-                { id: 'd2', kind: 'day2_points', minPoints: 18, category: 'mat', short: 'Day 2 / mata', detail: 'Awans do Day 2 (próg punktowy orientacyjny)' },
-                { id: 't32promo', kind: 'hard_rank', topN: 32, category: 'promo', short: 'Promo Top 32', detail: 'Madam Mim — BEZ zaproszenia EUC/NAC' },
-                { id: 'inv', kind: 'hard_rank', topN: 8, category: 'invite', short: 'Zaproszenie EUC/NAC', detail: 'Wyłącznie ścisłe Top 8 po tie-breakerach' },
-                { id: 't8', kind: 'hard_rank', topN: 8, category: 'cut', short: 'Top Cut / Top 8', detail: 'Ścisłe Top 8 po TB' },
-                { id: 't4', kind: 'hard_rank', topN: 4, category: 'cut', short: 'Top 4', detail: 'Nagrody Top 4 po TB' },
-                { id: 't2', kind: 'hard_rank', topN: 2, category: 'cut', short: 'Top 2', detail: 'Nagrody Top 2 po TB' },
-                { id: 't1', kind: 'hard_rank', topN: 1, category: 'cut', short: '1. miejsce', detail: 'Zwycięzca ME2' }
+                { id: 'part', kind: 'participation', category: 'promo', short: 'Promo za udział', detail: 'Karta promo za start', tableChip: false },
+                { id: 'w3', kind: 'wins', wins: 3, category: 'promo', short: '🦁 Be Prepared (3W)', detail: 'Promo za 3 wygrane mecze', tableChip: true, chip: '🦁', chipTitle: 'Be Prepared — 3 wygrane' },
+                { id: 'd2', kind: 'day2_points', minPoints: 18, category: 'mat', short: 'DAY2', detail: 'Awans do Day 2 (próg punktowy orientacyjny)', tableChip: true, chip: 'DAY2', chipTitle: 'Day 2' },
+                { id: 't32promo', kind: 'hard_rank', topN: 32, category: 'promo', short: 'Promo Top 32', detail: 'Madam Mim — BEZ zaproszenia EUC/NAC', tableChip: true, chip: 'T32', chipTitle: 'Promo Top 32 (bez EUC)' },
+                { id: 'inv', kind: 'hard_rank', topN: 8, category: 'invite', short: 'EUC hard Top 8', detail: 'Wyłącznie ścisłe Top 8 po tie-breakerach', tableChip: true, chip: 'EUC', chipTitle: 'Zaproszenie EUC/NAC — tylko hard Top 8' },
+                { id: 't8', kind: 'hard_rank', topN: 8, category: 'cut', short: 'Top Cut / Top 8', detail: 'Ścisłe Top 8 po TB', tableChip: false },
+                { id: 't4', kind: 'hard_rank', topN: 4, category: 'cut', short: 'Top 4', detail: 'Nagrody Top 4 po TB', tableChip: false },
+                { id: 't2', kind: 'hard_rank', topN: 2, category: 'cut', short: 'Top 2', detail: 'Nagrody Top 2 po TB', tableChip: false },
+                { id: 't1', kind: 'hard_rank', topN: 1, category: 'cut', short: '1. miejsce', detail: 'Zwycięzca ME2', tableChip: false }
             ]
         },
         CCQ: {
@@ -65,11 +67,11 @@
             inviteSoftTopN: null,
             day2MinPoints: null,
             rungs: [
-                { id: 'part', kind: 'participation', category: 'promo', short: 'Udział', detail: 'Start w CCQ / Infinity' },
-                { id: 'cut', kind: 'hard_rank', topN: 8, category: 'cut', short: 'Top Cut', detail: 'Awans do Top Cut (domyślnie Top 8, po TB)' },
-                { id: 'inv', kind: 'hard_rank', topN: 1, category: 'invite', short: 'Zaproszenie / slot', detail: 'Zwycięzca CCQ — typowo slot kontynentalny (sprawdź lokalne zasady)' },
-                { id: 't4', kind: 'hard_rank', topN: 4, category: 'cut', short: 'Top 4', detail: 'Miejsce w Top 4 po TB' },
-                { id: 't2', kind: 'hard_rank', topN: 2, category: 'cut', short: 'Finał', detail: 'Awans do finału' }
+                { id: 'part', kind: 'participation', category: 'promo', short: 'Udział', detail: 'Start w CCQ / Infinity', tableChip: false },
+                { id: 'cut', kind: 'hard_rank', topN: 8, category: 'cut', short: 'Top Cut', detail: 'Awans do Top Cut (domyślnie Top 8, po TB)', tableChip: true, chip: 'T8', chipTitle: 'Top Cut (hard Top 8)' },
+                { id: 'inv', kind: 'hard_rank', topN: 1, category: 'invite', short: 'Zaproszenie / slot', detail: 'Zwycięzca CCQ — typowo slot kontynentalny (sprawdź lokalne zasady)', tableChip: false },
+                { id: 't4', kind: 'hard_rank', topN: 4, category: 'cut', short: 'Top 4', detail: 'Miejsce w Top 4 po TB', tableChip: false },
+                { id: 't2', kind: 'hard_rank', topN: 2, category: 'cut', short: 'Finał', detail: 'Awans do finału', tableChip: false }
             ]
         },
         custom: {
@@ -79,7 +81,7 @@
             inviteSoftTopN: null,
             day2MinPoints: null,
             rungs: [
-                { id: 'cut', kind: 'mode_cut', category: 'cut', short: 'Top Cut', detail: 'Awans według ustawionego cutu admina' }
+                { id: 'cut', kind: 'mode_cut', category: 'cut', short: 'Top Cut', detail: 'Awans według ustawionego cutu admina', tableChip: true, chip: 'CUT', chipTitle: 'Top Cut (ustawienie admina)' }
             ]
         }
     };
@@ -389,6 +391,61 @@
         return 'Nagroda';
     }
 
+    /** Compact chip color class: green / orange / red. */
+    function statusChipClass(status) {
+        if (status === 'locked') return 'prize-chip--locked';
+        if (status === 'missed') return 'prize-chip--missed';
+        return 'prize-chip--play';
+    }
+
+    function statusChipLegendPl(status) {
+        if (status === 'locked') return 'zielony = już masz / trzymasz';
+        if (status === 'missed') return 'czerwony = już niemożliwe';
+        return 'pomarańczowy = jeszcze walczysz';
+    }
+
+    /**
+     * MAIN1/MAIN2: drabinka pucharowa zawsze hard Top 8
+     * (soft Top32 MAIN1 dotyczy tylko zaproszenia EUC, nie bracketu).
+     */
+    function getTopCutBracketSize(mode, configuredCutSize) {
+        const id = normalizeMode(mode);
+        if (id === 'MAIN1' || id === 'MAIN2') return 8;
+        const n = Number(configuredCutSize);
+        if (Number.isFinite(n) && n >= 2) return n;
+        return getModeDefaults(id).cutSize || 8;
+    }
+
+    function getTableChipRungs(mode) {
+        const ladder = getLadder(mode);
+        return (ladder.rungs || []).filter((r) => r.tableChip !== false && r.chip);
+    }
+
+    /**
+     * Compact per-player chip list for LIVE/official tables.
+     * @returns {{ mode, chips: Array<{id,chip,title,status,note,className}>, emptyReason?: string }}
+     */
+    function evaluatePlayerTableChips(mode, standings, playerId, opts = {}) {
+        const ev = evaluatePlayerPrizes(mode, standings, playerId, opts);
+        if (ev.emptyReason) {
+            return { mode: ev.mode, chips: [], emptyReason: ev.emptyReason };
+        }
+        const byId = new Map((ev.rungs || []).map((r) => [r.id, r]));
+        const chips = getTableChipRungs(mode).map((def) => {
+            const hit = byId.get(def.id);
+            const status = hit?.status || 'in_play';
+            return {
+                id: def.id,
+                chip: def.chip,
+                title: def.chipTitle || def.short || def.chip,
+                status,
+                note: hit?.note || '',
+                className: statusChipClass(status)
+            };
+        });
+        return { mode: ev.mode, chips, emptyReason: null };
+    }
+
     return {
         MODE_DEFAULTS,
         LADDERS,
@@ -398,8 +455,13 @@
         parseWins,
         softThresholdPoints,
         evaluatePlayerPrizes,
+        evaluatePlayerTableChips,
         evaluateRung,
+        getTableChipRungs,
+        getTopCutBracketSize,
         statusLabelPl,
+        statusChipClass,
+        statusChipLegendPl,
         categoryLabelPl,
         sortByPointsThenTb
     };

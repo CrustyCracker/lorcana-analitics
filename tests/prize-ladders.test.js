@@ -5,6 +5,9 @@ const {
     getModeDefaults,
     getLadder,
     evaluatePlayerPrizes,
+    evaluatePlayerTableChips,
+    getTableChipRungs,
+    getTopCutBracketSize,
     softThresholdPoints
 } = require('../prize-ladders.js');
 
@@ -109,5 +112,50 @@ describe('evaluatePlayerPrizes', () => {
         const ev = evaluatePlayerPrizes('CCQ', [], null, {});
         assert.ok(ev.emptyReason);
         assert.equal(ev.rungs.length, 0);
+    });
+});
+
+describe('table chips + hard Top8 bracket', () => {
+    it('MAIN1/MAIN2 bracket size is hard Top 8 even if soft cut is 32', () => {
+        assert.equal(getTopCutBracketSize('MAIN1', 32), 8);
+        assert.equal(getTopCutBracketSize('MAIN2', 8), 8);
+        assert.equal(getTopCutBracketSize('CCQ', 8), 8);
+        assert.equal(getTopCutBracketSize('custom', 16), 16);
+    });
+
+    it('MAIN1 table chips cover BePrep/DAY2/T64/T32/EUC/T16/T8', () => {
+        const chips = getTableChipRungs('MAIN1').map((c) => c.chip);
+        assert.deepEqual(chips, ['🦁', 'DAY2', 'T64', 'T32', 'EUC', 'T16', 'T8']);
+    });
+
+    it('MAIN2 chips have hard EUC and no soft Top32 invite chip spam', () => {
+        const defs = getTableChipRungs('MAIN2');
+        assert.deepEqual(defs.map((c) => c.chip), ['🦁', 'DAY2', 'T32', 'EUC']);
+        const inv = getLadder('MAIN2').rungs.find((r) => r.id === 'inv');
+        assert.equal(inv.kind, 'hard_rank');
+        assert.equal(inv.topN, 8);
+    });
+
+    it('evaluatePlayerTableChips colors locked/play/missed', () => {
+        const standings = [];
+        for (let i = 1; i <= 40; i++) {
+            const pts = i <= 32 ? 34 : 24;
+            standings.push(mkPlayer(i, pts, i, i <= 5 ? 11 : 3));
+        }
+        const pack = evaluatePlayerTableChips('MAIN1', standings, 1, {
+            cutSize: 32, cutRule: 'soft', activeRound: 15, totalRounds: 15
+        });
+        const byId = Object.fromEntries(pack.chips.map((c) => [c.id, c]));
+        assert.equal(byId.w3.status, 'locked');
+        assert.equal(byId.w3.className, 'prize-chip--locked');
+        assert.equal(byId.inv.status, 'locked');
+        assert.equal(byId.t8.status, 'locked');
+
+        const low = evaluatePlayerTableChips('MAIN1', standings, 40, {
+            cutSize: 32, cutRule: 'soft', activeRound: 15, totalRounds: 15
+        });
+        const lowInv = low.chips.find((c) => c.id === 'inv');
+        assert.equal(lowInv.status, 'missed');
+        assert.equal(lowInv.className, 'prize-chip--missed');
     });
 });

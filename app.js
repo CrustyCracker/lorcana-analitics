@@ -8,7 +8,7 @@ const PAGE_SIZE = 32;
 /** Powyżej tego N wyłączamy ciężkie panele UI (bracket); rada TIE działa zawsze. */
 const LARGE_EVENT_PLAYER_THRESHOLD = 400;
 /** Virtual window LIVE: stała wysokość wiersza + overscan — max DOM rows ≪ N. */
-const LIVE_ROW_HEIGHT = 44;
+const LIVE_ROW_HEIGHT = 52;
 const LIVE_VIEWPORT_ROWS = 16;
 const LIVE_OVERSCAN = 6;
 const LIVE_MAX_DOM_ROWS = LIVE_VIEWPORT_ROWS + LIVE_OVERSCAN * 2;
@@ -278,6 +278,7 @@ function applyTournamentSelection(tournament, { track = true, clearLocalCut = fa
 
     if (track) startTracking();
     renderPrizeGoalsPanel();
+    syncPrizeChipsLegends();
 }
 
 function renderTournamentSwitcher() {
@@ -317,6 +318,71 @@ function renderPrizeItemHtml(item, api) {
         <div class="prize-item__title">${escapeHtml(item.short || '')}<span class="prize-item__cat">${escapeHtml(cat)}</span></div>
         <div class="prize-item__note">${escapeHtml(item.detail || '')}${item.note ? ' — ' + escapeHtml(item.note) : ''}</div>
     </div>`;
+}
+
+/** MAIN1 soft Top32 = EUC; drabinka pucharowa zawsze hard Top 8. */
+function resolveTopCutBracketSize(configuredCutSize) {
+    const api = getPrizeLaddersApi();
+    const mode = getActiveTournamentMode();
+    if (api && typeof api.getTopCutBracketSize === 'function') {
+        return api.getTopCutBracketSize(mode, configuredCutSize);
+    }
+    if (mode === 'MAIN1' || mode === 'MAIN2') return 8;
+    const n = Number(configuredCutSize);
+    return Number.isFinite(n) && n >= 2 ? n : 8;
+}
+
+function getPrizeChipEvalContext() {
+    const standings = (cachedLiveStandings && cachedLiveStandings.length)
+        ? cachedLiveStandings
+        : (latestData?.standings?.standings || []);
+    const cutSize = parseInt(document.getElementById('cutSize')?.value || String(siteConfig.defaultCutSize || 8), 10);
+    const cutRule = document.getElementById('cutRule')?.value || siteConfig.defaultCutRule || 'hard';
+    const activeRound = cachedCutContext.activeRound ?? resolveActiveRound(latestData);
+    const totalRounds = cachedCutContext.totalRounds || getEffectiveTotalRounds(latestData || {});
+    return {
+        mode: getActiveTournamentMode(),
+        standings,
+        opts: { cutSize, cutRule, activeRound, totalRounds }
+    };
+}
+
+function renderPrizeStatusChipsHtml(playerId, evalCtx = null) {
+    const api = getPrizeLaddersApi();
+    if (!api || typeof api.evaluatePlayerTableChips !== 'function') return '';
+    const ctx = evalCtx || getPrizeChipEvalContext();
+    const pack = api.evaluatePlayerTableChips(ctx.mode, ctx.standings, playerId, ctx.opts);
+    if (!pack.chips || pack.chips.length === 0) return '<span class="prize-chips prize-chips--empty">—</span>';
+    const bits = pack.chips.map((c) => {
+        const tip = escapeHtml(`${c.title}: ${api.statusLabelPl(c.status)}${c.note ? ' — ' + c.note : ''}`);
+        return `<span class="prize-chip ${c.className}" title="${tip}">${escapeHtml(c.chip)}</span>`;
+    });
+    return `<div class="prize-chips" aria-label="Status nagród">${bits.join('')}</div>`;
+}
+
+function renderPrizeChipsLegendHtml(mode) {
+    const api = getPrizeLaddersApi();
+    if (!api) return '';
+    const chips = typeof api.getTableChipRungs === 'function' ? api.getTableChipRungs(mode) : [];
+    const keys = chips.map((c) => `<span class="prize-chip prize-chip--neutral" title="${escapeHtml(c.chipTitle || c.short || '')}">${escapeHtml(c.chip)}</span>`).join('');
+    return `<div class="prize-chips-legend">
+        <span class="prize-chips-legend__title">Nagrody w tabeli</span>
+        <span class="prize-chips-legend__swatch"><span class="prize-chip prize-chip--locked">●</span> masz</span>
+        <span class="prize-chips-legend__swatch"><span class="prize-chip prize-chip--play">●</span> walczysz</span>
+        <span class="prize-chips-legend__swatch"><span class="prize-chip prize-chip--missed">●</span> poza</span>
+        <span class="prize-chips-legend__keys">${keys}</span>
+        <span class="prize-chips-legend__hint">klik wiersz = „O co jeszcze gramy”</span>
+    </div>`;
+}
+
+function syncPrizeChipsLegends() {
+    if (typeof document === 'undefined') return;
+    const mode = getActiveTournamentMode();
+    const html = renderPrizeChipsLegendHtml(mode);
+    for (const id of ['livePrizeChipsLegend', 'officialPrizeChipsLegend']) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = html;
+    }
 }
 
 function fillPrizeGroup(listId, emptyId, items, api) {
@@ -3034,13 +3100,15 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
     const infoEl = document.getElementById('liveWindowInfo');
     const viewport = document.getElementById('liveStandingsViewport');
 
+    syncPrizeChipsLegends();
+
     if (!list || list.length === 0) {
         let emptyMsg = "Trwa symulacja wyników live...";
         if (liveTableSearchQuery) emptyMsg = "Brak graczy pasujących do wyszukiwanej frazy.";
         else if (filterOnlyPoles) emptyMsg = "Brak graczy z Polski w tabeli LIVE.";
         else if (currentLiveStatusFilter !== 'all') emptyMsg = "Brak graczy pasujących do wybranego filtra statusu.";
 
-        tbody.innerHTML = '<tr><td colspan="7" style="color: #888; padding: 20px;">' + emptyMsg + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="color: #888; padding: 20px;">' + emptyMsg + '</td></tr>';
         if (infoEl) infoEl.style.display = 'none';
         renderPagination('livePagination', 0, 1, 'changeLivePage');
         liveVirtLastWindowKey = '';
@@ -3066,11 +3134,12 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
     // Page from scroll index — never from win.start (overscan would pin page 1).
     currentPages.live = pageFromScroll;
 
+    const prizeCtx = getPrizeChipEvalContext();
     const frag = document.createDocumentFragment();
     if (win.topPad > 0) {
         const topSpacer = document.createElement('tr');
         topSpacer.className = 'live-virt-spacer';
-        topSpacer.innerHTML = '<td colspan="7" style="height:' + win.topPad + 'px;"></td>';
+        topSpacer.innerHTML = '<td colspan="8" style="height:' + win.topPad + 'px;"></td>';
         frag.appendChild(topSpacer);
     }
 
@@ -3081,7 +3150,7 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
         const tr = document.createElement('tr');
         tr.className = "clickable-row";
         tr.style.height = LIVE_ROW_HEIGHT + 'px';
-        tr.title = "Kliknij, aby otworzyć szczegóły w module Can I take a TIE";
+        tr.title = "Kliknij = nagrody („O co jeszcze gramy”) + Can I take a TIE";
         tr.onclick = () => selectPlayerForTie(playerId);
 
         const formattedName = formatStandingsPlayerName(player);
@@ -3095,6 +3164,7 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
         const inCut = (displayRank <= ctx.cutSize);
         const { ptsNeededText, strategyText, rowClass } = derivePlayerStrategy(sim, inCut);
         const cutBadgeHtml = getCutStatusBadge(player, sim, inCut, ctx.cutSize, sim?.matchesLeft);
+        const prizeChipsHtml = renderPrizeStatusChipsHtml(playerId, prizeCtx);
 
         let pointsDisplay = '<strong>' + player.livePoints + '</strong>';
         if (player.delta > 0) {
@@ -3115,6 +3185,7 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
             '<td><strong>' + displayRank + '</strong></td>' +
             '<td class="player-cell-truncate" style="text-align: left;" title="' + safeName + '">' + nameCellHtml + '</td>' +
             '<td>' + pointsDisplay + '</td>' +
+            '<td class="prize-chips-cell">' + prizeChipsHtml + '</td>' +
             '<td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="event.stopPropagation(); openOmwpInspector(\'' + safePlayerId + '\')">' + omwp + ' / ' + gwp + ' / ' + ogwp + ' \uD83D\uDD0D</td>' +
             '<td><strong>' + ptsNeededText + '</strong></td>' +
             '<td class="strategy">' + strategyText + '</td>' +
@@ -3125,7 +3196,7 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
     if (win.bottomPad > 0) {
         const bottomSpacer = document.createElement('tr');
         bottomSpacer.className = 'live-virt-spacer';
-        bottomSpacer.innerHTML = '<td colspan="7" style="height:' + win.bottomPad + 'px;"></td>';
+        bottomSpacer.innerHTML = '<td colspan="8" style="height:' + win.bottomPad + 'px;"></td>';
         frag.appendChild(bottomSpacer);
     }
 
@@ -3153,8 +3224,10 @@ function renderOfficialStandingsTable(standings, cutSize, cutRule) {
     const tbody = document.getElementById('officialStandingsBody');
     if (!tbody) return;
 
+    syncPrizeChipsLegends();
+
     if (!cachedOfficialStandings || cachedOfficialStandings.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>`;
         renderPagination('officialPagination', 0, 1, 'changeOfficialPage');
         return;
     }
@@ -3166,7 +3239,7 @@ function renderOfficialStandingsTable(standings, cutSize, cutRule) {
     }
 
     if (officialList.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="color: #888; padding: 20px;">Brak graczy z Polski w oficjalnej tabeli.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="7" style="color: #888; padding: 20px;">Brak graczy z Polski w oficjalnej tabeli.</td></tr>`;
         renderPagination('officialPagination', 0, 1, 'changeOfficialPage');
         return;
     }
@@ -3180,32 +3253,41 @@ function renderOfficialStandingsTable(standings, cutSize, cutRule) {
 
     const start = (currentPages.official - 1) * PAGE_SIZE;
     const pageItems = officialList.slice(start, start + PAGE_SIZE);
+    const prizeCtx = getPrizeChipEvalContext();
+    // Oficjalna tabela: oceń chipy względem oficjalnych standings (nie LIVE).
+    prizeCtx.standings = cachedOfficialStandings;
 
     tbody.innerHTML = "";
 
     pageItems.forEach((player, pageIdx) => {
         const displayRank = player.rank || (start + pageIdx + 1);
+        const playerId = player.player?.id ?? player.id;
         const tr = document.createElement('tr');
+        tr.className = 'clickable-row';
+        tr.title = 'Kliknij = „O co jeszcze gramy”';
+        tr.onclick = () => selectPlayerForTie(playerId);
         const formattedName = formatStandingsPlayerName(player);
         const safeName = escapeHtml(formattedName);
-        const safePlayerId = escapeJsAttr(player.player?.id ?? player.id);
+        const safePlayerId = escapeJsAttr(playerId);
         const safeRecord = escapeHtml(player.record || player.match_record || "-");
         const omwp = ((player.opponent_match_win_percentage || 0) * 100).toFixed(1) + "%";
         const gwp = ((player.game_win_percentage || 0) * 100).toFixed(1) + "%";
         const ogwp = ((player.opponent_game_win_percentage || 0) * 100).toFixed(1) + "%";
         const nameCellHtml = formatPlayerCellHtml(player, formattedName);
+        const prizeChipsHtml = renderPrizeStatusChipsHtml(playerId, prizeCtx);
         
         const inCut = ctx.cutRule === 'soft' 
             ? player.match_points >= bubbleScore 
             : (displayRank <= ctx.cutSize);
 
-        tr.className = inCut ? "safe" : (player.match_points >= bubbleScore ? "bubble" : "dead");
+        tr.className += inCut ? " safe" : (player.match_points >= bubbleScore ? " bubble" : " dead");
         tr.innerHTML = `
             <td>${displayRank}</td>
             <td class="player-cell-truncate" style="text-align: left;" title="${safeName}">${nameCellHtml}</td>
             <td><strong>${player.match_points}</strong></td>
+            <td class="prize-chips-cell">${prizeChipsHtml}</td>
             <td>${safeRecord}</td>
-            <td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="openOmwpInspector('${safePlayerId}')">${omwp} / ${gwp} / ${ogwp} 🔍</td>
+            <td class="tiebreaker omwp-clickable" title="Kliknij, aby otworzyć Inspektora Tiebreakerów (OMW% / GW% / OGW%)" onclick="event.stopPropagation(); openOmwpInspector('${safePlayerId}')">${omwp} / ${gwp} / ${ogwp} 🔍</td>
             <td>${inCut ? 'W Cut' : 'Poza Cut'}</td>
         `;
         tbody.appendChild(tr);
@@ -5992,6 +6074,8 @@ function renderPlayDrawSeedingPanel(targetPlayer, myOpponent, isCurrentMatchFini
     const bodyEl = document.getElementById('playDrawSeedingBody');
     if (!panel || !badgeEl || !bodyEl) return;
 
+    // MAIN1: soft Top32 = EUC; seeding / drabinka = hard Top 8.
+    cutSize = resolveTopCutBracketSize(cutSize);
     const analysis = analyzePlayerTopCutSeeding(targetPlayer, myOpponent, isCurrentMatchFinished, liveStandings, cutSize);
     if (!analysis) {
         panel.style.display = 'none';
@@ -6117,8 +6201,10 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
         return;
     }
 
+    // MAIN1: soft Top32 = EUC invite; drabinka pucharowa zostaje hard Top 8.
+    const bracketCutSize = resolveTopCutBracketSize(cutSize);
     const roundsMatches = latestData?.roundsMatches || null;
-    const tree = buildFullTopCutBracketTree(liveStandings, cutSize, roundsMatches, cachedStandingsMap);
+    const tree = buildFullTopCutBracketTree(liveStandings, bracketCutSize, roundsMatches, cachedStandingsMap);
     if (!tree.rounds || tree.rounds.length === 0) {
         panel.style.display = 'none';
         return;
@@ -6414,6 +6500,10 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateSoftCutIdInflation,
         formatSoftCutIdInflationHtml,
         renderPrizeGoalsPanel,
+        renderPrizeStatusChipsHtml,
+        renderPrizeChipsLegendHtml,
+        syncPrizeChipsLegends,
+        resolveTopCutBracketSize,
         renderTournamentSwitcher,
         applyTournamentSelection,
         getActiveTournamentMode,

@@ -1796,6 +1796,81 @@
         }
         .prize-item__note { font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.35; }
         .prize-empty { color: var(--text-mute); font-size: 13px; }
+        .prize-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            align-items: center;
+            max-width: 240px;
+        }
+        .prize-chips--empty { color: var(--text-mute); font-size: 12px; }
+        .prize-chips-cell { text-align: left; vertical-align: middle; }
+        .prize-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 26px;
+            height: 18px;
+            padding: 0 5px;
+            border-radius: 4px;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            line-height: 1;
+            white-space: nowrap;
+        }
+        .prize-chip--locked {
+            background: rgba(46, 204, 113, 0.18);
+            color: #2ecc71;
+            border: 1px solid rgba(46, 204, 113, 0.45);
+        }
+        .prize-chip--play {
+            background: rgba(243, 156, 18, 0.18);
+            color: #f39c12;
+            border: 1px solid rgba(243, 156, 18, 0.45);
+        }
+        .prize-chip--missed {
+            background: rgba(231, 76, 60, 0.14);
+            color: #e74c3c;
+            border: 1px solid rgba(231, 76, 60, 0.35);
+            opacity: 0.88;
+        }
+        .prize-chip--neutral {
+            background: rgba(148, 163, 184, 0.12);
+            color: #cbd5e1;
+            border: 1px solid rgba(148, 163, 184, 0.28);
+        }
+        .prize-chips-legend {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 12px;
+            margin: 0 0 10px 0;
+            padding: 8px 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.35);
+            font-size: 12px;
+            color: var(--text-dim, #94a3b8);
+        }
+        .prize-chips-legend__title {
+            font-weight: 700;
+            color: var(--text, #e2e8f0);
+        }
+        .prize-chips-legend__swatch {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .prize-chips-legend__keys {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 3px;
+        }
+        .prize-chips-legend__hint {
+            color: var(--text-mute, #64748b);
+            font-size: 11px;
+        }
 
         .simple-toolbar {
             display: flex;
@@ -2062,7 +2137,7 @@
 
 
 <!-- PRIMARY: LIVE STANDINGS -->
-<p class="secondary-section-note">Tabela LIVE — kliknij siebie, żeby odświeżyć „O co jeszcze gramy”. Soft EUC (MAIN1) jest nad tabelą.</p>
+<p class="secondary-section-note">Tabela LIVE — kliknij siebie, żeby odświeżyć „O co jeszcze gramy”. Soft EUC (MAIN1) jest nad tabelą. Kolorowe chipy = status progów nagród.</p>
 <div class="section-header" id="liveStandingsSection">
     <h3>Klasyfikacja LIVE <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
     <span style="font-size: 11px; color: #888;">(Dotknij gracza = nagrody + TIE · OMWP po szczegóły)</span>
@@ -2100,6 +2175,8 @@
     <button type="button" id="liveTableSearchClearBtn" class="quick-search-clear" onclick="clearLiveTableSearch()">✕ Wyczyść</button>
 </div>
 
+<div id="livePrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
+
 <div id="liveStandingsViewport" class="live-virt-viewport" onscroll="onLiveStandingsScroll(event)">
     <table>
         <thead>
@@ -2107,6 +2184,7 @@
                 <th style="width: 45px;">Msc</th>
                 <th>Gracz</th>
                 <th>Pkt LIVE</th>
+                <th style="min-width: 160px;">Nagrody</th>
                 <th>Tiebreakery (OMW / GW / OGW)</th>
                 <th>Wymagane</th>
                 <th>Optymalna Strategia</th>
@@ -2114,7 +2192,7 @@
             </tr>
         </thead>
         <tbody id="liveStandingsBody">
-            <tr><td colspan="7" style="color: #666; padding: 20px;">Trwa symulacja wyników live...</td></tr>
+            <tr><td colspan="8" style="color: #666; padding: 20px;">Trwa symulacja wyników live...</td></tr>
         </tbody>
     </table>
 </div>
@@ -2162,6 +2240,7 @@
     </div>
 </div>
 <div id="officialStandingsWrapper">
+    <div id="officialPrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
     <div class="table-responsive">
         <table>
             <thead>
@@ -2169,13 +2248,14 @@
                     <th style="width: 45px;">Msc</th>
                     <th>Gracz</th>
                     <th>Pkt</th>
+                    <th style="min-width: 160px;">Nagrody</th>
                     <th>Bilans</th>
                     <th>Tiebreakery (OMW / GW / OGW)</th>
                     <th>Status</th>
                 </tr>
             </thead>
             <tbody id="officialStandingsBody">
-                <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
+                <tr><td colspan="7" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
             </tbody>
         </table>
     </div>
