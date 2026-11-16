@@ -30,6 +30,8 @@ let cachedCutContext = { cutSize: 4, cutRule: 'hard', activeRound: 1, totalRound
 /** Lazy index: playerId → [{round, match}] for OMWP inspector (avoids O(rounds×matches) per open). */
 let cachedPlayerMatchIndex = null;
 let cachedPlayerMatchIndexEventKey = null;
+/** Public page: Top Cut bracket is drawn only after user clicks „Narysuj drabinkę”. */
+let bracketDrawnOnDemand = false;
 
 function getTieSimCore() {
     if (typeof LorcanaTieSim !== 'undefined' && LorcanaTieSim) return LorcanaTieSim;
@@ -275,6 +277,10 @@ function applyTournamentSelection(tournament, { track = true, clearLocalCut = fa
         updateCutPrefsHint();
     }
     syncRoundsOverrideUi(latestData);
+    // New tournament → reset on-demand bracket and sync MAIN1/T8 (etc.) default.
+    bracketDrawnOnDemand = false;
+    hideTopCutBracketTree();
+    syncBracketDrawSizeDefault({ force: true });
 
     if (track) startTracking();
     renderPrizeGoalsPanel();
@@ -331,6 +337,123 @@ function resolveTopCutBracketSize(configuredCutSize) {
     if (mode === 'MAIN2') return 0;
     const n = Number(configuredCutSize);
     return Number.isFinite(n) && n >= 2 ? n : 8;
+}
+
+/** Power-of-two bracket size (2..128) for SE trees. */
+function normalizeBracketDrawSize(rawSize) {
+    const n = Number(rawSize);
+    const target = Number.isFinite(n) && n >= 2 ? n : 8;
+    let p = 2;
+    while (p < target && p < 128) p *= 2;
+    return p;
+}
+
+function getConfiguredCutSizeFromUi() {
+    const fromInput = parseInt(document.getElementById('cutSize')?.value || '', 10);
+    if (Number.isFinite(fromInput) && fromInput >= 2 && fromInput <= 256) return fromInput;
+    const fromCfg = Number(siteConfig?.defaultCutSize);
+    if (Number.isFinite(fromCfg) && fromCfg >= 2) return fromCfg;
+    return 8;
+}
+
+/**
+ * Default for „Narysuj drabinkę”:
+ * MAIN1 → hard Top 8 (nie soft Top32 EUC),
+ * MAIN2 → 0 z profilu → fallback do cutu z UI/admin,
+ * inne → cut z UI/admin.
+ */
+function getDefaultBracketDrawSize() {
+    const configured = getConfiguredCutSizeFromUi();
+    const resolved = resolveTopCutBracketSize(configured);
+    if (resolved && resolved >= 2) return normalizeBracketDrawSize(resolved);
+    return normalizeBracketDrawSize(configured);
+}
+
+function updateBracketDrawHint() {
+    const hint = document.getElementById('bracketDrawHint');
+    if (!hint) return;
+    const mode = getActiveTournamentMode();
+    const def = getDefaultBracketDrawSize();
+    const selected = normalizeBracketDrawSize(
+        document.getElementById('bracketDrawSize')?.value || def
+    );
+    if (mode === 'MAIN1') {
+        hint.innerHTML = `Tryb <strong>MAIN1</strong>: domyślna drabinka = hard <strong>Top 8</strong> (soft Top32 to tylko EUC). Aktualny wybór: Top ${selected}.`;
+        return;
+    }
+    if (mode === 'MAIN2') {
+        hint.innerHTML = `Tryb <strong>MAIN2</strong>: brak oficjalnych playoffów — drabinka jest tylko projekcją z tabeli. Domyślnie Top ${def}; wybór: Top ${selected}.`;
+        return;
+    }
+    hint.innerHTML = `Domyślnie z cutu / admina: <strong>Top ${def}</strong>. Aktualny wybór: Top ${selected}.`;
+}
+
+/** Sync size selector to mode/cut defaults (keeps user choice after a successful draw). */
+function syncBracketDrawSizeDefault({ force = false } = {}) {
+    const el = document.getElementById('bracketDrawSize');
+    if (!el) return getDefaultBracketDrawSize();
+    const def = getDefaultBracketDrawSize();
+    if (force || !bracketDrawnOnDemand) {
+        el.value = String(def);
+    }
+    updateBracketDrawHint();
+    return def;
+}
+
+function getSelectedBracketDrawSize() {
+    const raw = document.getElementById('bracketDrawSize')?.value;
+    if (raw != null && String(raw).trim() !== '') {
+        return normalizeBracketDrawSize(raw);
+    }
+    return getDefaultBracketDrawSize();
+}
+
+function hideTopCutBracketTree() {
+    const panel = document.getElementById('topCutBracketPanel');
+    const gridEl = document.getElementById('topCutBracketGrid');
+    const selectedBannerEl = document.getElementById('bracketSelectedPlayerBanner');
+    if (panel) {
+        panel.hidden = true;
+        panel.style.display = 'none';
+    }
+    if (gridEl) gridEl.innerHTML = '';
+    if (selectedBannerEl) {
+        selectedBannerEl.style.display = 'none';
+        selectedBannerEl.innerHTML = '';
+    }
+}
+
+function clearTopCutBracketOnDemand() {
+    bracketDrawnOnDemand = false;
+    hideTopCutBracketTree();
+    syncBracketDrawSizeDefault({ force: true });
+}
+
+function drawTopCutBracketOnDemand() {
+    const size = getSelectedBracketDrawSize();
+    const sizeEl = document.getElementById('bracketDrawSize');
+    if (sizeEl) sizeEl.value = String(size);
+    updateBracketDrawHint();
+    bracketDrawnOnDemand = true;
+    const standings = (cachedLiveStandings && cachedLiveStandings.length)
+        ? cachedLiveStandings
+        : (latestData?.standings?.standings || []);
+    renderTopCutBracketPanel(standings, size, { onDemand: true, requestedSize: size });
+    const section = document.getElementById('topCutBracketSection')
+        || document.getElementById('topCutBracketPanel');
+    if (section && typeof section.scrollIntoView === 'function') {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+/** Refresh tree only if user already drew it (poll / TIE / cut change). */
+function maybeRefreshDrawnBracket(liveStandings, cutSize) {
+    if (!bracketDrawnOnDemand) {
+        hideTopCutBracketTree();
+        return;
+    }
+    const size = getSelectedBracketDrawSize() || normalizeBracketDrawSize(cutSize);
+    renderTopCutBracketPanel(liveStandings, size, { onDemand: true, requestedSize: size });
 }
 
 /** Fixed Swiss length from DLC format profile (MAIN1=15, MAIN2=11). */
@@ -810,6 +933,7 @@ function loadCutPrefsIntoUi() {
         }
     } catch (e) {}
     updateCutPrefsHint();
+    syncBracketDrawSizeDefault({ force: !bracketDrawnOnDemand });
 }
 
 function saveCutPrefsFromUi() {
@@ -836,6 +960,7 @@ function resetCutPrefsToAdminDefaults() {
     } catch (e) {}
     applyAdminCutDefaultsToUi();
     updateCutPrefsHint();
+    syncBracketDrawSizeDefault({ force: true });
     lastProcessFingerprint = null;
     if (!latestData) return;
     const tracked = normalizeEventIdDigits(lastTrackedEventId);
@@ -847,6 +972,7 @@ function resetCutPrefsToAdminDefaults() {
 
 function onCutPrefsChanged() {
     saveCutPrefsFromUi();
+    syncBracketDrawSizeDefault({ force: !bracketDrawnOnDemand });
     lastProcessFingerprint = null;
     if (!latestData) return;
     // Only mutate the visible cut for the event currently being tracked.
@@ -1429,7 +1555,7 @@ function toggleOnlyPoles() {
     renderPairingsTable();
     renderLiveStandingsTable();
     renderOfficialStandingsTable();
-    renderTopCutBracketPanel(cachedLiveStandings, cachedCutContext.cutSize);
+    maybeRefreshDrawnBracket(cachedLiveStandings, cachedCutContext.cutSize);
 }
 
 function updatePolesFilterUI() {
@@ -1840,10 +1966,9 @@ function clearStandingsCachesAndDom(nextEventId, opts = {}) {
     if (pairingsBody) {
         pairingsBody.innerHTML = `<tr><td colspan="5" style="color: #888; padding: 20px;">${msg}</td></tr>`;
     }
-    const bracketPanel = document.getElementById('topCutBracketPanel');
-    if (bracketPanel) bracketPanel.style.display = 'none';
-    const bracketGrid = document.getElementById('topCutBracketGrid');
-    if (bracketGrid) bracketGrid.innerHTML = '';
+    bracketDrawnOnDemand = false;
+    hideTopCutBracketTree();
+    syncBracketDrawSizeDefault({ force: true });
     // Polish avg + cut-breakdown used to keep the previous event's stats visible.
     renderPolishAvgPointsTable([]);
     renderCutLineBreakdownPanel([], 0, 'hard', 0, 0);
@@ -2192,7 +2317,6 @@ function applyLoadedTournamentData(data, opts = {}) {
         }
         renderPairingsTable();
         if (cachedLiveStandings && cachedLiveStandings.length) {
-            const playerCount = resolvePlayerCount(data, cachedLiveStandings.length);
             renderPolishAvgPointsTable(cachedLiveStandings);
             renderCutLineBreakdownPanel(
                 cachedLiveStandings,
@@ -2202,12 +2326,7 @@ function applyLoadedTournamentData(data, opts = {}) {
                 cachedCutContext.totalRounds
             );
             renderOfficialStandingsTable(data.standings?.standings || [], cutSize, cutRule);
-            if (!shouldGateHeavyUi(playerCount)) {
-                renderTopCutBracketPanel(cachedLiveStandings, cutSize);
-            } else {
-                const bracketPanel = document.getElementById('topCutBracketPanel');
-                if (bracketPanel) bracketPanel.style.display = 'none';
-            }
+            maybeRefreshDrawnBracket(cachedLiveStandings, cutSize);
             stampStandingsEventMarker(data.eventId);
         } else {
             // Empty/upcoming: clear secondary panels the same way LIVE already clears.
@@ -3105,7 +3224,6 @@ function processStandings(data, opts = {}) {
     stampStandingsEventMarker(data.eventId);
     updatePolesFilterUI();
 
-    const playerCount = resolvePlayerCount(data, liveStandings.length);
     if (deferSecondary) {
         return;
     }
@@ -3123,14 +3241,7 @@ function processStandings(data, opts = {}) {
         renderPolishAvgPointsTable(liveStandings);
         renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRound, totalRounds);
         renderOfficialStandingsTable(rawStandings, cutSize, cutRule);
-        if (!shouldGateHeavyUi(playerCount)) {
-            renderTopCutBracketPanel(liveStandings, cutSize);
-        } else {
-            const bracketPanel = document.getElementById('topCutBracketPanel');
-            if (bracketPanel) {
-                bracketPanel.style.display = 'none';
-            }
-        }
+        maybeRefreshDrawnBracket(liveStandings, cutSize);
         stampStandingsEventMarker(data.eventId);
     });
 }
@@ -3549,17 +3660,7 @@ function applyTieSimulationResults(simResults, targetPlayer, myOpponent, myMatch
         }
     }
     renderPlayDrawSeedingPanel(targetPlayer, myOpponent, simResults.isCurrentMatchFinished, cachedLiveStandings, cutSize);
-
-    const playerCount = resolvePlayerCount(
-        latestData,
-        latestData?.standings?.standings?.length || cachedLiveStandings.length || 0
-    );
-    if (!shouldGateHeavyUi(playerCount)) {
-        renderTopCutBracketPanel(cachedLiveStandings, cutSize);
-    } else {
-        const bracketPanel = document.getElementById('topCutBracketPanel');
-        if (bracketPanel) bracketPanel.style.display = 'none';
-    }
+    maybeRefreshDrawnBracket(cachedLiveStandings, cutSize);
     recalculateNextRoundPairingsPredictor(simResults, targetPlayer, activeRound, totalRounds);
     renderLiveStandingsTable();
 }
@@ -5432,8 +5533,9 @@ function setBracketDisplayMode(mode) {
     const strictBtn = document.getElementById('bracketModeStrictBtn');
     if (projBtn) projBtn.classList.toggle('active', bracketDisplayMode === 'projected');
     if (strictBtn) strictBtn.classList.toggle('active', bracketDisplayMode === 'strict');
-    const cutSize = parseInt(document.getElementById('cutSize')?.value || '8', 10);
-    renderTopCutBracketPanel(cachedLiveStandings, cutSize);
+    if (!bracketDrawnOnDemand) return;
+    const size = getSelectedBracketDrawSize();
+    renderTopCutBracketPanel(cachedLiveStandings, size, { onDemand: true, requestedSize: size });
 }
 
 function setPlayerPathScenarioMode(mode) {
@@ -6259,23 +6361,38 @@ function renderPlayDrawSeedingPanel(targetPlayer, myOpponent, isCurrentMatchFini
     `;
 }
 
-function renderTopCutBracketPanel(liveStandings, cutSize) {
+function renderTopCutBracketPanel(liveStandings, cutSize, opts = {}) {
     const panel = document.getElementById('topCutBracketPanel');
     const gridEl = document.getElementById('topCutBracketGrid');
     const statusTextEl = document.getElementById('bracketPhaseStatusText');
     const selectedBannerEl = document.getElementById('bracketSelectedPlayerBanner');
     if (!panel || !gridEl) return;
 
-    if (!liveStandings || liveStandings.length === 0) {
-        panel.style.display = 'none';
+    const onDemand = Boolean(opts && opts.onDemand);
+    if (!onDemand && !bracketDrawnOnDemand) {
+        hideTopCutBracketTree();
         return;
     }
 
-    // MAIN1: soft Top32 = EUC invite; drabinka = hard Top 8.
-    // MAIN2: brak playoffów — nie pokazuj drabinki „Top Cut”.
-    const bracketCutSize = resolveTopCutBracketSize(cutSize);
+    if (!liveStandings || liveStandings.length === 0) {
+        hideTopCutBracketTree();
+        if (statusTextEl) {
+            statusTextEl.textContent = 'Brak tabeli LIVE — najpierw odśwież turniej, potem narysuj drabinkę.';
+        }
+        return;
+    }
+
+    // On-demand: honor user-selected size.
+    // Auto/legacy path: MAIN1 hard Top 8; MAIN2 brak playoffów (0).
+    let bracketCutSize;
+    if (onDemand) {
+        const requested = opts.requestedSize != null ? opts.requestedSize : cutSize;
+        bracketCutSize = normalizeBracketDrawSize(requested);
+    } else {
+        bracketCutSize = resolveTopCutBracketSize(cutSize);
+    }
     if (!bracketCutSize || bracketCutSize < 2) {
-        panel.style.display = 'none';
+        hideTopCutBracketTree();
         if (statusTextEl) {
             statusTextEl.textContent = 'Ten tryb nie ma fazy pucharowej (MAIN2: hard Top 8 = ranking po Swiss + TB).';
         }
@@ -6284,10 +6401,11 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
     const roundsMatches = latestData?.roundsMatches || null;
     const tree = buildFullTopCutBracketTree(liveStandings, bracketCutSize, roundsMatches, cachedStandingsMap);
     if (!tree.rounds || tree.rounds.length === 0) {
-        panel.style.display = 'none';
+        hideTopCutBracketTree();
         return;
     }
 
+    panel.hidden = false;
     panel.style.display = 'block';
     setElText('bracketSizeTitle', tree.bracketSize);
 
@@ -6587,6 +6705,16 @@ if (typeof module !== 'undefined' && module.exports) {
         renderPrizeChipsLegendHtml,
         syncPrizeChipsLegends,
         resolveTopCutBracketSize,
+        normalizeBracketDrawSize,
+        getDefaultBracketDrawSize,
+        getSelectedBracketDrawSize,
+        syncBracketDrawSizeDefault,
+        updateBracketDrawHint,
+        drawTopCutBracketOnDemand,
+        clearTopCutBracketOnDemand,
+        maybeRefreshDrawnBracket,
+        hideTopCutBracketTree,
+        renderTopCutBracketPanel,
         renderTournamentSwitcher,
         applyTournamentSelection,
         getActiveTournamentMode,

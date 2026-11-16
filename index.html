@@ -1068,6 +1068,100 @@
             border-left: 4px solid #f1c40f;
             margin-top: 25px;
         }
+        .bracket-draw-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 14px;
+            align-items: flex-end;
+            margin-top: 14px;
+            padding: 12px 14px;
+            background: linear-gradient(135deg, rgba(241, 196, 15, 0.08) 0%, rgba(23, 26, 36, 0.9) 55%);
+            border: 1px solid rgba(241, 196, 15, 0.28);
+            border-radius: var(--radius);
+        }
+        .bracket-draw-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 140px;
+        }
+        .bracket-draw-field label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            font-family: var(--font-ui);
+        }
+        .bracket-draw-field select {
+            height: 38px;
+            min-width: 120px;
+            padding: 0 10px;
+            border-radius: var(--radius);
+            border: 1px solid #36405a;
+            background: #121826;
+            color: #eef2f6;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: var(--font-ui);
+        }
+        .bracket-draw-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .btn-draw-bracket {
+            height: 38px;
+            padding: 0 18px;
+            border: 1px solid #f1c40f;
+            border-radius: var(--radius);
+            background: linear-gradient(180deg, #e8b84a 0%, #d4a017 100%);
+            color: #1a1203;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            font-family: var(--font-display);
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(212, 160, 23, 0.28);
+            transition: transform 0.12s ease, filter 0.12s ease;
+        }
+        .btn-draw-bracket:hover {
+            filter: brightness(1.06);
+            transform: translateY(-1px);
+        }
+        .btn-draw-bracket:active {
+            transform: translateY(0);
+        }
+        .btn-clear-bracket {
+            height: 38px;
+            padding: 0 14px;
+            border: 1px solid #36405a;
+            border-radius: var(--radius);
+            background: #232838;
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: var(--font-ui);
+            cursor: pointer;
+        }
+        .btn-clear-bracket:hover {
+            color: #eef2f6;
+            border-color: #64748b;
+        }
+        .bracket-draw-hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #94a3b8;
+            line-height: 1.45;
+        }
+        .bracket-draw-hint strong {
+            color: #f1c40f;
+        }
+        .bracket-tree-host[hidden] {
+            display: none !important;
+        }
         .bracket-mode-bar {
             display: flex;
             gap: 8px;
@@ -2275,23 +2369,61 @@
 
 
 
-<!-- SEKCJA 4: SYMULATOR DRABINKI TOP CUT (BRACKET & PLAY/DRAW PREDICTOR) -->
-<div class="panel bracket-panel" id="topCutBracketPanel" style="display: none;">
+<!-- SEKCJA 4 (dół strony): drabinka Top Cut — rysowana na żądanie -->
+<section class="panel bracket-panel" id="topCutBracketSection" aria-label="Drabinka Top Cut">
     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
         <div>
-            <h3 style="color: #f1c40f; margin-bottom: 4px;">🏆 Drabinka Pucharowa Top Cut (Top <span id="bracketSizeTitle">8</span> — Drzewko & Play/Draw)</h3>
-            <div id="bracketPhaseStatusText" style="font-size: 12px; color: #94a3b8;">
-                Oficjalne drzewko pucharowe (od 1. rundy Top Cut aż do Finału). W każdej rundzie wyższy seed po fazie Swiss ma przywilej <strong>🟢 PLAY</strong>!
+            <h3 style="color: #f1c40f; margin-bottom: 4px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;">
+                🏆 Drabinka Top Cut
+            </h3>
+            <div style="font-size: 12px; color: #94a3b8; max-width: 52rem;">
+                Na żądanie — wybierz rozmiar i narysuj drzewko z tabeli LIVE (PLAY/DRAW wg seedu po Swiss).
+                Domyślny rozmiar bierze się z cutu turnieju / admina; w <strong style="color:#f1c40f;">MAIN1</strong> zawsze startuje od hard <strong style="color:#f1c40f;">Top 8</strong>.
             </div>
         </div>
-        <div class="bracket-mode-bar" style="margin: 0;">
-            <button type="button" id="bracketModeProjectedBtn" class="bracket-mode-btn active" onclick="setBracketDisplayMode('projected')" title="Pokazuje pełną symulację kolejnych rund drabinki przy założeniu awansu wyższych seedów">🔮 Pełna Ścieżka (Faworyci wg Seedu)</button>
-            <button type="button" id="bracketModeStrictBtn" class="bracket-mode-btn" onclick="setBracketDisplayMode('strict')" title="Pokazuje w kolejnych rundach tylko potwierdzonych zwycięzców oraz pary potencjalnych seedów">🌳 Tylko Potwierdzone / TBD</button>
+    </div>
+
+    <div class="bracket-draw-bar" id="bracketDrawControls">
+        <div class="bracket-draw-field">
+            <label for="bracketDrawSize">Ile w top cut</label>
+            <select id="bracketDrawSize" aria-describedby="bracketDrawHint" onchange="updateBracketDrawHint()">
+                <option value="4">Top 4</option>
+                <option value="8" selected>Top 8</option>
+                <option value="16">Top 16</option>
+                <option value="32">Top 32</option>
+                <option value="64">Top 64</option>
+            </select>
+        </div>
+        <div class="bracket-draw-actions">
+            <button type="button" class="btn-draw-bracket" id="drawTopCutBracketBtn" onclick="drawTopCutBracketOnDemand()">
+                Narysuj drabinkę
+            </button>
+            <button type="button" class="btn-clear-bracket" id="clearTopCutBracketBtn" onclick="clearTopCutBracketOnDemand()" title="Schowaj drzewko (kontrola zostaje)">
+                Schowaj
+            </button>
         </div>
     </div>
-    <div id="bracketSelectedPlayerBanner" style="display: none; margin-top: 10px;"></div>
-    <div id="topCutBracketGrid" class="bracket-tree-wrapper"></div>
-</div>
+    <div class="bracket-draw-hint" id="bracketDrawHint">Domyślnie: Top 8 (z ustawień cut / trybu).</div>
+
+    <div id="topCutBracketPanel" class="bracket-tree-host" hidden>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-top: 14px;">
+            <div>
+                <h4 style="color: #e8b84a; margin: 0 0 4px; font-size: 15px;">
+                    Top <span id="bracketSizeTitle">8</span> — drzewko &amp; Play/Draw
+                </h4>
+                <div id="bracketPhaseStatusText" style="font-size: 12px; color: #94a3b8;">
+                    Oficjalne drzewko pucharowe (od 1. rundy Top Cut aż do Finału). W każdej rundzie wyższy seed po fazie Swiss ma przywilej <strong>🟢 PLAY</strong>!
+                </div>
+            </div>
+            <div class="bracket-mode-bar" style="margin: 0;">
+                <button type="button" id="bracketModeProjectedBtn" class="bracket-mode-btn active" onclick="setBracketDisplayMode('projected')" title="Pokazuje pełną symulację kolejnych rund drabinki przy założeniu awansu wyższych seedów">🔮 Pełna Ścieżka (Faworyci wg Seedu)</button>
+                <button type="button" id="bracketModeStrictBtn" class="bracket-mode-btn" onclick="setBracketDisplayMode('strict')" title="Pokazuje w kolejnych rundach tylko potwierdzonych zwycięzców oraz pary potencjalnych seedów">🌳 Tylko Potwierdzone / TBD</button>
+            </div>
+        </div>
+        <div id="bracketSelectedPlayerBanner" style="display: none; margin-top: 10px;"></div>
+        <div id="topCutBracketGrid" class="bracket-tree-wrapper"></div>
+    </div>
+</section>
 
 
 
@@ -2381,6 +2513,10 @@
         <span class="nav-icon">⚔️</span>
         <span>Mecze</span>
     </button>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('topCutBracketSection', this)">
+        <span class="nav-icon">🏆</span>
+        <span>Drabinka</span>
+    </button>
     <button type="button" class="mobile-nav-btn nav-refresh" onclick="startTracking()">
         <span class="nav-icon">🔄</span>
         <span>Odśwież</span>
@@ -2391,6 +2527,6 @@
 
 <script src="tie-sim-core.js?v=20261116chips2"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261116format1"></script>
+<script src="app.js?v=20261116bracket1"></script>
 </body>
 </html>
