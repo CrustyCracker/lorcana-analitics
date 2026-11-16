@@ -11,6 +11,7 @@ const {
     textMatchesPolishTeamTag,
     computePolishAvgPointsStats,
     formatAvgPointsDisplay,
+    formatDay2CountDisplay,
     formatStarPlayerDisplay,
     polishTeamGroupLabel,
     checkTextForPolishIndicators,
@@ -58,7 +59,7 @@ describe('Polish avg points stats', () => {
         assert.equal(checkTextForPolishIndicators('[Q2W] Test'), true);
         assert.equal(checkTextForPolishIndicators('🐀Bayo jayo'), true);
         assert.equal(isPolishPlayer('🐀Sheitene🐀'), true);
-        assert.equal(polishTeamGroupLabel(POLISH_RAT_CREW_LABEL), '🐀 rat crew');
+        assert.equal(polishTeamGroupLabel(POLISH_RAT_CREW_LABEL), '🐀 Szczury Wrocławskie');
     });
 
     it('treats rat emoji as its own skład (separate from bracket tags)', () => {
@@ -68,30 +69,34 @@ describe('Polish avg points stats', () => {
             standing(3, '[GPL] Crusty 🇵🇱 🏔️', 15),
             standing(4, '🐀Liryq🐀🇵🇱🏔️', 9)
         ];
-        const stats = computePolishAvgPointsStats(standings);
+        const stats = computePolishAvgPointsStats(standings, { day2MinPoints: 18 });
         const rat = stats.teams.find((t) => t.tag === POLISH_RAT_CREW_LABEL);
         const gpl = stats.teams.find((t) => t.tag === 'GPL');
 
-        assert.ok(rat, 'rat crew row must exist');
+        assert.ok(rat, 'Szczury Wrocławskie row must exist');
         assert.equal(rat.count, 3);
         assert.equal(rat.avgPoints, (18 + 12 + 9) / 3);
         assert.equal(rat.star.name, '🐀Terry 🥖🐀');
         assert.equal(rat.star.points, 18);
+        assert.equal(rat.day2Count, 1); // only Terry at 18
 
         assert.ok(gpl);
         assert.equal(gpl.count, 1);
         assert.equal(gpl.star.name, '[GPL] Crusty 🇵🇱 🏔️');
+        assert.equal(gpl.day2Count, 0);
 
         // Flag group includes Crusty + Liryq (both have 🇵🇱)
         assert.equal(stats.flag.count, 2);
         assert.equal(stats.flag.star.name, '[GPL] Crusty 🇵🇱 🏔️');
+        assert.equal(stats.flag.day2Count, 0);
         // Terry + Bayo: Polish via 🐀, no 🇵🇱
         assert.equal(stats.noFlag.count, 2);
         assert.equal(stats.noFlag.avgPoints, (18 + 12) / 2);
         assert.equal(stats.noFlag.star.name, '🐀Terry 🥖🐀');
+        assert.equal(stats.noFlag.day2Count, 1);
     });
 
-    it('computes avg points and star player for PL-flag / no-flag / teams / rat crew', () => {
+    it('computes avg points, Day2 count and star player for PL-flag / no-flag / teams / rats', () => {
         const standings = [
             standing(1, '[GPL] Crusty 🇵🇱 🏔️', 15, 15, 2),
             standing(2, '[GPL] EvilBunny 🇵🇱🏔️', 12, 12, 5),
@@ -102,36 +107,55 @@ describe('Polish avg points stats', () => {
             standing(7, 'NightRaven 🇵🇱🏔️', 10)
         ];
 
-        const stats = computePolishAvgPointsStats(standings);
+        const stats = computePolishAvgPointsStats(standings, { day2MinPoints: 18 });
 
         assert.equal(stats.flag.count, 3); // Crusty, EvilBunny, NightRaven
         assert.equal(stats.flag.avgPoints, (15 + 12 + 10) / 3);
         assert.equal(stats.flag.star.name, '[GPL] Crusty 🇵🇱 🏔️');
         assert.equal(stats.flag.star.points, 15);
+        assert.equal(stats.flag.day2Count, 0);
 
         // Leviniuch + Terry + Mayxs: Polish without 🇵🇱 (team tag / rat / known nick)
         assert.equal(stats.noFlag.count, 3);
         assert.equal(stats.noFlag.avgPoints, (9 + 18 + 6) / 3);
         assert.equal(stats.noFlag.star.name, '🐀Terry 🥖🐀');
         assert.equal(stats.noFlag.star.points, 18);
+        assert.equal(stats.noFlag.day2Count, 1);
 
         const byTag = Object.fromEntries(stats.teams.map((t) => [t.tag, t]));
         assert.equal(byTag.GPL.count, 2);
         assert.equal(byTag.GPL.avgPoints, (15 + 12) / 2);
         assert.equal(byTag.GPL.star.name, '[GPL] Crusty 🇵🇱 🏔️');
+        assert.equal(byTag.GPL.day2Count, 0);
         assert.equal(byTag.M7.count, 1);
         assert.equal(byTag.M7.star.name, '[M7] Leviniuch');
+        assert.equal(byTag.M7.day2Count, 0);
         assert.equal(byTag.LV.count, 1);
         assert.equal(byTag.LV.avgPoints, 6);
         assert.equal(byTag[POLISH_RAT_CREW_LABEL].count, 1);
         assert.equal(byTag[POLISH_RAT_CREW_LABEL].avgPoints, 18);
         assert.equal(byTag[POLISH_RAT_CREW_LABEL].star.name, '🐀Terry 🥖🐀');
+        assert.equal(byTag[POLISH_RAT_CREW_LABEL].day2Count, 1);
         assert.equal(byTag.OSA, undefined);
         assert.equal(formatAvgPointsDisplay(stats.flag.avgPoints), '12.3');
         assert.equal(formatAvgPointsDisplay(stats.noFlag.avgPoints), '11.0');
         assert.equal(formatAvgPointsDisplay(null), '—');
+        assert.equal(formatDay2CountDisplay(stats.noFlag.day2Count), '1');
+        assert.equal(formatDay2CountDisplay(null), '—');
         assert.equal(formatStarPlayerDisplay(stats.flag.star), '⭐ [GPL] Crusty 🇵🇱 🏔️ (15 pkt)');
         assert.equal(formatStarPlayerDisplay(stats.noFlag.star), '⭐ 🐀Terry 🥖🐀 (18 pkt)');
+    });
+
+    it('omits Day2 count when threshold is null (CCQ / custom)', () => {
+        const standings = [
+            standing(1, '[GPL] Crusty 🇵🇱 🏔️', 21),
+            standing(2, '🐀Terry 🥖🐀', 18)
+        ];
+        const stats = computePolishAvgPointsStats(standings, { day2MinPoints: null });
+        assert.equal(stats.flag.day2Count, null);
+        assert.equal(stats.noFlag.day2Count, null);
+        assert.equal(stats.teams.find((t) => t.tag === POLISH_RAT_CREW_LABEL).day2Count, null);
+        assert.equal(formatDay2CountDisplay(stats.flag.day2Count), '—');
     });
 
     it('prefers livePoints when present and breaks star ties by liveRank', () => {

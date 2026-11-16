@@ -1080,22 +1080,47 @@ function pickStarPlayer(members) {
     };
 }
 
-function summarizePolishGroup(members) {
+/** Day 2 point floor from active prize ladder (MAIN1/MAIN2 → 18; CCQ/custom → null). */
+function resolvePolishAvgDay2MinPoints() {
+    try {
+        const api = getPrizeLaddersApi();
+        if (!api || typeof api.getLadder !== 'function') return null;
+        const ladder = api.getLadder(getActiveTournamentMode());
+        const min = ladder && ladder.day2MinPoints;
+        if (min == null) return null;
+        const n = Number(min);
+        return Number.isFinite(n) ? n : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function summarizePolishGroup(members, day2MinPoints = null) {
     const points = members.map((m) => m.points);
+    let day2Count = null;
+    if (day2MinPoints != null && Number.isFinite(day2MinPoints)) {
+        day2Count = members.filter((m) => Number(m.points) >= day2MinPoints).length;
+    }
     return {
         count: members.length,
         avgPoints: averagePoints(points),
-        star: pickStarPlayer(members)
+        star: pickStarPlayer(members),
+        day2Count
     };
 }
 
 /**
  * Statystyki średnich punktów: Polacy z/bez flagi PL oraz per tag drużyny PL
- * (katalog z POLISH_TEAM_TAGS / POLISH_KNOWN_NICKS + osobny skład „rat crew” z 🐀).
+ * (katalog z POLISH_TEAM_TAGS / POLISH_KNOWN_NICKS + osobny skład „Szczury Wrocławskie” z 🐀).
  * „Bez flagi” = matched via nick list / heuristics (góry, szczur, team tag), bez 🇵🇱 w nicku.
+ * @param {object[]} standings
+ * @param {{ day2MinPoints?: number|null }} [options]
  */
-function computePolishAvgPointsStats(standings) {
+function computePolishAvgPointsStats(standings, options = {}) {
     const list = Array.isArray(standings) ? standings : [];
+    const day2MinPoints = Object.prototype.hasOwnProperty.call(options || {}, 'day2MinPoints')
+        ? options.day2MinPoints
+        : resolvePolishAvgDay2MinPoints();
     const flagMembers = [];
     const noFlagMembers = [];
     const teamMembers = new Map();
@@ -1140,7 +1165,7 @@ function computePolishAvgPointsStats(standings) {
         if (members.length === 0) continue;
         teams.push({
             tag,
-            ...summarizePolishGroup(members)
+            ...summarizePolishGroup(members, day2MinPoints)
         });
     }
     teams.sort((a, b) => {
@@ -1150,9 +1175,10 @@ function computePolishAvgPointsStats(standings) {
     });
 
     return {
-        flag: summarizePolishGroup(flagMembers),
-        noFlag: summarizePolishGroup(noFlagMembers),
-        teams
+        flag: summarizePolishGroup(flagMembers, day2MinPoints),
+        noFlag: summarizePolishGroup(noFlagMembers, day2MinPoints),
+        teams,
+        day2MinPoints: day2MinPoints == null ? null : day2MinPoints
     };
 }
 
@@ -1168,8 +1194,13 @@ function formatStarPlayerDisplay(star) {
 }
 
 function polishTeamGroupLabel(tag) {
-    if (tag === POLISH_RAT_CREW_LABEL) return '🐀 rat crew';
+    if (tag === POLISH_RAT_CREW_LABEL) return '🐀 Szczury Wrocławskie';
     return `[${tag}]`;
+}
+
+function formatDay2CountDisplay(day2Count) {
+    if (day2Count == null || !Number.isFinite(day2Count)) return '—';
+    return String(day2Count);
 }
 
 function renderPolishAvgPointsTable(standings) {
@@ -1186,6 +1217,7 @@ function renderPolishAvgPointsTable(standings) {
             label: '🇵🇱 Polacy z flagą',
             count: stats.flag.count,
             avgPoints: stats.flag.avgPoints,
+            day2Count: stats.flag.day2Count,
             star: stats.flag.star
         });
     }
@@ -1194,6 +1226,7 @@ function renderPolishAvgPointsTable(standings) {
             label: 'Polacy bez flagi',
             count: stats.noFlag.count,
             avgPoints: stats.noFlag.avgPoints,
+            day2Count: stats.noFlag.day2Count,
             star: stats.noFlag.star
         });
     }
@@ -1202,6 +1235,7 @@ function renderPolishAvgPointsTable(standings) {
             label: polishTeamGroupLabel(team.tag),
             count: team.count,
             avgPoints: team.avgPoints,
+            day2Count: team.day2Count,
             star: team.star
         });
     }
@@ -1218,6 +1252,7 @@ function renderPolishAvgPointsTable(standings) {
         `<td>${escapeHtml(r.label)}</td>` +
         `<td>${r.count}</td>` +
         `<td><strong>${formatAvgPointsDisplay(r.avgPoints)}</strong></td>` +
+        `<td>${formatDay2CountDisplay(r.day2Count)}</td>` +
         `<td class="polish-avg-star">${escapeHtml(formatStarPlayerDisplay(r.star))}</td>` +
         `</tr>`
     )).join('');
@@ -6464,11 +6499,14 @@ if (typeof module !== 'undefined' && module.exports) {
         textMatchesPolishTeamTag,
         getPlayerIdentityTexts,
         computePolishAvgPointsStats,
+        resolvePolishAvgDay2MinPoints,
         formatAvgPointsDisplay,
+        formatDay2CountDisplay,
         formatStarPlayerDisplay,
         pickStarPlayer,
         getPolishStatsPlayerLabel,
         polishTeamGroupLabel,
+        summarizePolishGroup,
         checkTextForPolishIndicators,
         isPolishPlayer,
         PAGE_SIZE,
