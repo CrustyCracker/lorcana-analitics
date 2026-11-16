@@ -99,6 +99,9 @@ describe('calculateSoftCutIdInflation', () => {
         assert.equal(info.lockedIdTables, 11);
         assert.equal(info.openMirrorTables, 0);
         assert.equal(info.minTablesMustPlay, 7);
+        assert.equal(info.minPeopleMustPlay, 14);
+        assert.equal(info.minAchievableSoftCut, 33);
+        assert.equal(info.canReachMinSoftCut, true);
         assert.equal(info.projectedThreshIfAllId, 34);
         assert.equal(info.projectedThreshIfAllPlay, 33);
         assert.equal(info.geBandIfAllId, 38);
@@ -142,6 +145,9 @@ describe('calculateSoftCutIdInflation', () => {
         // all play: 5 + 6 = 11 on ≥10 → still thresh 10 (11>=8)
         // 17-k < 8 ⇒ k >= 10, but only 6 tables ⇒ impossible
         assert.equal(info.minTablesMustPlay, null);
+        assert.equal(info.minPeopleMustPlay, null);
+        assert.equal(info.minAchievableSoftCut, 10);
+        assert.equal(info.canReachMinSoftCut, false);
         assert.equal(info.projectedThreshIfAllPlay, 10);
     });
 
@@ -171,12 +177,15 @@ describe('calculateSoftCutIdInflation', () => {
         assert.equal(bd.missingFromBubbleBracket, 0);
     });
 
-    it('Polish EUC copy names tables-to-play and works for open LIVE mirrors', () => {
+    it('Polish EUC copy names min soft cut + people/tables and works for open LIVE mirrors', () => {
         const { standings, pairings } = buildDlcStyleField();
         const info = calculateSoftCutIdInflation(standings, pairings, 32);
         const html = formatSoftCutIdInflationHtml(info, { alwaysShow: true });
-        assert.match(html, /Ile stołów musi grać, żeby nie podnieść soft progu EUC/);
-        assert.match(html, /≥ 7 z 11/);
+        assert.match(html, /Minimalny soft cut i ile stołów musi grać/);
+        assert.match(html, /Minimalny soft cut osiągalny/);
+        assert.match(html, /Ile musi grać na tym paśmie/);
+        assert.match(html, /≥ 7 stołów \(14 osób\) na 33 pkt/);
+        assert.match(html, /33 pkt/);
 
         // Live path: unfinished equal-score mirrors counted as open.
         const liveStandings = [];
@@ -196,7 +205,9 @@ describe('calculateSoftCutIdInflation', () => {
         assert.equal(liveInfo.openMirrorTables, 8);
         assert.equal(liveInfo.lockedIdTables, 0);
         assert.ok(liveInfo.minTablesMustPlay === null || liveInfo.minTablesMustPlay >= 1);
+        assert.ok(Number.isFinite(liveInfo.minAchievableSoftCut));
         const idle = formatSoftCutIdInflationHtml(null, { alwaysShow: true });
         assert.match(idle, /Narzędzie działa <strong>na żywo<\/strong>/);
+        assert.match(idle, /najniższy soft cut w punktach/);
     });
 });

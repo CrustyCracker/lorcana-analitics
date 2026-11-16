@@ -5520,6 +5520,9 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
             geBandIfAllId: currentInvites,
             geBandIfAllPlay: currentInvites,
             minTablesMustPlay: 0,
+            minPeopleMustPlay: 0,
+            minAchievableSoftCut: currentThresh,
+            canReachMinSoftCut: true,
             projectedThreshIfAllId: currentThresh,
             projectedThreshIfAllPlay: currentThresh,
             projectedInvitesIfAllId: currentInvites,
@@ -5607,7 +5610,8 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
     const geBandNow = countGe(ptsById, bandPts);
 
     // Min decisive results among these mirrors so soft threshold stays at mirrorScore
-    // (i.e. fewer than cutSize players reach bandPts).
+    // (i.e. fewer than cutSize players reach bandPts) — that floor is the min soft cut
+    // these bubble mirrors can still unlock.
     let minTablesMustPlay = 0;
     if (geBandIfAllId >= size) {
         minTablesMustPlay = mirrorTables; // fallback if even all-play can't drop
@@ -5624,6 +5628,16 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
         }
     }
 
+    const projectedThreshIfAllId = softThreshOf(ifAllId);
+    const projectedThreshIfAllPlay = softThreshOf(ifAllPlay);
+    // Lowest soft threshold these mirrors can still produce (W/L instead of ID).
+    const minAchievableSoftCut = projectedThreshIfAllPlay;
+    const canReachMinSoftCut = minTablesMustPlay != null
+        && minAchievableSoftCut < projectedThreshIfAllId;
+    const minPeopleMustPlay = minTablesMustPlay == null
+        ? null
+        : minTablesMustPlay * 2;
+
     return {
         cutSize: size,
         relevant: mirrorTables > 0,
@@ -5639,8 +5653,11 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
         geBandIfAllId,
         geBandIfAllPlay,
         minTablesMustPlay,
-        projectedThreshIfAllId: softThreshOf(ifAllId),
-        projectedThreshIfAllPlay: softThreshOf(ifAllPlay),
+        minPeopleMustPlay,
+        minAchievableSoftCut,
+        canReachMinSoftCut,
+        projectedThreshIfAllId,
+        projectedThreshIfAllPlay,
         projectedInvitesIfAllId: softInvitesOf(ifAllId),
         projectedInvitesIfAllPlay: softInvitesOf(ifAllPlay),
         tables: tables.map((t) => ({
@@ -5658,27 +5675,32 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
         return `
             <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--idle">
                 <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale</div>
-                <div class="soft-euc-play-hint__title">Ile stołów musi grać, żeby nie podnieść soft progu EUC</div>
+                <div class="soft-euc-play-hint__title">Minimalny soft cut i ile stołów musi grać</div>
                 <div class="soft-euc-play-hint__body">
                     Narzędzie działa <strong>na żywo</strong> z aktualnych pairings (otwarte lustrzane stoły + już oddane ID).
-                    Pojawi się liczba, gdy na bubble będą mirory (np. 33v33): ID podbija soft próg i odcina ludzi na niższym koszyku,
-                    a W/L zdejmuje 1 osobę z wyższego pasa na stół.
+                    Gdy na bubble pojawią się mirory (np. 33v33), pokażemy:
+                    (1) <strong>najniższy soft cut w punktach</strong>, jaki da się jeszcze złapać, jeśli dość osób zagra W/L zamiast ID;
+                    (2) <strong>ile stołów / osób</strong> na tym paśmie musi grać, żeby zejść do tego progu.
+                    Krótko: ID pompują próg w górę; wynik (W/L) zdejmuje 1 osobę z wyższego pasa na stół.
                 </div>
             </div>
         `;
     }
 
     const must = info.minTablesMustPlay;
+    const people = info.minPeopleMustPlay;
+    const minCut = info.minAchievableSoftCut;
+    const band = info.mirrorScore;
     let headline;
     let riskTone = 'ok';
     if (must == null) {
-        headline = `Te ${info.mirrorTables} lustrzane stoły same nie zbiją soft progu — za mało, by zejść poniżej Top ${info.cutSize} na paśmie ≥${info.bandPts}.`;
+        headline = `Te ${info.mirrorTables} lustrzane stoły same nie zbiją soft progu — nawet gdyby wszystkie grały, próg zostaje przy ${minCut} pkt (za mało, by zejść poniżej Top ${info.cutSize} na ≥${info.bandPts}).`;
         riskTone = 'warn';
     } else if (must === 0) {
-        headline = `Soft próg EUC nie zależy już od tych ID (0 stołów musi grać).`;
+        headline = `Soft próg EUC nie zależy już od tych ID — 0 stołów musi grać. Minimalny soft cut z tych mirorów: ${minCut} pkt.`;
         riskTone = 'ok';
     } else {
-        headline = `≥ ${must} z ${info.mirrorTables} stołów musi GRAĆ (W/L, nie ID), żeby nie podnieść soft progu EUC.`;
+        headline = `Żeby złapać minimalny soft cut ${minCut} pkt: ≥ ${must} stołów (${people} osób) na ${band} pkt musi GRAĆ (W/L, nie ID) — z ${info.mirrorTables} lustrzanych.`;
         riskTone = 'warn';
     }
 
@@ -5687,15 +5709,36 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
         : `<strong>0</strong> otwartych`;
     const lockedBit = `<strong>${info.lockedIdTables}</strong> już wzięło ID`;
 
+    const minCutStat = must == null
+        ? `${minCut} pkt <span class="soft-euc-play-hint__stat-note">(tych mirorów nie starczy)</span>`
+        : `${minCut} pkt`;
+    const playStat = must == null
+        ? `niedostępne z tych ${info.mirrorTables} stołów`
+        : (must === 0
+            ? `0 stołów / 0 osób`
+            : `≥ ${must} stołów / ${people} osób na ${band} pkt`);
+
     return `
         <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--${riskTone}">
             <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale · Top ${info.cutSize}</div>
-            <div class="soft-euc-play-hint__title">Ile stołów musi grać, żeby nie podnieść soft progu EUC</div>
+            <div class="soft-euc-play-hint__title">Minimalny soft cut i ile stołów musi grać</div>
+            <div class="soft-euc-play-hint__stats">
+                <div class="soft-euc-play-hint__stat">
+                    <div class="soft-euc-play-hint__stat-label">Minimalny soft cut osiągalny</div>
+                    <div class="soft-euc-play-hint__stat-value">${minCutStat}</div>
+                    <div class="soft-euc-play-hint__stat-note">najniższy próg w pkt, jeśli dość mirorów zagra W/L zamiast ID</div>
+                </div>
+                <div class="soft-euc-play-hint__stat">
+                    <div class="soft-euc-play-hint__stat-label">Ile musi grać na tym paśmie</div>
+                    <div class="soft-euc-play-hint__stat-value" style="color: ${riskTone === 'warn' ? '#f59e0b' : '#34d399'};">${playStat}</div>
+                    <div class="soft-euc-play-hint__stat-note">ludzie / stoły na potencjalnym najniższym soft cucie (${band} pkt)</div>
+                </div>
+            </div>
             <div class="soft-euc-play-hint__answer" style="color: ${riskTone === 'warn' ? '#f59e0b' : '#34d399'};">
                 ${escapeHtml(headline)}
             </div>
             <div class="soft-euc-play-hint__body">
-                Lustrzane stoły na <strong>${info.mirrorScore} pkt</strong> (ID → pas <strong>${info.bandPts}</strong>):
+                Lustrzane stoły na <strong>${band} pkt</strong> (ID → pas <strong>${info.bandPts}</strong>):
                 ${lockedBit}, ${openBit}.
                 Teraz soft próg = <strong>${info.currentThresh} pkt</strong> (${info.currentInvites} zaproszeń).
                 Gdyby wszystkie te mirory wzięły ID → próg <strong>${info.projectedThreshIfAllId}</strong>
@@ -5889,7 +5932,7 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
     const titlePrefixEl = document.getElementById('cutBreakdownTitlePrefix');
     if (titlePrefixEl) {
         titlePrefixEl.textContent = cutRule === 'soft'
-            ? 'Soft EUC — ile stołów musi grać + analiza kreski (Top '
+            ? 'Soft EUC — minimalny soft cut + ile musi grać + kreska (Top '
             : 'Analiza Kreski i Koszyków Punktowych (Top ';
     }
 
