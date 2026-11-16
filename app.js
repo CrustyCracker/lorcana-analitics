@@ -56,15 +56,28 @@ let tieSimWorkerFailed = false;
 let tieSimRequestSeq = 0;
 let tieSimActiveRequestId = 0;
 
-/** Shared site config from admin (active event + algorithm). */
+/** Shared site config from admin (multi-tournament + algorithm). */
 let siteConfig = {
     activeEventId: null,
+    activeTournamentId: null,
+    tournaments: [],
     predictionAlgorithm: 'hybrid',
     defaultCutSize: 4,
     defaultCutRule: 'hard',
     defaultSwissRounds: null,
     updatedAt: null
 };
+/** Currently selected public tournament slot (from admin list). */
+let activeTournament = null;
+const SELECTED_TOURNAMENT_STORAGE_KEY = 'lorcana_selected_tournament_id';
+
+function getPrizeLaddersApi() {
+    if (typeof LorcanaPrizeLadders !== 'undefined' && LorcanaPrizeLadders) return LorcanaPrizeLadders;
+    if (typeof require !== 'undefined') {
+        try { return require('./prize-ladders.js'); } catch (e) { return null; }
+    }
+    return null;
+}
 /** In-memory TIE result cache: fingerprint → { result, at } (per browser tab). */
 const tieSimResultCache = new Map();
 const TIE_SIM_CACHE_MAX = 24;
@@ -188,11 +201,216 @@ function runTieSimulationAsync(input) {
 }
 
 function updateActiveEventDisplay(eventId, algo) {
+    if (typeof document === 'undefined') return;
     const el = document.getElementById('activeEventDisplay');
     if (!el) return;
     const id = String(eventId || '').replace(/\D/g, '') || '—';
     const algorithm = algo || siteConfig.predictionAlgorithm || 'hybrid';
-    el.textContent = `#${id} · algorytm: ${algorithm}`;
+    const t = activeTournament || findTournamentByEventId(id);
+    const name = t?.name ? String(t.name) : null;
+    const mode = t?.mode ? String(t.mode) : null;
+    const bits = [];
+    if (name) bits.push(name);
+    bits.push(`#${id}`);
+    if (mode) bits.push(mode);
+    bits.push(`algo: ${algorithm}`);
+    el.textContent = bits.join(' · ');
+}
+
+function findTournamentById(tid) {
+    const id = String(tid || '');
+    return (siteConfig.tournaments || []).find((t) => String(t.id) === id) || null;
+}
+
+function findTournamentByEventId(eventId) {
+    const id = String(eventId || '').replace(/\D/g, '');
+    if (!id) return null;
+    return (siteConfig.tournaments || []).find((t) => String(t.eventId) === id) || null;
+}
+
+function getActiveTournamentMode() {
+    const api = getPrizeLaddersApi();
+    const mode = activeTournament?.mode || 'custom';
+    return api ? api.normalizeMode(mode) : String(mode || 'custom').toUpperCase();
+}
+
+function persistSelectedTournamentId(tid) {
+    try {
+        if (tid) localStorage.setItem(SELECTED_TOURNAMENT_STORAGE_KEY, String(tid));
+    } catch (e) {}
+}
+
+function readStoredTournamentId() {
+    try { return localStorage.getItem(SELECTED_TOURNAMENT_STORAGE_KEY); } catch (e) { return null; }
+}
+
+/**
+ * Apply a tournament slot: event id + cut defaults (unless local cut override).
+ */
+function applyTournamentSelection(tournament, { track = true, clearLocalCut = false } = {}) {
+    if (!tournament || !tournament.eventId) return;
+    activeTournament = tournament;
+    siteConfig.activeTournamentId = tournament.id;
+    siteConfig.activeEventId = Number(tournament.eventId);
+    siteConfig.defaultCutSize = Number(tournament.cutSize) || siteConfig.defaultCutSize;
+    siteConfig.defaultCutRule = tournament.cutRule === 'soft' ? 'soft' : 'hard';
+    if (Object.prototype.hasOwnProperty.call(tournament, 'swissRounds')) {
+        siteConfig.defaultSwissRounds = tournament.swissRounds == null ? null : Number(tournament.swissRounds);
+    }
+    persistSelectedTournamentId(tournament.id);
+
+    const eventInput = document.getElementById('eventId');
+    if (eventInput) eventInput.value = String(tournament.eventId);
+    updateActiveEventDisplay(tournament.eventId, siteConfig.predictionAlgorithm);
+    renderTournamentSwitcher();
+
+    if (clearLocalCut || (!hasLocalCutSizeOverride() && !hasLocalCutRuleOverride())) {
+        if (clearLocalCut) {
+            try {
+                localStorage.removeItem(CUT_SIZE_STORAGE_KEY);
+                localStorage.removeItem(CUT_RULE_STORAGE_KEY);
+            } catch (e) {}
+        }
+        applyAdminCutDefaultsToUi();
+        updateCutPrefsHint();
+    }
+    syncRoundsOverrideUi(latestData);
+
+    if (track) startTracking();
+    renderPrizeGoalsPanel();
+}
+
+function renderTournamentSwitcher() {
+    if (typeof document === 'undefined') return;
+    const host = document.getElementById('tournamentSwitcher');
+    if (!host) return;
+    const list = Array.isArray(siteConfig.tournaments) ? siteConfig.tournaments : [];
+    if (list.length === 0) {
+        host.innerHTML = '<span class="field-hint">Brak turniejów w /admin — ustaw przynajmniej jeden.</span>';
+        return;
+    }
+    const activeId = String(activeTournament?.id || siteConfig.activeTournamentId || '');
+    host.innerHTML = list.map((t) => {
+        const isActive = String(t.id) === activeId || (!activeId && String(t.eventId) === String(siteConfig.activeEventId));
+        return `<button type="button" class="tournament-tab${isActive ? ' active' : ''}" role="tab" aria-selected="${isActive ? 'true' : 'false'}" data-tournament-id="${escapeHtml(String(t.id))}">
+            ${escapeHtml(String(t.name || ('#' + t.eventId)))}
+            <span class="tab-mode">${escapeHtml(String(t.mode || 'custom'))} · #${escapeHtml(String(t.eventId))}</span>
+        </button>`;
+    }).join('');
+    host.querySelectorAll('[data-tournament-id]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const tid = btn.getAttribute('data-tournament-id');
+            const t = findTournamentById(tid);
+            if (!t) return;
+            if (activeTournament && String(activeTournament.id) === String(t.id)
+                && String(lastTrackedEventId) === String(t.eventId)) {
+                return;
+            }
+            applyTournamentSelection(t, { track: true, clearLocalCut: false });
+        });
+    });
+}
+
+function renderPrizeItemHtml(item, api) {
+    const cat = api ? api.categoryLabelPl(item.category) : (item.category || '');
+    return `<div class="prize-item">
+        <div class="prize-item__title">${escapeHtml(item.short || '')}<span class="prize-item__cat">${escapeHtml(cat)}</span></div>
+        <div class="prize-item__note">${escapeHtml(item.detail || '')}${item.note ? ' — ' + escapeHtml(item.note) : ''}</div>
+    </div>`;
+}
+
+function fillPrizeGroup(listId, emptyId, items, api) {
+    const listEl = document.getElementById(listId);
+    const emptyEl = document.getElementById(emptyId);
+    if (!listEl) return;
+    if (!items || items.length === 0) {
+        listEl.innerHTML = '';
+        if (emptyEl) {
+            emptyEl.style.display = 'block';
+            emptyEl.textContent = 'Nic tu.';
+        }
+        return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+    listEl.innerHTML = items.map((it) => renderPrizeItemHtml(it, api)).join('');
+}
+
+function renderPrizeGoalsPanel(playerId = currentSelectedPlayerId) {
+    if (typeof document === 'undefined') return;
+    const api = getPrizeLaddersApi();
+    const blurbEl = document.getElementById('prizePanelBlurb');
+    const metaEl = document.getElementById('prizePlayerMeta');
+    if (!api) {
+        if (blurbEl) blurbEl.textContent = 'Brak modułu nagród (prize-ladders.js).';
+        return;
+    }
+    const mode = getActiveTournamentMode();
+    const ladder = api.getLadder(mode);
+    if (blurbEl) blurbEl.textContent = ladder.blurb || '';
+
+    const standings = (cachedLiveStandings && cachedLiveStandings.length)
+        ? cachedLiveStandings
+        : (latestData?.standings?.standings || []);
+    const cutSize = parseInt(document.getElementById('cutSize')?.value || String(siteConfig.defaultCutSize || 8), 10);
+    const cutRule = document.getElementById('cutRule')?.value || siteConfig.defaultCutRule || 'hard';
+    const activeRound = cachedCutContext.activeRound ?? resolveActiveRound(latestData);
+    const totalRounds = cachedCutContext.totalRounds || getEffectiveTotalRounds(latestData || {});
+
+    const ev = api.evaluatePlayerPrizes(mode, standings, playerId, {
+        cutSize,
+        cutRule,
+        activeRound,
+        totalRounds
+    });
+
+    if (ev.emptyReason) {
+        if (metaEl) metaEl.textContent = ev.emptyReason;
+        fillPrizeGroup('prizeInPlayList', 'prizeInPlayEmpty', [], api);
+        fillPrizeGroup('prizeLockedList', 'prizeLockedEmpty', [], api);
+        fillPrizeGroup('prizeMissedList', 'prizeMissedEmpty', [], api);
+        return;
+    }
+
+    if (metaEl) {
+        const softBit = ev.softThresh != null ? ` · soft próg EUC: ${ev.softThresh} pkt` : '';
+        metaEl.textContent = `${ev.playerName} · #${ev.rank} · ${ev.points} pkt · ${ev.wins}W · rundy do końca: ${ev.roundsLeft}${softBit}`;
+    }
+    fillPrizeGroup('prizeInPlayList', 'prizeInPlayEmpty', ev.groups.in_play, api);
+    fillPrizeGroup('prizeLockedList', 'prizeLockedEmpty', ev.groups.locked, api);
+    fillPrizeGroup('prizeMissedList', 'prizeMissedEmpty', ev.groups.missed, api);
+}
+
+/** Mirror soft-EUC hint into the front-and-center host (MAIN1 / soft cut). */
+function syncFrontSoftEucHost() {
+    if (typeof document === 'undefined') return;
+    const front = document.getElementById('frontSoftEucHost');
+    const src = document.getElementById('softEucPlayHint');
+    if (!front) return;
+    const cutRule = document.getElementById('cutRule')?.value || siteConfig.defaultCutRule || 'hard';
+    const mode = getActiveTournamentMode();
+    const show = cutRule === 'soft' || mode === 'MAIN1';
+    if (!show) {
+        front.style.display = 'none';
+        front.innerHTML = '';
+        return;
+    }
+    const html = src ? src.innerHTML : '';
+    if (!html) {
+        const api = getPrizeLaddersApi();
+        // Idle card via formatter if available
+        if (typeof formatSoftCutIdInflationHtml === 'function') {
+            front.innerHTML = formatSoftCutIdInflationHtml(null, { alwaysShow: true });
+            front.style.display = 'block';
+            return;
+        }
+        front.style.display = api ? 'block' : 'none';
+        front.innerHTML = api
+            ? '<div class="soft-euc-play-hint soft-euc-play-hint--idle"><div class="soft-euc-play-hint__title">Soft EUC — czekam na dane LIVE</div></div>'
+            : '';
+        return;
+    }
+    front.innerHTML = html;
+    front.style.display = 'block';
 }
 
 function scheduleTrackingPoll(eventId) {
@@ -220,6 +438,20 @@ function applyPublicSiteConfigPayload(data) {
     if (data.activeEventId || data.lastEventId) {
         siteConfig.activeEventId = Number(data.activeEventId || data.lastEventId);
     }
+    if (data.activeTournamentId) {
+        siteConfig.activeTournamentId = String(data.activeTournamentId);
+    }
+    if (Array.isArray(data.tournaments)) {
+        siteConfig.tournaments = data.tournaments.map((t) => ({
+            id: String(t.id || ''),
+            eventId: Number(t.eventId),
+            name: String(t.name || ('#' + t.eventId)),
+            mode: String(t.mode || 'custom'),
+            cutSize: Number(t.cutSize) || 8,
+            cutRule: t.cutRule === 'soft' ? 'soft' : 'hard',
+            swissRounds: t.swissRounds == null || t.swissRounds === '' ? null : Number(t.swissRounds)
+        })).filter((t) => t.id && t.eventId > 0);
+    }
     if (data.predictionAlgorithm) {
         siteConfig.predictionAlgorithm = data.predictionAlgorithm;
     }
@@ -239,6 +471,25 @@ function applyPublicSiteConfigPayload(data) {
         }
     }
     if (data.updatedAt != null) siteConfig.updatedAt = data.updatedAt;
+
+    // Resolve active tournament slot for public UI.
+    let chosen = findTournamentById(siteConfig.activeTournamentId)
+        || findTournamentByEventId(siteConfig.activeEventId)
+        || (siteConfig.tournaments[0] || null);
+    const storedTid = readStoredTournamentId();
+    const stored = storedTid ? findTournamentById(storedTid) : null;
+    if (stored) chosen = stored;
+    if (chosen) {
+        activeTournament = chosen;
+        siteConfig.activeTournamentId = chosen.id;
+        siteConfig.activeEventId = Number(chosen.eventId);
+        siteConfig.defaultCutSize = Number(chosen.cutSize) || siteConfig.defaultCutSize;
+        siteConfig.defaultCutRule = chosen.cutRule === 'soft' ? 'soft' : 'hard';
+        if (Object.prototype.hasOwnProperty.call(chosen, 'swissRounds')) {
+            siteConfig.defaultSwissRounds = chosen.swissRounds == null ? null : Number(chosen.swissRounds);
+        }
+    }
+    renderTournamentSwitcher();
     return siteConfig;
 }
 
@@ -967,6 +1218,9 @@ function scrollToMobileSection(sectionId, btnEl) {
     if (!el) return;
     if (el.style.display === 'none') {
         el.style.display = 'block';
+    }
+    if (typeof el.open === 'boolean') {
+        el.open = true;
     }
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (btnEl && typeof document !== 'undefined') {
@@ -1902,15 +2156,21 @@ async function initDefaultEventAndAutoTrack() {
         return;
     }
 
-    // 2. Admin-owned active event (source of truth for public visitors).
+    // 2. Admin-owned tournaments (multi-event) — source of truth for public visitors.
     await fetchSiteConfig();
     loadCutPrefsIntoUi();
+    renderTournamentSwitcher();
+    if (activeTournament && activeTournament.eventId) {
+        applyTournamentSelection(activeTournament, { track: true, clearLocalCut: false });
+        return;
+    }
     if (siteConfig.activeEventId) {
         const id = String(siteConfig.activeEventId);
         eventInput.value = id;
         updateActiveEventDisplay(id, siteConfig.predictionAlgorithm);
         try { localStorage.setItem('lorcana_last_event_id', id); } catch (e) {}
         startTracking();
+        renderPrizeGoalsPanel();
         return;
     }
 
@@ -3024,14 +3284,16 @@ function selectPlayerForTie(playerId) {
         }
     }
     renderLiveStandingsTable();
+    renderPrizeGoalsPanel(playerId);
 
     const resultArea = document.getElementById('tieResultArea');
     if (resultArea) resultArea.style.display = 'block';
     
     recalculateTieForSelectedPlayer();
-    
-    const tieMod = document.getElementById('tieModule');
-    if (tieMod) tieMod.scrollIntoView({ behavior: 'smooth' });
+
+    // Prefer „O co jeszcze gramy” in decluttered UX; keep TIE calculable without forcing scroll.
+    const prizePanel = document.getElementById('prizeGoalsPanel');
+    if (prizePanel) prizePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function showTieSimLoadingBanner() {
@@ -4920,6 +5182,8 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
             hintHostEmpty.style.display = 'none';
             hintHostEmpty.innerHTML = '';
         }
+        syncFrontSoftEucHost();
+        renderPrizeGoalsPanel();
         return;
     }
 
@@ -4953,9 +5217,12 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
 
     const hintHost = document.getElementById('softEucPlayHint');
     if (hintHost) {
-        hintHost.style.display = cutRule === 'soft' ? 'block' : 'none';
+        // Hidden duplicate source — visible copy lives in #frontSoftEucHost for MAIN1 declutter.
+        hintHost.style.display = 'none';
         hintHost.innerHTML = inflationHtml;
     }
+    syncFrontSoftEucHost();
+    renderPrizeGoalsPanel();
 
     // Keep panel title aligned with soft-EUC mental model when soft cut is on.
     const titlePrefixEl = document.getElementById('cutBreakdownTitlePrefix');
@@ -6146,6 +6413,14 @@ if (typeof module !== 'undefined' && module.exports) {
         calculateCutLineBreakdown,
         calculateSoftCutIdInflation,
         formatSoftCutIdInflationHtml,
+        renderPrizeGoalsPanel,
+        renderTournamentSwitcher,
+        applyTournamentSelection,
+        getActiveTournamentMode,
+        getPrizeLaddersApi,
+        syncFrontSoftEucHost,
+        findTournamentById,
+        findTournamentByEventId,
         getBracketSeedOrder,
         getBracketStageLabel,
         generateTopCutBracket,

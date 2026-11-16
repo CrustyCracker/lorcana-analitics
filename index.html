@@ -1708,6 +1708,118 @@
             animation: none;
         }
 
+        .tournament-switcher {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 0 10px;
+        }
+        .tournament-tab {
+            border: 1px solid var(--line);
+            background: var(--navy-950);
+            color: var(--text-dim);
+            border-radius: var(--radius);
+            padding: 10px 14px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: var(--font-ui);
+        }
+        .tournament-tab.active {
+            border-color: var(--line-gold);
+            color: var(--gold-bright);
+            background: rgba(212, 160, 23, 0.12);
+        }
+        .tournament-tab .tab-mode {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-mute);
+            margin-top: 2px;
+        }
+        .tournament-tab.active .tab-mode { color: var(--gold-dim); }
+
+        .prize-panel {
+            border-color: var(--line-gold);
+            background: linear-gradient(165deg, #1a2438 0%, var(--navy-850) 45%, #101827 100%);
+        }
+        .prize-panel h3 { margin-bottom: 6px; }
+        .prize-panel-lead {
+            margin: 0 0 12px;
+            color: var(--text-dim);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+        .prize-player-meta {
+            font-size: 13px;
+            color: var(--text-mute);
+            margin: 0 0 12px;
+        }
+        .prize-groups {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+        @media (min-width: 860px) {
+            .prize-groups { grid-template-columns: 1fr 1fr 1fr; }
+        }
+        .prize-group {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 10px 12px;
+            background: rgba(0,0,0,0.18);
+            min-height: 80px;
+        }
+        .prize-group h4 {
+            margin: 0 0 8px;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-mute);
+        }
+        .prize-group--play h4 { color: var(--gold-bright); }
+        .prize-group--locked h4 { color: var(--safe); }
+        .prize-group--missed h4 { color: var(--danger); }
+        .prize-item {
+            margin: 0 0 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .prize-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+        .prize-item__title { font-weight: 700; font-size: 14px; color: var(--text); }
+        .prize-item__cat {
+            display: inline-block;
+            margin-left: 6px;
+            font-size: 11px;
+            color: var(--text-mute);
+            font-weight: 600;
+        }
+        .prize-item__note { font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.35; }
+        .prize-empty { color: var(--text-mute); font-size: 13px; }
+
+        .simple-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .simple-toolbar .btn-load { width: auto; min-width: 160px; flex: 0 0 auto; }
+        .advanced-fold {
+            margin-top: 10px;
+            border-top: 1px solid var(--line);
+            padding-top: 8px;
+        }
+        .advanced-fold > summary {
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 13px;
+            font-weight: 600;
+            list-style: none;
+        }
+        .advanced-fold > summary::-webkit-details-marker { display: none; }
+        .advanced-fold[open] > summary { margin-bottom: 10px; color: var(--gold); }
+        .front-soft-host { margin-bottom: 12px; }
+        .secondary-section-note { color: var(--text-mute); font-size: 12px; margin: 8px 0 12px; }
 
     </style>
 </head>
@@ -1715,66 +1827,100 @@
 
 <header class="site-hero">
     <p class="brand-mark">Analityka Lorcany <span class="site-byline">od Crusty</span></p>
-    <p class="hero-tag">Strategia remisu pod Top Cut — na żywo, z bieżących stołów PlayHub.</p>
+    <p class="hero-tag">Na żywo: o co jeszcze grasz, soft EUC i tabela — bez zbędnego szumu.</p>
 </header>
 
-<!-- Mobile order: aktywny event → Load → Cut → Rounds → status → Can I Tie → (Poles przy LIVE) -->
+<!-- PUBLIC: tournament switcher + refresh -->
 <div class="panel" id="topControlPanel">
     <div class="controls-stack">
         <div class="field-group" data-control="event-id">
-            <label for="activeEventDisplay">1. Aktywny turniej</label>
-            <div id="activeEventDisplay" class="active-event-display" aria-live="polite">Ładowanie ID z panelu admina…</div>
+            <label>Turniej weekendu</label>
+            <div id="tournamentSwitcher" class="tournament-switcher" role="tablist" aria-label="Wybór turnieju"></div>
+            <div id="activeEventDisplay" class="active-event-display" aria-live="polite">Ładowanie turniejów z panelu admina…</div>
             <input type="hidden" id="eventId" value="" autocomplete="off">
-            <div class="field-hint">ID ustawia admin (<a href="admin.php" style="color:var(--gold);">/admin</a>). Publicznie tylko odczyt — bez przełączania turniejów przez gości.</div>
+            <div class="field-hint">Przełączanie korzysta z osobnego cache na event — bez zbędnego walenia w PlayHub. Konfiguracja: <a href="admin.php" style="color:var(--gold);">/admin</a>.</div>
+        </div>
+
+        <div class="simple-toolbar">
+            <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache serwera. Shift+klik: wymuś świeże dane z PlayHub (limitowane).">Odśwież LIVE</button>
+            <div id="status" data-control="status" aria-live="polite" aria-busy="false" style="flex:1;min-width:180px;"><span class="load-status-text">Gotowy do pobierania...</span></div>
+        </div>
+
+        <details class="advanced-fold" id="advancedControlsFold">
+            <summary>Zaawansowane: cut, rundy, tymczasowe ID</summary>
+            <div class="controls-pair" data-control="cut">
+                <div class="field-group">
+                    <label for="cutSize">Top Cut — od którego miejsca</label>
+                    <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" inputmode="numeric" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
+                    <div class="field-hint">np. 8 = Top 8, 32 = Top 32. Domyślne z trybu turnieju /admin.</div>
+                </div>
+                <div class="field-group">
+                    <label for="cutRule">Typ Top Cut</label>
+                    <select id="cutRule" onchange="onCutPrefsChanged()">
+                        <option value="hard" selected>Twardy Cut (sztywne Top X) [ME 2]</option>
+                        <option value="soft">Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
+                    </select>
+                    <div class="field-hint">MAIN1 = miękki (soft EUC). MAIN2/CCQ = twardy.</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-4px 0 8px;">
+                <button type="button" class="btn-secondary" style="width:auto;height:32px;font-size:12px;" onclick="resetCutPrefsToAdminDefaults()" title="Usuń lokalny override cut i wczytaj domyślne z /admin">Domyślne turnieju (cut)</button>
+                <div class="field-hint" id="cutPrefsHint" style="margin:0;">Domyślne z trybu — lokalna zmiana nie wpływa na innych.</div>
+            </div>
+            <div class="field-group" data-control="rounds">
+                <label for="totalRoundsOverride">Liczba rund Swiss</label>
+                <div class="rounds-override-row">
+                    <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" inputmode="numeric" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Bez lokalnego wpisu: domyślne admina, potem PlayHub.">
+                    <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść lokalny override rund — wróć do admina / PlayHub">Wyczyść lokalne</button>
+                </div>
+                <div class="field-hint" id="roundsOverrideHint">Domyślnie: admin lub PlayHub. Lokalny wpis tylko w tej przeglądarce.</div>
+            </div>
             <details id="eventOverrideDetails" style="margin-top:8px;">
-                <summary style="cursor:pointer;color:var(--text-dim);font-size:12px;">Zaawansowane: tymczasowe ID (tylko ta sesja)</summary>
+                <summary style="cursor:pointer;color:var(--text-dim);font-size:12px;">Tymczasowe ID (tylko ta sesja)</summary>
                 <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
                     <input type="number" id="eventIdOverride" placeholder="np. 1007231" autocomplete="off" inputmode="numeric" style="flex:1;min-width:140px;" title="Tymczasowe ID — nie zmienia ustawienia admina">
                     <button type="button" class="btn-secondary" style="width:auto;height:36px;" onclick="applySessionEventOverride()">Użyj</button>
                 </div>
             </details>
-        </div>
-
-        <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache serwera. Shift+klik: wymuś świeże dane z PlayHub (limitowane).">2. Odśwież / Śledź Live</button>
-
-        <div class="controls-pair" data-control="cut">
-            <div class="field-group">
-                <label for="cutSize">3. Top Cut — od którego miejsca</label>
-                <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" inputmode="numeric" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
-                <div class="field-hint">np. 8 = Top 8, 32 = Top 32. Domyślne z /admin.</div>
-            </div>
-            <div class="field-group">
-                <label for="cutRule">4. Typ Top Cut</label>
-                <select id="cutRule" onchange="onCutPrefsChanged()">
-                    <option value="hard" selected>Twardy Cut (sztywne Top X) [ME 2]</option>
-                    <option value="soft">Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
-                </select>
-                <div class="field-hint">Twardy = dokładnie X miejsc; miękki = Top X + równi punktami (ME1 / soft EUC). Po wyborze miękkiego: w sekcji LIVE zobaczysz „Ile stołów musi grać, żeby nie podnieść soft progu EUC”.</div>
-            </div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-4px 0 8px;">
-            <button type="button" class="btn-secondary" style="width:auto;height:32px;font-size:12px;" onclick="resetCutPrefsToAdminDefaults()" title="Usuń lokalny override cut i wczytaj domyślne z /admin">Domyślne admina (cut)</button>
-            <div class="field-hint" id="cutPrefsHint" style="margin:0;">Domyślne z /admin — lokalna zmiana nie wpływa na innych.</div>
-        </div>
-
-        <div class="field-group" data-control="rounds">
-            <label for="totalRoundsOverride">5. Liczba rund Swiss</label>
-            <div class="rounds-override-row">
-                <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" inputmode="numeric" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Bez lokalnego wpisu: domyślne admina, potem PlayHub.">
-                <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść lokalny override rund — wróć do admina / PlayHub">Wyczyść lokalne</button>
-            </div>
-            <div class="field-hint" id="roundsOverrideHint">Domyślnie: admin lub PlayHub. Lokalny wpis tylko w tej przeglądarce.</div>
-        </div>
-
-        <div id="status" data-control="status" aria-live="polite" aria-busy="false"><span class="load-status-text">Gotowy do pobierania...</span></div>
+        </details>
     </div>
 </div>
 
+<!-- PRIMARY: O CO JESZCZE GRAMY -->
+<div class="panel prize-panel" id="prizeGoalsPanel" data-primary="true">
+    <h3>O co jeszcze gramy</h3>
+    <p class="prize-panel-lead" id="prizePanelBlurb">Wybierz siebie w tabeli LIVE — pokażemy promo, maty, zaproszenie i cut w prostym języku (wg trybu turnieju).</p>
+    <div class="prize-player-meta" id="prizePlayerMeta"></div>
+    <div class="prize-groups" id="prizeGroups">
+        <div class="prize-group prize-group--play">
+            <h4>Jeszcze w grze</h4>
+            <div class="prize-empty" id="prizeInPlayEmpty">—</div>
+            <div id="prizeInPlayList"></div>
+        </div>
+        <div class="prize-group prize-group--locked">
+            <h4>Masz / trzymasz</h4>
+            <div class="prize-empty" id="prizeLockedEmpty">—</div>
+            <div id="prizeLockedList"></div>
+        </div>
+        <div class="prize-group prize-group--missed">
+            <h4>Już nie</h4>
+            <div class="prize-empty" id="prizeMissedEmpty">—</div>
+            <div id="prizeMissedList"></div>
+        </div>
+    </div>
+</div>
 
+<!-- Soft anti-ID (MAIN1) — front and center host; filled when soft cut -->
+<div id="frontSoftEucHost" class="front-soft-host" style="display:none;" aria-live="polite"></div>
 
-<!-- PRIMARY: CAN I TAKE A TIE + BEST STRATEGY -->
-<div class="panel tie-panel" id="tieModule" data-primary="true">
-    <h3>6. Can I take a TIE?</h3>
+<!-- STRATEGY: CAN I TAKE A TIE (secondary vs prizes/LIVE) -->
+<details class="panel tie-panel" id="tieModule" data-primary="false">
+    <summary style="cursor:pointer;list-style:none;">
+        <h3 style="display:inline;">Can I take a TIE? (strategia)</h3>
+        <span style="color:var(--text-mute);font-size:13px;margin-left:8px;">rozwiń kalkulator</span>
+    </summary>
+    <div style="margin-top:12px;">
+    <h3 style="position:absolute;left:-9999px;">Can I take a TIE?</h3>
     <p style="font-size: 14px; margin: 0 0 12px 0;">
         Wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS) pod próg Cut.
         <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
@@ -1878,7 +2024,8 @@
             <div id="predictorCandidatesList" class="candidate-grid"></div>
         </div>
     </div>
-</div>
+    </div>
+</details>
 
 
 
@@ -1914,11 +2061,11 @@
 
 
 
-<!-- SECONDARY: LIVE STANDINGS -->
-<p class="secondary-section-note">Poniżej: kontekst turnieju (tabela LIVE, mecze, drabinka). Główna rada TIE jest wyżej.</p>
+<!-- PRIMARY: LIVE STANDINGS -->
+<p class="secondary-section-note">Tabela LIVE — kliknij siebie, żeby odświeżyć „O co jeszcze gramy”. Soft EUC (MAIN1) jest nad tabelą.</p>
 <div class="section-header" id="liveStandingsSection">
-    <h3>Klasyfikacja LIVE &amp; Strategia Awansu <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-    <span style="font-size: 11px; color: #888;">(Dotknij gracza, by zbadać TIE / dotknij OMWP po szczegóły)</span>
+    <h3>Klasyfikacja LIVE <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+    <span style="font-size: 11px; color: #888;">(Dotknij gracza = nagrody + TIE · OMWP po szczegóły)</span>
 </div>
 <div class="filter-controls-row" style="margin: 0 0 10px 0;">
     <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, skład 🐀 rat crew, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
@@ -1936,7 +2083,7 @@
         </div>
         <div id="breakdownSummarySubtitle" style="font-size: 12px; color: #94a3b8;"></div>
     </div>
-    <div id="softEucPlayHint" style="display: none;" aria-live="polite"></div>
+    <div id="softEucPlayHint" style="display: none;" aria-live="polite" hidden></div>
     <div class="cut-breakdown-grid" id="cutBreakdownMetricsGrid"></div>
     <div class="brackets-pills-row" id="cutBreakdownBracketsRow"></div>
 </div>
@@ -2127,21 +2274,21 @@
 
 <!-- DOLNY PASEK NAWIGACJI MOBILNEJ (STICKY APP BAR) -->
 <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Szybka nawigacja mobilna">
-    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('tieModule', this)">
-        <span class="nav-icon">🤝</span>
-        <span>Kalkulator ID</span>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('prizeGoalsPanel', this)">
+        <span class="nav-icon">🎁</span>
+        <span>Nagrody</span>
     </button>
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('liveStandingsSection', this)">
         <span class="nav-icon">🔥</span>
         <span>Tabela Live</span>
     </button>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('tieModule', this)">
+        <span class="nav-icon">🤝</span>
+        <span>TIE</span>
+    </button>
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('pairingsSection', this)">
         <span class="nav-icon">⚔️</span>
         <span>Mecze</span>
-    </button>
-    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('topCutBracketPanel', this)">
-        <span class="nav-icon">🏆</span>
-        <span>Drabinka</span>
     </button>
     <button type="button" class="mobile-nav-btn nav-refresh" onclick="startTracking()">
         <span class="nav-icon">🔄</span>
@@ -2151,7 +2298,8 @@
 
 
 
-<script src="tie-sim-core.js?v=20261111cut1"></script>
-<script src="app.js?v=20261111cut1"></script>
+<script src="tie-sim-core.js?v=20261116dlc1"></script>
+<script src="prize-ladders.js?v=20261116dlc1"></script>
+<script src="app.js?v=20261116dlc1"></script>
 </body>
 </html>

@@ -52,18 +52,46 @@ echo $allow1, $allow2, "\\n";
 $cleared = lorcana_save_site_config(['defaultSwissRounds' => null, 'updatedBy' => 'test']);
 echo json_encode(['swiss' => $cleared['defaultSwissRounds']]);
 echo "\\n";
+
+$multi = lorcana_save_site_config([
+  'predictionAlgorithm' => 'hybrid',
+  'tournaments' => [
+    ['id' => 't_me1', 'eventId' => 111, 'name' => 'DLC MAIN1', 'mode' => 'MAIN1', 'cutSize' => 32, 'cutRule' => 'soft'],
+    ['id' => 't_me2', 'eventId' => 222, 'name' => 'DLC MAIN2', 'mode' => 'MAIN2', 'cutSize' => 8, 'cutRule' => 'hard'],
+    ['id' => 't_ccq', 'eventId' => 333, 'name' => 'CCQ Infinity', 'mode' => 'CCQ', 'cutSize' => 8, 'cutRule' => 'hard'],
+  ],
+  'activeTournamentId' => 't_me2',
+  'updatedBy' => 'test',
+]);
+echo json_encode([
+  'activeEventId' => $multi['activeEventId'],
+  'activeTournamentId' => $multi['activeTournamentId'],
+  'n' => count($multi['tournaments']),
+  'modes' => array_column($multi['tournaments'], 'mode'),
+]);
+echo "\\n";
+
+$pub2 = lorcana_public_site_config();
+echo json_encode([
+  'n' => count($pub2['tournaments']),
+  'active' => $pub2['activeTournamentId'],
+  'cut' => $pub2['defaultCutSize'],
+  'rule' => $pub2['defaultCutRule'],
+]);
+echo "\\n";
 `;
         const phpFile = path.join(tmpDir, 'run.php');
         fs.writeFileSync(phpFile, script, 'utf8');
         const res = spawnSync(PHP, [phpFile], { encoding: 'utf8' });
         assert.equal(res.status, 0, res.stderr || res.stdout);
         const lines = String(res.stdout || '').trim().split(/\r?\n/);
-        assert.ok(lines.length >= 5, 'expected php output lines, got: ' + res.stdout);
+        assert.ok(lines.length >= 7, 'expected php output lines, got: ' + res.stdout);
 
         const defaults = JSON.parse(lines[0]);
         assert.equal(defaults.algo, 'hybrid');
-        assert.equal(defaults.cutSize, 4);
-        assert.equal(defaults.cutRule, 'hard');
+        // Fresh install seeds a MAIN1-style default slot (soft Top 32).
+        assert.equal(defaults.cutSize, 32);
+        assert.equal(defaults.cutRule, 'soft');
         assert.equal(defaults.swiss, null);
 
         const saved = JSON.parse(lines[1]);
@@ -80,6 +108,7 @@ echo "\\n";
         assert.equal(pub.defaultCutRule, 'soft');
         assert.equal(pub.defaultSwissRounds, 9);
         assert.ok(!('password' in pub));
+        assert.ok(Array.isArray(pub.tournaments));
 
         assert.equal(lines[3], 'pw_ok');
         // First forced refresh allowed, immediate second throttled.
@@ -88,12 +117,24 @@ echo "\\n";
         const cleared = JSON.parse(lines[5]);
         assert.equal(cleared.swiss, null);
 
+        const multi = JSON.parse(lines[6]);
+        assert.equal(multi.activeEventId, 222);
+        assert.equal(multi.activeTournamentId, 't_me2');
+        assert.equal(multi.n, 3);
+        assert.deepEqual(multi.modes, ['MAIN1', 'MAIN2', 'CCQ']);
+
+        const pub2 = JSON.parse(lines[7]);
+        assert.equal(pub2.n, 3);
+        assert.equal(pub2.active, 't_me2');
+        assert.equal(pub2.cut, 8);
+        assert.equal(pub2.rule, 'hard');
+
         // Persist file exists and is JSON
         const cfgPath = path.join(tmpDir, 'site_config.json');
         assert.ok(fs.existsSync(cfgPath));
         const disk = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-        assert.equal(disk.activeEventId, 424242);
-        assert.equal(disk.defaultCutSize, 32);
+        assert.equal(disk.activeEventId, 222);
+        assert.equal(disk.tournaments.length, 3);
 
         fs.rmSync(tmpDir, { recursive: true, force: true });
     });
