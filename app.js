@@ -4728,32 +4728,58 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
     };
 }
 
-function formatSoftCutIdInflationHtml(info) {
-    if (!info || !info.relevant) return '';
-    const playLabel = info.minTablesMustPlay == null
-        ? 'te mirory same nie zbiją progu'
-        : (info.minTablesMustPlay === 0
-            ? '0 — próg już nie zależy od tych ID'
-            : `≥ ${info.minTablesMustPlay} z ${info.mirrorTables}`);
+function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
+    // Empty / waiting state — still visible when soft cut is on, so the tool isn't "buried".
+    if (!info || !info.relevant) {
+        if (!alwaysShow) return '';
+        return `
+            <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--idle">
+                <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale</div>
+                <div class="soft-euc-play-hint__title">Ile stołów musi grać, żeby nie podnieść soft progu EUC</div>
+                <div class="soft-euc-play-hint__body">
+                    Narzędzie działa <strong>na żywo</strong> z aktualnych pairings (otwarte lustrzane stoły + już oddane ID).
+                    Pojawi się liczba, gdy na bubble będą mirory (np. 33v33): ID podbija soft próg i odcina ludzi na niższym koszyku,
+                    a W/L zdejmuje 1 osobę z wyższego pasa na stół.
+                </div>
+            </div>
+        `;
+    }
 
-    const riskColor = (info.minTablesMustPlay != null && info.minTablesMustPlay > 0)
-        ? '#f39c12'
-        : '#2ecc71';
+    const must = info.minTablesMustPlay;
+    let headline;
+    let riskTone = 'ok';
+    if (must == null) {
+        headline = `Te ${info.mirrorTables} lustrzane stoły same nie zbiją soft progu — za mało, by zejść poniżej Top ${info.cutSize} na paśmie ≥${info.bandPts}.`;
+        riskTone = 'warn';
+    } else if (must === 0) {
+        headline = `Soft próg EUC nie zależy już od tych ID (0 stołów musi grać).`;
+        riskTone = 'ok';
+    } else {
+        headline = `≥ ${must} z ${info.mirrorTables} stołów musi GRAĆ (W/L, nie ID), żeby nie podnieść soft progu EUC.`;
+        riskTone = 'warn';
+    }
+
+    const openBit = info.openMirrorTables > 0
+        ? `<strong>${info.openMirrorTables}</strong> nadal otwarte (LIVE)`
+        : `<strong>0</strong> otwartych`;
+    const lockedBit = `<strong>${info.lockedIdTables}</strong> już wzięło ID`;
 
     return `
-        <div class="cut-metric-card soft-id-inflation-card" style="grid-column: 1 / -1; border-left: 3px solid ${riskColor};">
-            <div class="metric-label">Anti-ID soft cut — ile stołów musi GRAĆ</div>
-            <div class="metric-val" style="color: ${riskColor}; font-size: 15px;">
-                Mirory ${info.mirrorScore} pkt → pas ${info.bandPts}: ${playLabel}
+        <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--${riskTone}">
+            <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale · Top ${info.cutSize}</div>
+            <div class="soft-euc-play-hint__title">Ile stołów musi grać, żeby nie podnieść soft progu EUC</div>
+            <div class="soft-euc-play-hint__answer" style="color: ${riskTone === 'warn' ? '#f59e0b' : '#34d399'};">
+                ${escapeHtml(headline)}
             </div>
-            <div class="metric-sub">
-                Soft Top ${info.cutSize}: teraz próg <strong>${info.currentThresh}</strong> pkt (${info.currentInvites} zaproszeń).
-                Lustrzane stoły na ${info.mirrorScore}:
-                <strong>${info.lockedIdTables}</strong> już ID,
-                <strong>${info.openMirrorTables}</strong> otwarte.
-                Gdyby wszystkie wzięły ID → próg <strong>${info.projectedThreshIfAllId}</strong> (${info.projectedInvitesIfAllId} inv.);
-                gdyby wszystkie grały W/L → próg <strong>${info.projectedThreshIfAllPlay}</strong> (${info.projectedInvitesIfAllPlay} inv.).
-                Każdy wynik zamiast ID zdejmuje 1 osobę z pasa ≥${info.bandPts}; żeby soft próg został na ${info.mirrorScore}, potrzeba &lt;${info.cutSize} graczy na ≥${info.bandPts}.
+            <div class="soft-euc-play-hint__body">
+                Lustrzane stoły na <strong>${info.mirrorScore} pkt</strong> (ID → pas <strong>${info.bandPts}</strong>):
+                ${lockedBit}, ${openBit}.
+                Teraz soft próg = <strong>${info.currentThresh} pkt</strong> (${info.currentInvites} zaproszeń).
+                Gdyby wszystkie te mirory wzięły ID → próg <strong>${info.projectedThreshIfAllId}</strong>
+                (${info.projectedInvitesIfAllId} inv.); gdyby wszystkie grały → próg <strong>${info.projectedThreshIfAllPlay}</strong>
+                (${info.projectedInvitesIfAllPlay} inv.).
+                Każdy wynik zamiast ID zdejmuje <strong>1 osobę</strong> z pasa ≥${info.bandPts}
+                (wygrany zostaje wyżej, przegrany spada) — bez ekstra nagrody rzeczowej za samo ID, tylko soft invite.
             </div>
         </div>
     `;
@@ -4889,6 +4915,11 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
         gridEl.innerHTML = '';
         rowEl.innerHTML = '';
         if (subtitleEl) subtitleEl.innerHTML = '';
+        const hintHostEmpty = document.getElementById('softEucPlayHint');
+        if (hintHostEmpty) {
+            hintHostEmpty.style.display = 'none';
+            hintHostEmpty.innerHTML = '';
+        }
         return;
     }
 
@@ -4916,7 +4947,23 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
     const inflation = cutRule === 'soft'
         ? calculateSoftCutIdInflation(liveStandings, pairings, cutSize)
         : null;
-    const inflationHtml = cutRule === 'soft' ? formatSoftCutIdInflationHtml(inflation) : '';
+    const inflationHtml = cutRule === 'soft'
+        ? formatSoftCutIdInflationHtml(inflation, { alwaysShow: true })
+        : '';
+
+    const hintHost = document.getElementById('softEucPlayHint');
+    if (hintHost) {
+        hintHost.style.display = cutRule === 'soft' ? 'block' : 'none';
+        hintHost.innerHTML = inflationHtml;
+    }
+
+    // Keep panel title aligned with soft-EUC mental model when soft cut is on.
+    const titlePrefixEl = document.getElementById('cutBreakdownTitlePrefix');
+    if (titlePrefixEl) {
+        titlePrefixEl.textContent = cutRule === 'soft'
+            ? 'Soft EUC — ile stołów musi grać + analiza kreski (Top '
+            : 'Analiza Kreski i Koszyków Punktowych (Top ';
+    }
 
     gridEl.innerHTML = `
         <div class="cut-metric-card">
@@ -4938,7 +4985,6 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
             <div class="metric-label">🎯 Pierwszy Poza Cut (Sniper)</div>
             ${firstOutHtml}
         </div>
-        ${inflationHtml}
     `;
 
     const visibleBrackets = bd.brackets.filter(b => b.points >= Math.max(0, bd.bubblePts - 6));

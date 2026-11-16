@@ -941,6 +941,48 @@
             color: #cbd5e1;
             margin-top: 3px;
         }
+        .soft-euc-play-hint {
+            margin: 12px 0 4px;
+            padding: 14px 16px;
+            border-radius: 8px;
+            border: 1px solid #3d4f2f;
+            background: linear-gradient(135deg, #1a2a18 0%, #1e293b 55%, #182033 100%);
+        }
+        .soft-euc-play-hint--warn {
+            border-color: #b45309;
+            background: linear-gradient(135deg, #2a2110 0%, #1e293b 60%, #182033 100%);
+        }
+        .soft-euc-play-hint--idle {
+            border-color: #334155;
+            opacity: 0.95;
+        }
+        .soft-euc-play-hint__eyebrow {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #86efac;
+            margin-bottom: 4px;
+        }
+        .soft-euc-play-hint--warn .soft-euc-play-hint__eyebrow { color: #fbbf24; }
+        .soft-euc-play-hint__title {
+            font-size: 16px;
+            font-weight: 800;
+            color: #f8fafc;
+            line-height: 1.25;
+            margin-bottom: 6px;
+        }
+        .soft-euc-play-hint__answer {
+            font-size: 15px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            line-height: 1.35;
+        }
+        .soft-euc-play-hint__body {
+            font-size: 12px;
+            color: #cbd5e1;
+            line-height: 1.45;
+        }
         .brackets-pills-row {
             display: flex;
             flex-wrap: wrap;
@@ -1654,7 +1696,7 @@
                     <option value="hard" selected>Twardy Cut (sztywne Top X) [ME 2]</option>
                     <option value="soft">Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
                 </select>
-                <div class="field-hint">Twardy = dokładnie X miejsc; miękki = X + remisy punktowe. Przy miękkim cutcie panel „Analiza Kreski” pokazuje ile lustrzanych stołów musi grać (nie brać ID), żeby nie podbić progu zaproszeń.</div>
+                <div class="field-hint">Twardy = dokładnie X miejsc; miękki = Top X + równi punktami (ME1 / soft EUC). Po wyborze miękkiego: w sekcji LIVE zobaczysz „Ile stołów musi grać, żeby nie podnieść soft progu EUC”.</div>
             </div>
         </div>
 
@@ -1829,14 +1871,15 @@
     </button>
 </div>
 
-<!-- KALKULATOR ROZKŁADU KOSZYKÓW PUNKTOWYCH (CUT LINE BREAKDOWN) -->
+<!-- KALKULATOR ROZKŁADU KOSZYKÓW PUNKTOWYCH (CUT LINE BREAKDOWN) + soft EUC ID hint -->
 <div id="cutBreakdownPanel" class="cut-breakdown-panel" style="display: none;">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <div style="font-size: 14px; font-weight: 700; color: #2ecc71;">
-            📊 Analiza Kreski i Koszyków Punktowych (Cut Line Breakdown — Top <span id="breakdownCutSizeLabel">4</span>)
+        <div id="cutBreakdownTitle" style="font-size: 14px; font-weight: 700; color: #2ecc71;">
+            <span id="cutBreakdownTitlePrefix">Analiza Kreski i Koszyków Punktowych (Top </span><span id="breakdownCutSizeLabel">4</span>)
         </div>
         <div id="breakdownSummarySubtitle" style="font-size: 12px; color: #94a3b8;"></div>
     </div>
+    <div id="softEucPlayHint" style="display: none;" aria-live="polite"></div>
     <div class="cut-breakdown-grid" id="cutBreakdownMetricsGrid"></div>
     <div class="brackets-pills-row" id="cutBreakdownBracketsRow"></div>
 </div>

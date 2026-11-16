@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 
 const {
     calculateSoftCutIdInflation,
-    calculateCutLineBreakdown
+    calculateCutLineBreakdown,
+    formatSoftCutIdInflationHtml
 } = require('../app.js');
 
 /** Compact standings row */
@@ -168,5 +169,34 @@ describe('calculateSoftCutIdInflation', () => {
         assert.equal(bd.bubblePts, 34);
         assert.equal(bd.spotsForBubbleBracket, 27);
         assert.equal(bd.missingFromBubbleBracket, 0);
+    });
+
+    it('Polish EUC copy names tables-to-play and works for open LIVE mirrors', () => {
+        const { standings, pairings } = buildDlcStyleField();
+        const info = calculateSoftCutIdInflation(standings, pairings, 32);
+        const html = formatSoftCutIdInflationHtml(info, { alwaysShow: true });
+        assert.match(html, /Ile stołów musi grać, żeby nie podnieść soft progu EUC/);
+        assert.match(html, /≥ 7 z 11/);
+
+        // Live path: unfinished equal-score mirrors counted as open.
+        const liveStandings = [];
+        let rank = 1;
+        let id = 1;
+        for (let i = 0; i < 5; i++) liveStandings.push(row(id++, 12, rank++));
+        const openIds = [];
+        for (let i = 0; i < 16; i++) {
+            const pid = id++;
+            openIds.push(pid);
+            liveStandings.push(row(pid, 9, rank++));
+        }
+        for (let i = 0; i < 10; i++) liveStandings.push(row(id++, 6, rank++));
+        const openPairings = [];
+        for (let t = 0; t < 8; t++) openPairings.push(openMirror(t + 1, openIds[t * 2], openIds[t * 2 + 1]));
+        const liveInfo = calculateSoftCutIdInflation(liveStandings, openPairings, 8);
+        assert.equal(liveInfo.openMirrorTables, 8);
+        assert.equal(liveInfo.lockedIdTables, 0);
+        assert.ok(liveInfo.minTablesMustPlay === null || liveInfo.minTablesMustPlay >= 1);
+        const idle = formatSoftCutIdInflationHtml(null, { alwaysShow: true });
+        assert.match(idle, /Narzędzie działa <strong>na żywo<\/strong>/);
     });
 });
