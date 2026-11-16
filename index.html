@@ -420,6 +420,87 @@
             border: 1px solid var(--line-gold);
             margin-top: 0;
         }
+        .tie-panel > summary {
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 8px 12px;
+        }
+        .tie-panel > summary::-webkit-details-marker { display: none; }
+        .tie-panel > summary .tie-summary-title {
+            display: inline;
+            margin: 0;
+            font-family: var(--font-display);
+            font-size: clamp(1.15rem, 3.2vw, 1.45rem);
+            color: var(--gold);
+            letter-spacing: 0.04em;
+        }
+        .tie-panel > summary .tie-summary-hint {
+            color: var(--text-mute);
+            font-size: 13px;
+        }
+        .tie-panel[open] > summary .tie-summary-hint--closed { display: none; }
+        .tie-panel:not([open]) > summary .tie-summary-hint--open { display: none; }
+        .tie-goal-block {
+            margin: 0 0 14px 0;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: rgba(7, 16, 22, 0.35);
+        }
+        .tie-goal-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+        .tie-goal-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .tie-goal-btn {
+            border: 1px solid var(--line);
+            background: var(--navy-950);
+            color: var(--text-dim);
+            border-radius: var(--radius);
+            padding: 10px 12px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: var(--font-ui);
+            text-align: left;
+            min-width: min(100%, 148px);
+            flex: 1 1 140px;
+            line-height: 1.25;
+        }
+        .tie-goal-btn .goal-sub {
+            display: block;
+            margin-top: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-mute);
+        }
+        .tie-goal-btn.active {
+            border-color: var(--line-gold);
+            color: var(--gold-bright);
+            background: rgba(212, 160, 23, 0.12);
+        }
+        .tie-goal-btn.active .goal-sub { color: var(--gold); }
+        .tie-goal-hint {
+            margin: 8px 0 0 0;
+            font-size: 12px;
+            color: var(--text-mute);
+            line-height: 1.4;
+        }
+        .tie-nick-block {
+            margin-bottom: 4px;
+        }
         .autocomplete-wrapper {
             position: relative;
             margin-bottom: 15px;
@@ -2092,22 +2173,43 @@
 <!-- Soft anti-ID (MAIN1) — front and center host; filled when soft cut -->
 <div id="frontSoftEucHost" class="front-soft-host" style="display:none;" aria-live="polite"></div>
 
-<!-- STRATEGY: CAN I TAKE A TIE (secondary vs prizes/LIVE) -->
-<details class="panel tie-panel" id="tieModule" data-primary="false">
-    <summary style="cursor:pointer;list-style:none;">
-        <h3 style="display:inline;">Can I take a TIE? (strategia)</h3>
-        <span style="color:var(--text-mute);font-size:13px;margin-left:8px;">rozwiń kalkulator</span>
+<!-- STRATEGY: CAN I TAKE A TIE (secondary vs prizes/LIVE) — domyślnie otwarty (nick + cel) -->
+<details class="panel tie-panel" id="tieModule" data-primary="false" open>
+    <summary>
+        <h3 class="tie-summary-title">Czy mogę remis? (Can I Tie)</h3>
+        <span class="tie-summary-hint tie-summary-hint--closed">rozwiń kalkulator</span>
+        <span class="tie-summary-hint tie-summary-hint--open">zwiń</span>
     </summary>
     <div style="margin-top:12px;">
-    <h3 style="position:absolute;left:-9999px;">Can I take a TIE?</h3>
     <p style="font-size: 14px; margin: 0 0 12px 0;">
-        Wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS) pod próg Cut.
+        Wybierz cel cutu, wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS).
         <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
     </p>
 
+    <div class="tie-goal-block" id="tieGoalBlock">
+        <span class="tie-goal-label" id="tieGoalLabel">Cel strategii</span>
+        <div class="tie-goal-picker" role="radiogroup" aria-labelledby="tieGoalLabel">
+            <button type="button" class="tie-goal-btn" id="tieGoalBtnTop8" role="radio" aria-checked="false" data-tie-goal="top8" onclick="onTieGoalSelected('top8')">
+                Top 8
+                <span class="goal-sub">twardy cut · ME2 / CCQ</span>
+            </button>
+            <button type="button" class="tie-goal-btn" id="tieGoalBtnTop16" role="radio" aria-checked="false" data-tie-goal="top16" onclick="onTieGoalSelected('top16')">
+                Top 16
+                <span class="goal-sub">twardy cut</span>
+            </button>
+            <button type="button" class="tie-goal-btn" id="tieGoalBtnContinentals" role="radio" aria-checked="false" data-tie-goal="continentals" onclick="onTieGoalSelected('continentals')">
+                Continentals
+                <span class="goal-sub">Top 32 soft · równe punkty</span>
+            </button>
+        </div>
+        <p class="tie-goal-hint" id="tieGoalHint">Top 8 / Top 16 = sztywne miejsce. Continentals = soft Top 32 (awans przy punktach ≥ progu #32).</p>
+    </div>
+
+    <div class="tie-nick-block">
     <div class="autocomplete-wrapper">
-        <input type="text" id="playerSearchInput" placeholder="Wyszukaj gracza (np. Amanda, Rose, Kelly)..." autocomplete="off" oninput="onPlayerSearchInput()">
+        <input type="text" id="playerSearchInput" placeholder="Wpisz nick gracza (np. Amanda, Rose, Kelly)…" autocomplete="off" oninput="onPlayerSearchInput()" aria-label="Szukaj gracza po nicku">
         <div id="playerSuggestions" class="suggestions-dropdown"></div>
+    </div>
     </div>
 
     <div id="tieResultArea" style="display: none;">
@@ -2525,8 +2627,8 @@
 
 
 
-<script src="tie-sim-core.js?v=20261116chips2"></script>
+<script src="tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261116bracket1"></script>
+<script src="app.js?v=20261116tiegoal1"></script>
 </body>
 </html>

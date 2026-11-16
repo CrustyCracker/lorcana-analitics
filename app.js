@@ -276,6 +276,7 @@ function applyTournamentSelection(tournament, { track = true, clearLocalCut = fa
         applyAdminCutDefaultsToUi();
         updateCutPrefsHint();
     }
+    syncTieGoalPickerUi();
     syncRoundsOverrideUi(latestData);
     // New tournament → reset on-demand bracket and sync MAIN1/T8 (etc.) default.
     bracketDrawnOnDemand = false;
@@ -772,6 +773,85 @@ const CUT_SIZE_STORAGE_KEY = 'lorcana_cut_size';
 const CUT_RULE_STORAGE_KEY = 'lorcana_cut_rule';
 const ROUNDS_OVERRIDE_KEY_PREFIX = 'lorcana_rounds_override_';
 
+/** Presety celu Can I Tie → cutSize + cutRule (soft = równe punkty przy progu). */
+const TIE_GOAL_PRESETS = Object.freeze({
+    top8: Object.freeze({ key: 'top8', cutSize: 8, cutRule: 'hard', label: 'Top 8', hint: 'Twardy cut: awans tylko przy miejscu ≤ 8.' }),
+    top16: Object.freeze({ key: 'top16', cutSize: 16, cutRule: 'hard', label: 'Top 16', hint: 'Twardy cut: awans tylko przy miejscu ≤ 16.' }),
+    continentals: Object.freeze({
+        key: 'continentals',
+        cutSize: 32,
+        cutRule: 'soft',
+        label: 'Continentals (Top 32 soft)',
+        hint: 'Miękki cut: awans przy punktach ≥ progu gracza #32 (równe punkty też przechodzą).'
+    })
+});
+
+function getTieGoalPreset(key) {
+    return TIE_GOAL_PRESETS[key] || null;
+}
+
+function resolveTieGoalKey(cutSize, cutRule) {
+    const size = Number(cutSize);
+    const rule = cutRule === 'soft' ? 'soft' : 'hard';
+    if (size === 8 && rule === 'hard') return 'top8';
+    if (size === 16 && rule === 'hard') return 'top16';
+    if (size === 32 && rule === 'soft') return 'continentals';
+    return null;
+}
+
+function readUiCutPrefs() {
+    const size = parseInt(document.getElementById('cutSize')?.value || String(siteConfig.defaultCutSize || 8), 10);
+    const rule = document.getElementById('cutRule')?.value || siteConfig.defaultCutRule || 'hard';
+    return {
+        cutSize: Number.isFinite(size) ? size : 8,
+        cutRule: rule === 'soft' ? 'soft' : 'hard'
+    };
+}
+
+function syncTieGoalPickerUi(cutSize, cutRule) {
+    const prefs = (cutSize != null && cutRule != null)
+        ? { cutSize: Number(cutSize), cutRule: cutRule === 'soft' ? 'soft' : 'hard' }
+        : readUiCutPrefs();
+    const activeKey = resolveTieGoalKey(prefs.cutSize, prefs.cutRule);
+    const buttons = typeof document !== 'undefined'
+        ? document.querySelectorAll('.tie-goal-btn[data-tie-goal]')
+        : [];
+    buttons.forEach((btn) => {
+        const key = btn.getAttribute('data-tie-goal');
+        const on = key === activeKey;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-checked', on ? 'true' : 'false');
+    });
+    const hint = document.getElementById('tieGoalHint');
+    if (hint) {
+        if (activeKey && TIE_GOAL_PRESETS[activeKey]) {
+            hint.textContent = TIE_GOAL_PRESETS[activeKey].hint;
+        } else {
+            hint.textContent = `Własny cut z zaawansowanych: Top ${prefs.cutSize} · ${prefs.cutRule === 'soft' ? 'miękki (równe punkty)' : 'twardy'}. Presety: Top 8 / Top 16 / Continentals (Top 32 soft).`;
+        }
+    }
+}
+
+function applyTieGoalToCutUi(goalKey, { triggerRecalc = true } = {}) {
+    const preset = getTieGoalPreset(goalKey);
+    if (!preset) return false;
+    const cutSizeEl = document.getElementById('cutSize');
+    const cutRuleEl = document.getElementById('cutRule');
+    if (cutSizeEl) cutSizeEl.value = String(preset.cutSize);
+    if (cutRuleEl) cutRuleEl.value = preset.cutRule;
+    syncTieGoalPickerUi(preset.cutSize, preset.cutRule);
+    if (triggerRecalc) onCutPrefsChanged();
+    else {
+        saveCutPrefsFromUi();
+        syncBracketDrawSizeDefault({ force: !bracketDrawnOnDemand });
+    }
+    return true;
+}
+
+function onTieGoalSelected(goalKey) {
+    applyTieGoalToCutUi(goalKey, { triggerRecalc: true });
+}
+
 function roundsOverrideStorageKey(eventId) {
     const id = String(eventId || '').replace(/\D/g, '');
     return id ? `${ROUNDS_OVERRIDE_KEY_PREFIX}${id}` : null;
@@ -933,6 +1013,7 @@ function loadCutPrefsIntoUi() {
         }
     } catch (e) {}
     updateCutPrefsHint();
+    syncTieGoalPickerUi();
     syncBracketDrawSizeDefault({ force: !bracketDrawnOnDemand });
 }
 
@@ -960,6 +1041,7 @@ function resetCutPrefsToAdminDefaults() {
     } catch (e) {}
     applyAdminCutDefaultsToUi();
     updateCutPrefsHint();
+    syncTieGoalPickerUi();
     syncBracketDrawSizeDefault({ force: true });
     lastProcessFingerprint = null;
     if (!latestData) return;
@@ -972,6 +1054,7 @@ function resetCutPrefsToAdminDefaults() {
 
 function onCutPrefsChanged() {
     saveCutPrefsFromUi();
+    syncTieGoalPickerUi();
     syncBracketDrawSizeDefault({ force: !bracketDrawnOnDemand });
     lastProcessFingerprint = null;
     if (!latestData) return;
@@ -6733,6 +6816,13 @@ if (typeof module !== 'undefined' && module.exports) {
         loadCutPrefsIntoUi,
         saveCutPrefsFromUi,
         onCutPrefsChanged,
+        TIE_GOAL_PRESETS,
+        getTieGoalPreset,
+        resolveTieGoalKey,
+        readUiCutPrefs,
+        syncTieGoalPickerUi,
+        applyTieGoalToCutUi,
+        onTieGoalSelected,
         onRoundsOverrideChanged,
         clearRoundsOverride,
         syncRoundsOverrideUi,
