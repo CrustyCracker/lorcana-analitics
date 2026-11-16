@@ -505,10 +505,11 @@ if (admin_is_logged_in()) {
         <script>
         (function () {
             const MODE_DEFAULTS = {
-                MAIN1: { cutSize: 32, cutRule: 'soft' },
-                MAIN2: { cutSize: 8, cutRule: 'hard' },
-                CCQ: { cutSize: 8, cutRule: 'hard' },
-                custom: { cutSize: 8, cutRule: 'hard' }
+                // Swiss: MAIN1 8+7=15 then hard T8; MAIN2 8+3=11 no playoffs; Day2 ≥18 after Day1
+                MAIN1: { cutSize: 32, cutRule: 'soft', swissRounds: 15 },
+                MAIN2: { cutSize: 8, cutRule: 'hard', swissRounds: 11 },
+                CCQ: { cutSize: 8, cutRule: 'hard', swissRounds: null },
+                custom: { cutSize: 8, cutRule: 'hard', swissRounds: null }
             };
             const host = document.getElementById('tournamentSlots');
             const tpl = document.getElementById('tournamentSlotTemplate');
@@ -533,6 +534,8 @@ if (admin_is_logged_in()) {
                         const d = MODE_DEFAULTS[modeSel.value] || MODE_DEFAULTS.custom;
                         if (cutSize) cutSize.value = String(d.cutSize);
                         if (cutRule) cutRule.value = d.cutRule;
+                        const swiss = slot.querySelector('[name="t_swissRounds[]"]');
+                        if (swiss) swiss.value = d.swissRounds == null ? '' : String(d.swissRounds);
                     });
                 }
                 if (removeBtn) {

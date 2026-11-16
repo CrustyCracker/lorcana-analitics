@@ -320,30 +320,66 @@ function renderPrizeItemHtml(item, api) {
     </div>`;
 }
 
-/** MAIN1 soft Top32 = EUC; drabinka pucharowa zawsze hard Top 8. */
+/** MAIN1: drabinka hard Top 8. MAIN2: brak playoffów (0). */
 function resolveTopCutBracketSize(configuredCutSize) {
     const api = getPrizeLaddersApi();
     const mode = getActiveTournamentMode();
     if (api && typeof api.getTopCutBracketSize === 'function') {
         return api.getTopCutBracketSize(mode, configuredCutSize);
     }
-    if (mode === 'MAIN1' || mode === 'MAIN2') return 8;
+    if (mode === 'MAIN1') return 8;
+    if (mode === 'MAIN2') return 0;
     const n = Number(configuredCutSize);
     return Number.isFinite(n) && n >= 2 ? n : 8;
+}
+
+/** Fixed Swiss length from DLC format profile (MAIN1=15, MAIN2=11). */
+function getFormatSwissRoundsForActiveMode() {
+    const api = getPrizeLaddersApi();
+    const mode = getActiveTournamentMode();
+    if (api && typeof api.getFormatSwissRounds === 'function') {
+        const n = api.getFormatSwissRounds(mode);
+        if (n != null && Number.isFinite(n) && n >= 1) return n;
+    }
+    return null;
+}
+
+function detectTopCutActiveFlag(data = latestData) {
+    if (!data) return false;
+    try {
+        const info = detectActualTopCutInfo(data.roundsMatches, data.standings?.standings || []);
+        return Boolean(info && info.isTopCutActive);
+    } catch (e) {
+        return false;
+    }
+}
+
+/** Shared opts for prize chips / „O co jeszcze gramy” (phase-aware). */
+function buildPrizeEvalOpts(data = latestData) {
+    const cutSize = parseInt(document.getElementById('cutSize')?.value || String(siteConfig.defaultCutSize || 8), 10);
+    const cutRule = document.getElementById('cutRule')?.value || siteConfig.defaultCutRule || 'hard';
+    const activeRound = cachedCutContext.activeRound ?? resolveActiveRound(data || {});
+    const totalRounds = cachedCutContext.totalRounds || getEffectiveTotalRounds(data || {});
+    const formatSwiss = getFormatSwissRoundsForActiveMode();
+    return {
+        cutSize,
+        cutRule,
+        activeRound,
+        totalRounds,
+        totalSwissRounds: formatSwiss != null ? formatSwiss : totalRounds,
+        isCompleted: Boolean(data?.isCompleted) || String(data?.displayStatus || '').toLowerCase() === 'complete',
+        topCutActive: detectTopCutActiveFlag(data)
+    };
 }
 
 function getPrizeChipEvalContext() {
     const standings = (cachedLiveStandings && cachedLiveStandings.length)
         ? cachedLiveStandings
         : (latestData?.standings?.standings || []);
-    const cutSize = parseInt(document.getElementById('cutSize')?.value || String(siteConfig.defaultCutSize || 8), 10);
-    const cutRule = document.getElementById('cutRule')?.value || siteConfig.defaultCutRule || 'hard';
-    const activeRound = cachedCutContext.activeRound ?? resolveActiveRound(latestData);
-    const totalRounds = cachedCutContext.totalRounds || getEffectiveTotalRounds(latestData || {});
     return {
         mode: getActiveTournamentMode(),
         standings,
-        opts: { cutSize, cutRule, activeRound, totalRounds }
+        opts: buildPrizeEvalOpts(latestData)
     };
 }
 
@@ -422,17 +458,7 @@ function renderPrizeGoalsPanel(playerId = currentSelectedPlayerId) {
     const standings = (cachedLiveStandings && cachedLiveStandings.length)
         ? cachedLiveStandings
         : (latestData?.standings?.standings || []);
-    const cutSize = parseInt(document.getElementById('cutSize')?.value || String(siteConfig.defaultCutSize || 8), 10);
-    const cutRule = document.getElementById('cutRule')?.value || siteConfig.defaultCutRule || 'hard';
-    const activeRound = cachedCutContext.activeRound ?? resolveActiveRound(latestData);
-    const totalRounds = cachedCutContext.totalRounds || getEffectiveTotalRounds(latestData || {});
-
-    const ev = api.evaluatePlayerPrizes(mode, standings, playerId, {
-        cutSize,
-        cutRule,
-        activeRound,
-        totalRounds
-    });
+    const ev = api.evaluatePlayerPrizes(mode, standings, playerId, buildPrizeEvalOpts(latestData));
 
     if (ev.emptyReason) {
         if (metaEl) metaEl.textContent = ev.emptyReason;
@@ -444,7 +470,9 @@ function renderPrizeGoalsPanel(playerId = currentSelectedPlayerId) {
 
     if (metaEl) {
         const softBit = ev.softThresh != null ? ` · soft próg EUC: ${ev.softThresh} pkt` : '';
-        metaEl.textContent = `${ev.playerName} · #${ev.rank} · ${ev.points} pkt · ${ev.wins}W · rundy do końca: ${ev.roundsLeft}${softBit}`;
+        const phaseBit = ev.phase ? ` · faza: ${ev.phase}` : '';
+        const swissBit = ev.totalSwissRounds ? ` · Swiss ${ev.totalSwissRounds}` : '';
+        metaEl.textContent = `${ev.playerName} · #${ev.rank} · ${ev.points} pkt · ${ev.wins}W · rundy Swiss do końca: ${ev.roundsLeft}${swissBit}${phaseBit}${softBit}`;
     }
     fillPrizeGroup('prizeInPlayList', 'prizeInPlayEmpty', ev.groups.in_play, api);
     fillPrizeGroup('prizeLockedList', 'prizeLockedEmpty', ev.groups.locked, api);
@@ -671,7 +699,7 @@ function setStoredRoundsOverride(eventId, rounds) {
     } catch (e) {}
 }
 
-/** Efektywna liczba rund Swiss: lokalny override → domyślne admina → PlayHub/API. */
+/** Efektywna liczba rund Swiss: lokalny override → admin → format DLC (15/11) → PlayHub/API. */
 function getEffectiveTotalRounds(data) {
     const activeRound = resolveActiveRound(data);
     const apiRounds = getApiTotalRounds(data);
@@ -679,6 +707,8 @@ function getEffectiveTotalRounds(data) {
     if (override != null) return Math.max(override, activeRound);
     const adminRounds = getAdminSwissRoundsDefault();
     if (adminRounds != null) return Math.max(adminRounds, activeRound);
+    const formatRounds = getFormatSwissRoundsForActiveMode();
+    if (formatRounds != null) return Math.max(formatRounds, activeRound);
     return apiRounds;
 }
 
@@ -6241,8 +6271,16 @@ function renderTopCutBracketPanel(liveStandings, cutSize) {
         return;
     }
 
-    // MAIN1: soft Top32 = EUC invite; drabinka pucharowa zostaje hard Top 8.
+    // MAIN1: soft Top32 = EUC invite; drabinka = hard Top 8.
+    // MAIN2: brak playoffów — nie pokazuj drabinki „Top Cut”.
     const bracketCutSize = resolveTopCutBracketSize(cutSize);
+    if (!bracketCutSize || bracketCutSize < 2) {
+        panel.style.display = 'none';
+        if (statusTextEl) {
+            statusTextEl.textContent = 'Ten tryb nie ma fazy pucharowej (MAIN2: hard Top 8 = ranking po Swiss + TB).';
+        }
+        return;
+    }
     const roundsMatches = latestData?.roundsMatches || null;
     const tree = buildFullTopCutBracketTree(liveStandings, bracketCutSize, roundsMatches, cachedStandingsMap);
     if (!tree.rounds || tree.rounds.length === 0) {
@@ -6537,6 +6575,8 @@ if (typeof module !== 'undefined' && module.exports) {
         getDefaultTotalRounds,
         getApiTotalRounds,
         getEffectiveTotalRounds,
+        getFormatSwissRoundsForActiveMode,
+        buildPrizeEvalOpts,
         getPlayerHistoricalMatches,
 
         calculateCutLineBreakdown,
