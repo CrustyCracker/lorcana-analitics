@@ -6,6 +6,7 @@ const path = require('path');
 const {
     calculateSoftCutIdInflation,
     calculateCutLineBreakdown,
+    buildSoftCutIdInflationWarnings,
     formatSoftCutIdInflationHtml
 } = require('../app.js');
 
@@ -244,17 +245,90 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(html, /najszerszy soft cut/);
         assert.match(html, /≥ 7 stołów \(14 osób\)/);
         assert.match(html, /wspinaczy/);
+
+        const warns = buildSoftCutIdInflationWarnings(info);
+        const ids = warns.map((w) => w.id);
+        assert.ok(ids.includes('mass_id_risk'));
+        assert.ok(ids.includes('model_blind_spot'));
+        assert.ok(!ids.includes('cut_decided_above'));
+        assert.ok(!ids.includes('mass_id_aftermath'));
+        assert.match(html, /data-soft-euc-warn="mass_id_risk"/);
+        assert.match(html, /data-soft-euc-warn="model_blind_spot"/);
+        assert.match(html, /Masowe ID na 33/);
+        assert.match(html, /Modele „wszyscy grają o W\/L”/);
+        assert.match(html, /Lekcja London R15/);
+    });
+
+    it('warning: locked IDs aftermath + cut_decided_above when open cannot save', () => {
+        const { standings, pairings } = buildDlcStyleField();
+        const aftermath = calculateSoftCutIdInflation(standings, pairings, 32);
+        const afterWarns = buildSoftCutIdInflationWarnings(aftermath);
+        assert.deepEqual(afterWarns.map((w) => w.id), ['mass_id_aftermath']);
+        const afterHtml = formatSoftCutIdInflationHtml(aftermath, { alwaysShow: true });
+        assert.match(afterHtml, /data-soft-euc-warn="mass_id_aftermath"/);
+        assert.match(afterHtml, /już podbiło soft cut/);
+
+        // 8 locked ID + 3 still-open mirrors on 33 — need 7 plays but only 3 open ⇒ cut decided above.
+        const standings2 = [];
+        let rank = 1;
+        let id = 1;
+        for (let i = 0; i < 11; i++) standings2.push(row(id++, 36, rank++));
+        const lockedIds = [];
+        for (let i = 0; i < 16; i++) {
+            const pid = id++;
+            lockedIds.push(pid);
+            standings2.push(row(pid, 34, rank++));
+        }
+        for (let i = 0; i < 5; i++) standings2.push(row(id++, 34, rank++));
+        const openIds = [];
+        for (let i = 0; i < 6; i++) {
+            const pid = id++;
+            openIds.push(pid);
+            standings2.push(row(pid, 33, rank++));
+        }
+        for (let i = 0; i < 25; i++) standings2.push(row(id++, 30, rank++));
+
+        const pairings2 = [];
+        for (let t = 0; t < 8; t++) {
+            pairings2.push(idMatch(t + 1, lockedIds[t * 2], lockedIds[t * 2 + 1], true));
+        }
+        for (let t = 0; t < 3; t++) {
+            pairings2.push(openMirror(t + 20, openIds[t * 2], openIds[t * 2 + 1]));
+        }
+
+        const mixed = calculateSoftCutIdInflation(standings2, pairings2, 32);
+        assert.equal(mixed.lockedIdTables, 8);
+        assert.equal(mixed.openMirrorTables, 3);
+        assert.equal(mixed.minTablesMustPlay, 7);
+        assert.ok(mixed.minTablesMustPlay > mixed.openMirrorTables);
+
+        const mixedWarns = buildSoftCutIdInflationWarnings(mixed);
+        const mixedIds = mixedWarns.map((w) => w.id);
+        assert.ok(mixedIds.includes('mass_id_risk'));
+        assert.ok(mixedIds.includes('model_blind_spot'));
+        assert.ok(mixedIds.includes('cut_decided_above'));
+        const alert = mixedWarns.find((w) => w.id === 'cut_decided_above');
+        assert.equal(alert.severity, 'alert');
+        assert.match(alert.short, /nawet gdy wszystkie 3 otwarte/);
+
+        const mixedHtml = formatSoftCutIdInflationHtml(mixed, { alwaysShow: true });
+        assert.match(mixedHtml, /data-soft-euc-warn="cut_decided_above"/);
+        assert.match(mixedHtml, /nadmuchany próg/);
     });
 
     it('/tests page hosts Soft EUC front panel + R15 loader + cache-bust', () => {
         const testsHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+        const rootHtml = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
         assert.match(testsHtml, /id="frontSoftEucHost"/);
         assert.match(testsHtml, /id="softEucPlayHint"/);
         assert.match(testsHtml, /id="tournamentSwitcher"/);
         assert.match(testsHtml, /id="prizeGoalsPanel"/);
         assert.match(testsHtml, /id="testsControlsStrip"/);
         assert.match(testsHtml, /loadR15LondonPreTie\(/);
-        assert.match(testsHtml, /app\.js\?v=20261117tierorder1/);
+        assert.match(testsHtml, /app\.js\?v=20261117idwarn1/);
+        assert.match(rootHtml, /app\.js\?v=20261117idwarn1/);
+        assert.match(testsHtml, /soft-euc-play-hint__warn--alert/);
+        assert.match(rootHtml, /soft-euc-play-hint__warn--alert/);
         assert.match(testsHtml, /prize-ladders\.js/);
         assert.match(testsHtml, /Analityka Lorcany/);
         assert.doesNotMatch(testsHtml, /brand-mark">TESTS/);

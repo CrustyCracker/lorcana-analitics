@@ -6106,6 +6106,99 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
     };
 }
 
+/**
+ * Soft EUC warnings for intentional-draw inflation (Polish UI).
+ * Returns [{ id, severity, short, fold? }] — short is always shown unless fold:true.
+ *
+ * When each fires (MAIN1 Soft EUC only):
+ * - mass_id_risk: open bubble mirrors can still all ID and raise soft cut vs play-for-wins.
+ * - mass_id_aftermath: mirrors already all/mostly ID'd and soft cut sits above min achievable.
+ * - model_blind_spot: open inflation risk — W/L predictive models cannot foresee mass ID (London).
+ * - cut_decided_above: some mirrors already ID'd; remaining open tables cannot (or barely can)
+ *   reverse the inflated threshold — players may already be "playing into" it.
+ * Live pairings/results keep refreshing the panel as matches finish (unchanged).
+ */
+function buildSoftCutIdInflationWarnings(info) {
+    if (!info || !info.relevant) return [];
+
+    const must = info.minTablesMustPlay;
+    const open = Number(info.openMirrorTables) || 0;
+    const locked = Number(info.lockedIdTables) || 0;
+    const mirrors = Number(info.mirrorTables) || 0;
+    const band = info.mirrorScore;
+    const high = info.bandPts;
+    const minCut = info.minAchievableSoftCut;
+    const allIdThresh = info.projectedThreshIfAllId;
+    const playThresh = info.projectedThreshIfAllPlay;
+    const inflated = Number.isFinite(allIdThresh) && Number.isFinite(minCut) && allIdThresh > minCut;
+    const warnings = [];
+
+    if (open > 0 && inflated && (must == null || must > 0)) {
+        warnings.push({
+            id: 'mass_id_risk',
+            severity: 'warn',
+            short: `Masowe ID na ${band} (np. wszystkie stoły biorą remis) może podbić soft cut do ${allIdThresh} — wyraźnie wyżej niż przy grze o wygrane (${minCut}).`,
+            fold: false
+        });
+    }
+
+    if (open === 0 && locked > 0 && inflated
+        && Number(info.currentThresh) >= Number(allIdThresh)
+        && Number(info.currentThresh) > Number(minCut)) {
+        warnings.push({
+            id: 'mass_id_aftermath',
+            severity: 'warn',
+            short: `Masowe ID na ${band} już podbiło soft cut do ${info.currentThresh} (przy grze o wygrane byłby ${minCut}).`,
+            fold: false
+        });
+    }
+
+    if (open > 0 && inflated) {
+        warnings.push({
+            id: 'model_blind_spot',
+            severity: 'info',
+            short: `Modele „wszyscy grają o W/L” nie przewidzą, że cały pas ${band} weźmie ID (lekcja London R15). LIVE i tak dogrywa wyniki na bieżąco.`,
+            fold: false
+        });
+    }
+
+    // Locked IDs cannot be undone — only open mirrors can still deliver W/L.
+    if (open > 0 && locked > 0 && (must == null || must > 0)) {
+        if (must == null || must > open) {
+            warnings.push({
+                id: 'cut_decided_above',
+                severity: 'alert',
+                short: `Wyżej na bubble już padło ${locked} ID — nawet gdy wszystkie ${open} otwarte stoły zagrają, nie złapiecie soft cutu ${minCut}. Gracie już w nadmuchany próg (~${allIdThresh || high}); kolejne ID tylko pogarszają.`,
+                fold: false
+            });
+        } else if (must > 0) {
+            warnings.push({
+                id: 'cut_decided_above',
+                severity: 'warn',
+                short: `Część stołów wyżej już wzięła ID (${locked}/${mirrors}). Decyzja o progu w dużej mierze zapadła powyżej — żeby jeszcze złapać ${minCut}, ≥${must} z pozostałych ${open} musi GRAĆ; kolejne ID pogarszają.`,
+                fold: false
+            });
+        }
+    }
+
+    return warnings;
+}
+
+function formatSoftCutIdInflationWarningsHtml(warnings) {
+    if (!Array.isArray(warnings) || warnings.length === 0) return '';
+    const visible = warnings.filter((w) => w && !w.fold && w.short);
+    const folded = warnings.filter((w) => w && w.fold && w.short);
+    const renderOne = (w) => {
+        const sev = w.severity === 'alert' ? 'alert' : (w.severity === 'info' ? 'info' : 'warn');
+        return `<div class="soft-euc-play-hint__warn soft-euc-play-hint__warn--${sev}" data-soft-euc-warn="${escapeHtml(String(w.id))}">${escapeHtml(w.short)}</div>`;
+    };
+    let html = visible.map(renderOne).join('');
+    if (folded.length) {
+        html += `<details class="copy-fold soft-euc-fold soft-euc-warn-fold"><summary>więcej o ryzyku ID</summary>${folded.map(renderOne).join('')}</details>`;
+    }
+    return html;
+}
+
 function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
     // Empty / waiting state — still visible when soft cut is on, so the tool isn't "buried".
     if (!info || !info.relevant) {
@@ -6118,12 +6211,14 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
                 <details class="copy-fold soft-euc-fold">
                     <summary>Jak to działa</summary>
                     <div class="soft-euc-play-hint__body">
-                        Narzędzie działa <strong>na żywo</strong> z aktualnych pairings (otwarte lustrzane stoły + już oddane ID).
+                        Narzędzie działa <strong>na żywo</strong> z aktualnych pairings (otwarte lustrzane stoły + już oddane ID) — po każdym wyniku panel się odświeża.
                         Gdy na bubble pojawią się mirory (np. 33v33), pokażemy:
                         (1) <strong>najniższy soft cut w punktach</strong>, jaki da się jeszcze złapać, jeśli dość osób zagra W/L zamiast ID;
-                        (2) <strong>ile stołów / osób</strong> na tym paśmie musi grać, żeby zejść do tego progu.
+                        (2) <strong>ile stołów / osób</strong> na tym paśmie musi grać, żeby zejść do tego progu;
+                        (3) <strong>ostrzeżenia</strong>, gdy masowe „bezpieczne” ID nadmuchują próg (lekcja London R15).
                         Krótko: ID pompują próg w górę. Wynik (W/L) zdejmuje z pasa ≥(S+1) <strong>tylko 1 osobę na stół</strong>
                         (nie 2 — wygrany i tak zostaje wyżej). Dlatego często trzeba więcej stołów niż „połowa nadmiaru”.
+                        Modele zakładające grę o wygrane <strong>nie przewidzą</strong>, że cały pas weźmie ID.
                     </div>
                 </details>
             </div>
@@ -6137,6 +6232,8 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
     const high = info.bandPts;
     const cut = info.cutSize;
     const geAllId = info.geBandIfAllId;
+    const warnings = buildSoftCutIdInflationWarnings(info);
+    const warningsHtml = formatSoftCutIdInflationWarningsHtml(warnings);
     let headline;
     let riskTone = 'ok';
     if (must == null) {
@@ -6149,6 +6246,7 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
         headline = `Żeby złapać najszerszy soft cut (${minCut} pkt): ≥ ${must} stołów (${people} osób) na ${band} pkt musi GRAĆ (W/L, nie ID) — z ${info.mirrorTables} lustrzanych.`;
         riskTone = 'warn';
     }
+    if (warnings.some((w) => w.severity === 'alert')) riskTone = 'warn';
 
     const openBit = info.openMirrorTables > 0
         ? `<strong>${info.openMirrorTables}</strong> nadal otwarte (LIVE)`
@@ -6188,6 +6286,14 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
         `;
     }
 
+    const londonFold = `
+                <div class="soft-euc-play-hint__why soft-euc-play-hint__why--teach">
+                    <strong>Lekcja London R15:</strong> „bezpieczne” ID na bubble (33v33) indywidualnie ma sens,
+                    ale gdy <em>wszyscy</em> na paśmie biorą remis, soft cut skacze w górę — nawet jeśli przy grze o wygrane
+                    11–4 nadal dawałoby kontynentale. Predykcje W/L tego nie złapią; ten panel patrzy na realne ID/LIVE.
+                </div>
+    `;
+
     return `
         <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--${riskTone}">
             <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale · Top ${cut}</div>
@@ -6207,9 +6313,11 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
             <div class="soft-euc-play-hint__answer" style="color: ${riskTone === 'warn' ? '#f59e0b' : '#34d399'};">
                 ${escapeHtml(headline)}
             </div>
+            ${warningsHtml}
             <details class="copy-fold soft-euc-fold">
                 <summary>więcej / dlaczego</summary>
                 ${whyNotHalfHtml}
+                ${londonFold}
                 <div class="soft-euc-play-hint__body">
                     Lustrzane stoły na <strong>${band} pkt</strong> (ID → pas <strong>${high}</strong>):
                     ${lockedBit}, ${openBit}.${climberBit}
@@ -6219,6 +6327,7 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
                     (${info.projectedInvitesIfAllPlay} inv.).
                     Każdy wynik zamiast ID zdejmuje <strong>1 osobę</strong> z pasa ≥${high}
                     (wygrany zostaje wyżej, przegrany spada) — bez ekstra nagrody rzeczowej za samo ID, tylko soft invite.
+                    Wyniki LIVE aktualizują ten panel na bieżąco.
                 </div>
             </details>
         </div>
@@ -7648,6 +7757,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
         calculateCutLineBreakdown,
         calculateSoftCutIdInflation,
+        buildSoftCutIdInflationWarnings,
+        formatSoftCutIdInflationWarningsHtml,
         formatSoftCutIdInflationHtml,
         renderPrizeGoalsPanel,
         renderPrizeStatusChipsHtml,
