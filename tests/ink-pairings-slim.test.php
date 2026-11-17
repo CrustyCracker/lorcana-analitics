@@ -235,5 +235,75 @@ assert_true((int)($enriched['playerInksCached'] ?? 0) >= 2, 'playerInksCached pe
 
 @unlink($inksPath);
 
+// Old tournament (style 1264307): zero inks → hasInkPairings false, no empty sidecar.
+$noInkEventId = 1264307;
+$noInkPath = lorcana_inks_cache_file($noInkEventId);
+@unlink($noInkPath);
+
+$noInkPayload = [
+    'eventId' => $noInkEventId,
+    'activeRound' => 1,
+    'standingsRound' => 1,
+    'playerCount' => 2,
+    'standings' => [
+        'standings' => [
+            [
+                'id' => 1,
+                'rank' => 1,
+                'match_points' => 3,
+                'player' => ['id' => 1001, 'best_identifier' => 'OldAlice'],
+                'user_event_status' => [
+                    'id' => 1,
+                    'best_identifier' => 'OldAlice',
+                    'user' => ['id' => 1001],
+                ],
+            ],
+            [
+                'id' => 2,
+                'rank' => 2,
+                'match_points' => 0,
+                'player' => ['id' => 1002, 'best_identifier' => 'OldBob'],
+                'user_event_status' => [
+                    'id' => 2,
+                    'best_identifier' => 'OldBob',
+                    'user' => ['id' => 1002],
+                ],
+            ],
+        ],
+    ],
+    'roundsMatches' => [
+        1 => [
+            'round_number' => 1,
+            'matches' => [
+                [
+                    'id' => 50,
+                    'players' => [1001, 1002],
+                    'player_match_relationships' => [
+                        ['player' => ['id' => 1001, 'best_identifier' => 'OldAlice']],
+                        ['player' => ['id' => 1002, 'best_identifier' => 'OldBob']],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    'pairings' => ['results' => []],
+];
+
+$noInkSlim = lorcana_slim_event_payload($noInkPayload);
+assert_true(array_key_exists('hasInkPairings', $noInkSlim), 'no-ink payload sets hasInkPairings key');
+assert_true($noInkSlim['hasInkPairings'] === false, 'no-ink hasInkPairings is false');
+assert_true((int)($noInkSlim['playerInksCached'] ?? -1) === 0, 'no-ink playerInksCached is 0');
+assert_true(!is_file($noInkPath), 'no-ink slim does not create empty sidecar');
+
+// Empty merge must not create sidecar either.
+$emptyMerge = lorcana_merge_player_inks_cache($noInkEventId, []);
+assert_true($emptyMerge === [], 'empty merge returns empty map');
+assert_true(!is_file($noInkPath), 'empty merge skips writing sidecar');
+
+$meta = lorcana_cache_sidecar_meta_from_payload($noInkSlim);
+assert_true(isset($meta['hasInkPairings']) && $meta['hasInkPairings'] === false, 'meta sidecar hasInkPairings false');
+
+@unlink($noInkPath);
+
 echo "ALL PASSED\n";
 exit(0);

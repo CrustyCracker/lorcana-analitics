@@ -184,6 +184,9 @@ function lorcana_cache_sidecar_meta_from_payload(array $payload) {
         'standingsRound' => (int)($payload['standingsRound'] ?? 0),
         'eventId' => (int)($payload['eventId'] ?? 0),
         'inksCached' => (int)($payload['playerInksCached'] ?? 0),
+        'hasInkPairings' => array_key_exists('hasInkPairings', $payload)
+            ? !empty($payload['hasInkPairings'])
+            : ((int)($payload['playerInksCached'] ?? 0) > 0),
     ];
 }
 

@@ -409,11 +409,8 @@ function lorcana_merge_player_inks_cache($eventId, array $incoming) {
             $changed = true;
         }
     }
-    if ($changed || !is_file(
-        function_exists('lorcana_inks_cache_file')
-            ? lorcana_inks_cache_file($eventId)
-            : (dirname(__DIR__) . '/cache_' . (int)$eventId . '.inks.json')
-    )) {
+    // Do not create an empty cache_{id}.inks.json for old tournaments with zero inks.
+    if ($changed) {
         $path = function_exists('lorcana_inks_cache_file')
             ? lorcana_inks_cache_file($eventId)
             : (dirname(__DIR__) . '/cache_' . (int)$eventId . '.inks.json');
@@ -552,9 +549,14 @@ function lorcana_apply_durable_player_inks(array $payload) {
     }
 
     $merged = lorcana_merge_player_inks_cache($eventId, $incoming);
-    if ($merged && isset($payload['standings'])) {
-        $payload['standings'] = lorcana_apply_inks_to_standings($payload['standings'], $merged);
+    if ($merged) {
+        if (isset($payload['standings'])) {
+            $payload['standings'] = lorcana_apply_inks_to_standings($payload['standings'], $merged);
+        }
         $payload['hasInkPairings'] = true;
+    } else {
+        // Zero harvest + empty/missing sidecar → old PlayHub format (or never supported).
+        $payload['hasInkPairings'] = false;
     }
     $payload['playerInksCached'] = count($merged);
     return $payload;

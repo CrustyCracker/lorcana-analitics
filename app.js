@@ -3500,8 +3500,19 @@ function computeTournamentInkMeta(eventId, standingsList) {
 
 function renderTournamentMetaPanel(data, standingsList) {
     if (typeof document === 'undefined') return;
+    const section = document.getElementById('tournamentMetaSection');
     const root = document.getElementById('tournamentMetaRoot');
     if (!root) return;
+
+    // Old tournaments / explicit no ink support — hide Meta entirely (no "coming soon" copy).
+    if (data && data.hasInkPairings === false) {
+        if (section) section.hidden = true;
+        root.hidden = true;
+        root.innerHTML = '';
+        return;
+    }
+
+    if (section) section.hidden = false;
 
     const eventId = data?.eventId;
     const list = Array.isArray(standingsList)
@@ -3510,6 +3521,7 @@ function renderTournamentMetaPanel(data, standingsList) {
     const meta = computeTournamentInkMeta(eventId, list);
 
     if (!meta.known) {
+        // Unknown/legacy payload (no flag) or ink event still gathering colors.
         root.innerHTML = `
             <div class="tournament-meta-empty">
                 Brak jeszcze rozpoznanych atramentów w tym evencie.

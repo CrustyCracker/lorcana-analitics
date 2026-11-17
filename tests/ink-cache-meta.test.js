@@ -239,4 +239,73 @@ describe('ink localStorage cache + tournament meta', () => {
         // Prior server seed kept.
         assert.equal(app.lookupCachedPlayerInks(eventId, 55).length, 1);
     });
+
+    it('no-ink old tournament: harvest no-op; meta section hidden when hasInkPairings false', () => {
+        const eventId = '1264307';
+        const data = {
+            eventId,
+            hasInkPairings: false,
+            standings: {
+                standings: [
+                    { player: { id: 1001, best_identifier: 'OldAlice' } },
+                    { player: { id: 1002, best_identifier: 'OldBob' } }
+                ]
+            },
+            pairings: {
+                results: [
+                    {
+                        players: [
+                            { id: 1001, best_identifier: 'OldAlice' },
+                            { id: 1002, best_identifier: 'OldBob' }
+                        ]
+                    }
+                ]
+            },
+            roundsMatches: {}
+        };
+
+        const res = app.harvestPlayerInksFromData(data);
+        assert.equal(res.harvested, 0);
+        assert.equal(res.totalCached, 0);
+        assert.equal(app.lookupCachedPlayerInks(eventId, 1001).length, 0);
+        assert.equal(app.renderInkBadgesHtml(app.getPlayerInks(data.standings.standings[0], { eventId })), '');
+
+        const meta = app.computeTournamentInkMeta(eventId, data.standings.standings);
+        assert.equal(meta.known, 0);
+
+        const prevDoc = global.document;
+        const section = { hidden: false, id: 'tournamentMetaSection' };
+        const root = {
+            hidden: false,
+            id: 'tournamentMetaRoot',
+            innerHTML: 'placeholder'
+        };
+        global.document = {
+            getElementById(id) {
+                if (id === 'tournamentMetaSection') return section;
+                if (id === 'tournamentMetaRoot') return root;
+                return null;
+            }
+        };
+        try {
+            app.renderTournamentMetaPanel(data, data.standings.standings);
+            assert.equal(section.hidden, true);
+            assert.equal(root.hidden, true);
+            assert.equal(root.innerHTML, '');
+
+            // Without the false flag, empty-state remains available.
+            section.hidden = true;
+            root.hidden = true;
+            app.renderTournamentMetaPanel(
+                { eventId, standings: data.standings },
+                data.standings.standings
+            );
+            assert.equal(section.hidden, false);
+            assert.equal(root.hidden, false);
+            assert.match(root.innerHTML, /Brak jeszcze rozpoznanych atramentów/);
+        } finally {
+            if (prevDoc === undefined) delete global.document;
+            else global.document = prevDoc;
+        }
+    });
 });
