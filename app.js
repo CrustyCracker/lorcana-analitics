@@ -2672,7 +2672,11 @@ function applyLoadedTournamentData(data, opts = {}) {
 
     // Harvest ink pairings into localStorage before standings paint so dots
     // survive after the active round rolls forward (critical roundsMode).
-    harvestPlayerInksFromData(data);
+    // Merge-only: never drop known inks when this payload omits them.
+    const inkHarvest = harvestPlayerInksFromData(data);
+    if (inkHarvest.harvested > 0 || inkHarvest.updated > 0) {
+        scheduleSyncPlayerInksToServer(data.eventId);
+    }
 
     // Core first paint: rebuild maps + LIVE table; pairings/secondary DOM deferred.
     processPairings(data, { deferRender: true });
@@ -3294,24 +3298,28 @@ function getPlayerInks(playerOrStanding, opts = {}) {
 }
 
 /**
- * Scan standings / pairings / roundsMatches for ink pairings and merge into
- * localStorage keyed by eventId → { playerId: inks[] }.
+ * Scan standings / pairings / roundsMatches / server playerInks for ink pairings
+ * and merge into localStorage keyed by eventId → { playerId: inks[] }.
+ * Never drops previously known player inks when a later payload omits them.
  */
 function harvestPlayerInksFromData(data) {
-    if (!data) return { harvested: 0, totalCached: 0 };
+    if (!data) return { harvested: 0, totalCached: 0, updated: 0 };
     const eventId = data.eventId;
     const eid = normalizeEventIdDigits(eventId);
-    if (!eid) return { harvested: 0, totalCached: 0 };
+    if (!eid) return { harvested: 0, totalCached: 0, updated: 0 };
 
     const map = loadPlayerInksCache(eid);
     let harvested = 0;
+    let updated = 0;
 
     const ingest = (obj, explicitId) => {
         if (!obj && explicitId == null) return;
         const pid = explicitId != null ? String(explicitId) : extractPlayerIdForInks(obj);
         const inks = getPlayerInksFromPayload(obj || {});
         if (!pid || !inks.length) return;
-        if (!map.has(pid)) harvested += 1;
+        const prev = map.get(pid);
+        if (!prev) harvested += 1;
+        else if (inkPairingSortKey(prev) !== inkPairingSortKey(inks)) updated += 1;
         map.set(pid, inks);
     };
 
@@ -3319,6 +3327,10 @@ function harvestPlayerInksFromData(data) {
         if (!match || typeof match !== 'object') return;
         ingest(getMatchParticipant(match, 1));
         ingest(getMatchParticipant(match, 2));
+        const players = match.players;
+        if (Array.isArray(players)) {
+            for (let i = 0; i < players.length; i++) ingest(players[i]);
+        }
         const rels = match.player_match_relationships;
         if (Array.isArray(rels)) {
             for (let i = 0; i < rels.length; i++) {
@@ -3328,11 +3340,19 @@ function harvestPlayerInksFromData(data) {
                 ingest({
                     player: rel.player,
                     user_event_status: rel.user_event_status,
-                    inks: rel.player?.inks || rel.user_event_status?.inks
+                    inks: rel.player?.inks || rel.user_event_status?.inks || rel.inks
                 }, pid);
             }
         }
     };
+
+    // Server durable map (when present) seeds localStorage for shared-hosting browsers.
+    const serverMap = data.playerInks || data.player_inks;
+    if (serverMap && typeof serverMap === 'object' && !Array.isArray(serverMap)) {
+        for (const [pid, inks] of Object.entries(serverMap)) {
+            ingest({ inks }, pid);
+        }
+    }
 
     const standings = data.standings?.standings || [];
     for (let i = 0; i < standings.length; i++) ingest(standings[i]);
@@ -3350,7 +3370,56 @@ function harvestPlayerInksFromData(data) {
     }
 
     persistPlayerInksCache(eid, map);
-    return { harvested, totalCached: map.size };
+    return { harvested, updated, totalCached: map.size };
+}
+
+/** Debounced POST of local ink cache → host durable sidecar (survives browser clears). */
+let syncPlayerInksTimer = null;
+let syncPlayerInksLastSig = '';
+
+function playerInksCacheToObject(eventId) {
+    const map = loadPlayerInksCache(eventId);
+    const obj = {};
+    for (const [pid, inks] of map.entries()) {
+        const n = normalizeCompactInks(inks);
+        if (n.length) obj[String(pid)] = n;
+    }
+    return obj;
+}
+
+function scheduleSyncPlayerInksToServer(eventId, { force = false } = {}) {
+    const eid = normalizeEventIdDigits(eventId);
+    if (!eid || typeof fetch !== 'function') return;
+    if (syncPlayerInksTimer) clearTimeout(syncPlayerInksTimer);
+    syncPlayerInksTimer = setTimeout(() => {
+        syncPlayerInksTimer = null;
+        syncPlayerInksToServer(eid, { force }).catch(() => {});
+    }, force ? 0 : 1200);
+}
+
+async function syncPlayerInksToServer(eventId, { force = false } = {}) {
+    const eid = normalizeEventIdDigits(eventId);
+    if (!eid || typeof fetch !== 'function') return null;
+    const inks = playerInksCacheToObject(eid);
+    const keys = Object.keys(inks);
+    if (!keys.length) return null;
+    const sig = eid + ':' + keys.length + ':' + keys.slice(0, 8).join(',');
+    if (!force && sig === syncPlayerInksLastSig) return null;
+    syncPlayerInksLastSig = sig;
+    const apiBase = '';
+    try {
+        const res = await fetch(`${apiBase}api.php?action=merge_player_inks&eventId=${encodeURIComponent(eid)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ inks }),
+            cache: 'no-store',
+            keepalive: true
+        });
+        if (!res.ok) return null;
+        return await res.json();
+    } catch (e) {
+        return null;
+    }
 }
 
 function inkPairingSortKey(inks) {
@@ -3518,10 +3587,14 @@ function renderInkBadgesHtml(inks) {
     return `<span class="ink-pair" title="${title}">${dots}</span>`;
 }
 
-function formatPlayerCellHtml(player, formattedName, { strong = false, eventId = null } = {}) {
+function formatPlayerCellHtml(player, formattedName, { strong = false, eventId = null, playerId = null } = {}) {
     const safeName = escapeHtml(formattedName || '');
     const nameHtml = strong ? `<strong class="player-name-text">${safeName}</strong>` : `<span class="player-name-text">${safeName}</span>`;
-    const inkHtml = renderInkBadgesHtml(getPlayerInks(player, { eventId: eventId || latestData?.eventId }));
+    const eid = eventId || latestData?.eventId;
+    const inkHtml = renderInkBadgesHtml(getPlayerInks(player, {
+        eventId: eid,
+        playerId: playerId ?? extractPlayerIdForInks(player)
+    }));
     if (!inkHtml) return nameHtml;
     return `<span class="player-cell-with-inks">${inkHtml}${nameHtml}</span>`;
 }
@@ -3568,6 +3641,19 @@ function processPairings(data, opts = {}) {
     const pairingsList = getActivePairingsList(data);
     const standingsList = data.standings?.standings || [];
     const standingsMap = buildStandingsMap(standingsList);
+
+    // Harvest whenever PlayHub shows inks on active pairings / matches.
+    if (data?.eventId) {
+        const res = harvestPlayerInksFromData({
+            eventId: data.eventId,
+            pairings: data.pairings,
+            roundsMatches: data.roundsMatches,
+            standings: data.standings
+        });
+        if (res.harvested > 0 || res.updated > 0) {
+            scheduleSyncPlayerInksToServer(data.eventId);
+        }
+    }
 
     cachedPairings = pairingsList;
     cachedStandingsMap = standingsMap;
@@ -3701,10 +3787,16 @@ function renderPairingsTable() {
         const safeTableNum = escapeHtml(tableNum);
         const inkSrc1 = p1?.raw || raw1 || p1;
         const inkSrc2 = isBye ? null : (p2?.raw || raw2 || p2);
-        const cell1 = formatPlayerCellHtml(inkSrc1, name1);
+        const cell1 = formatPlayerCellHtml(inkSrc1, name1, {
+            eventId: latestData?.eventId,
+            playerId: p1?.id ?? extractPlayerIdForInks(inkSrc1)
+        });
         const cell2 = isBye
             ? `<span class="player-name-text">${safeName2}</span>`
-            : formatPlayerCellHtml(inkSrc2, name2);
+            : formatPlayerCellHtml(inkSrc2, name2, {
+                eventId: latestData?.eventId,
+                playerId: p2?.id ?? extractPlayerIdForInks(inkSrc2)
+            });
 
         tr.innerHTML = `
             <td><strong>#${safeTableNum}</strong></td>
@@ -4095,7 +4187,11 @@ function renderLiveStandingsTable(liveStandings, cutSize, cutRule, activeRound, 
 
         const safeName = escapeHtml(formattedName);
         const safePlayerId = escapeJsAttr(playerId);
-        const nameCellHtml = formatPlayerCellHtml(player, formattedName, { strong: true });
+        const nameCellHtml = formatPlayerCellHtml(player, formattedName, {
+            strong: true,
+            eventId: latestData?.eventId,
+            playerId
+        });
 
         tr.innerHTML =
             '<td><strong>' + displayRank + '</strong></td>' +
@@ -4189,7 +4285,10 @@ function renderOfficialStandingsTable(standings, cutSize, cutRule) {
         const omwp = ((player.opponent_match_win_percentage || 0) * 100).toFixed(1) + "%";
         const gwp = ((player.game_win_percentage || 0) * 100).toFixed(1) + "%";
         const ogwp = ((player.opponent_game_win_percentage || 0) * 100).toFixed(1) + "%";
-        const nameCellHtml = formatPlayerCellHtml(player, formattedName);
+        const nameCellHtml = formatPlayerCellHtml(player, formattedName, {
+            eventId: latestData?.eventId,
+            playerId
+        });
         const prizeChipsHtml = renderPrizeStatusChipsHtml(playerId, prizeCtx);
         
         const inCut = ctx.cutRule === 'soft' 
@@ -7744,6 +7843,9 @@ if (typeof module !== 'undefined' && module.exports) {
         rememberPlayerInks,
         lookupCachedPlayerInks,
         harvestPlayerInksFromData,
+        playerInksCacheToObject,
+        scheduleSyncPlayerInksToServer,
+        syncPlayerInksToServer,
         computeTournamentInkMeta,
         renderTournamentMetaPanel,
         inkPairingSortKey,

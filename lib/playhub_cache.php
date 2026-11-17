@@ -24,6 +24,16 @@ function lorcana_cache_meta_file($eventId) {
     return LORCANA_CACHE_ROOT . '/cache_' . $id . '.meta.json';
 }
 
+/**
+ * Durable player ink pairings sidecar — accumulates across critical-mode refreshes
+ * so standings dots / meta survive when later rounds omit deck descriptors.
+ * Shape: { "<playerId>": [{key,name,hex}, ...], ... }
+ */
+function lorcana_inks_cache_file($eventId) {
+    $id = (int)$eventId;
+    return LORCANA_CACHE_ROOT . '/cache_' . $id . '.inks.json';
+}
+
 function lorcana_tracked_events_file() {
     return LORCANA_CACHE_ROOT . '/tracked_events.json';
 }
@@ -173,6 +183,7 @@ function lorcana_cache_sidecar_meta_from_payload(array $payload) {
         'totalRounds' => (int)($payload['totalRounds'] ?? 0),
         'standingsRound' => (int)($payload['standingsRound'] ?? 0),
         'eventId' => (int)($payload['eventId'] ?? 0),
+        'inksCached' => (int)($payload['playerInksCached'] ?? 0),
     ];
 }
 
@@ -219,7 +230,35 @@ function lorcana_write_cache_meta_sidecar($eventId, array $meta) {
     return lorcana_atomic_write_json(lorcana_cache_meta_file($eventId), $meta);
 }
 
+/**
+ * Before overwriting a snapshot, fold any standings inks into the durable sidecar
+ * so critical-mode refreshes do not forget pairings seen in earlier rounds.
+ */
+function lorcana_seed_inks_cache_from_existing_snapshot($eventId) {
+    if (!function_exists('lorcana_collect_inks_from_standings')
+        || !function_exists('lorcana_merge_player_inks_cache')) {
+        return;
+    }
+    $existing = lorcana_read_cache($eventId);
+    if (!$existing['exists'] || !is_array($existing['data'])) {
+        return;
+    }
+    $fromStandings = lorcana_collect_inks_from_standings($existing['data']['standings'] ?? null);
+    if ($fromStandings) {
+        lorcana_merge_player_inks_cache($eventId, $fromStandings);
+    }
+}
+
 function lorcana_write_cache($eventId, array $payload) {
+    // Preserve previously painted standings inks across rewrite.
+    lorcana_seed_inks_cache_from_existing_snapshot($eventId);
+
+    // Re-apply durable map so the bytes we store already carry accumulated inks
+    // (fast HIT can stream disk without a PHP enrich pass).
+    if (function_exists('lorcana_apply_durable_player_inks')) {
+        $payload = lorcana_apply_durable_player_inks($payload);
+    }
+
     $path = lorcana_cache_file($eventId);
     $json = json_encode($payload, JSON_UNESCAPED_UNICODE);
     if ($json === false || $json === '') {
@@ -399,6 +438,7 @@ function lorcana_prune_old_caches($maxFiles = 25, $maxAgeSeconds = 3600) {
             @unlink($oldCache . '.gz');
             if (preg_match('/cache_(\d+)\.json$/', $oldCache, $m)) {
                 @unlink(lorcana_cache_meta_file((int)$m[1]));
+                @unlink(lorcana_inks_cache_file((int)$m[1]));
             }
         }
     }

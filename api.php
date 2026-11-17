@@ -92,8 +92,69 @@ if (isset($_GET['action']) && $_GET['action'] === 'cache_status') {
         'cachedAt' => $cached['mtime'],
         'playerCount' => is_array($cached['data']) ? ($cached['data']['playerCount'] ?? null) : null,
         'displayStatus' => is_array($cached['data']) ? ($cached['data']['displayStatus'] ?? null) : null,
+        'playerInksCached' => function_exists('lorcana_player_inks_cache_count')
+            ? lorcana_player_inks_cache_count($eventId)
+            : (is_array($cached['data']) ? (int)($cached['data']['playerInksCached'] ?? 0) : 0),
         'predictionAlgorithm' => $siteConfig['predictionAlgorithm'],
         'activeEventId' => $defaultEventId,
+    ]);
+    exit;
+}
+
+/**
+ * Merge browser-harvested ink pairings into the host durable sidecar.
+ * POST JSON: { "inks": { "<playerId>": [{key,name,hex}, ...] } }
+ * Also accepts GET?action=merge_player_inks with body; public read-tournament meta.
+ */
+if (isset($_GET['action']) && $_GET['action'] === 'merge_player_inks') {
+    if ($requestMethod !== 'POST' && $requestMethod !== 'PUT') {
+        http_response_code(405);
+        header('Allow: POST, PUT');
+        echo json_encode(['error' => 'Użyj POST z JSON {inks:{playerId:[...]}}.']);
+        exit;
+    }
+    $eventId = isset($_GET['eventId']) ? filter_var($_GET['eventId'], FILTER_VALIDATE_INT) : $defaultEventId;
+    if ($eventId === false || $eventId <= 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Nieprawidłowy eventId.']);
+        exit;
+    }
+    $rawBody = (string)file_get_contents('php://input');
+    $parsed = $rawBody !== '' ? json_decode($rawBody, true) : null;
+    if (!is_array($parsed)) {
+        $parsed = $_POST;
+    }
+    $incoming = $parsed['inks'] ?? $parsed['playerInks'] ?? null;
+    if (!is_array($incoming)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Brak mapy inks.']);
+        exit;
+    }
+    // Cap merge size (anti-abuse): max 4000 players per request.
+    if (count($incoming) > 4000) {
+        http_response_code(413);
+        echo json_encode(['error' => 'Za dużo wpisów atramentów.']);
+        exit;
+    }
+    $before = lorcana_player_inks_cache_count($eventId);
+    $merged = lorcana_merge_player_inks_cache($eventId, $incoming);
+    $after = count($merged);
+    // Soft-touch: if a snapshot exists, re-apply durable inks onto standings for next HIT.
+    $cached = lorcana_read_cache($eventId);
+    $rewrote = false;
+    if ($cached['exists'] && is_array($cached['data']) && $after > $before) {
+        $enriched = lorcana_apply_durable_player_inks($cached['data']);
+        unset($enriched['_inksEnriched']);
+        $rewrote = lorcana_write_cache($eventId, $enriched);
+    }
+    header('Cache-Control: no-store');
+    echo json_encode([
+        'ok' => true,
+        'eventId' => (int)$eventId,
+        'before' => $before,
+        'totalCached' => $after,
+        'added' => max(0, $after - $before),
+        'rewroteSnapshot' => $rewrote,
     ]);
     exit;
 }
@@ -123,19 +184,32 @@ if ($forceRefresh && !$isLocalRequest && !$noCacheLocal) {
 lorcana_track_event($eventId, ['touchLastEvent' => false]);
 
 /**
- * Ensure payload is slimmed; rewrite disk cache when we compacted a fat snapshot.
+ * Ensure payload is slimmed; rewrite disk cache when we compacted a fat snapshot
+ * or when durable ink cache painted more standings rows than before.
  * @return array{payload:array,rewrote:bool}
  */
 function lorcana_api_ensure_slim(array $payload, $eventId) {
     $before = (int)($payload['_slimVersion'] ?? 0);
+    $beforeInks = function_exists('lorcana_count_standings_with_inks')
+        ? lorcana_count_standings_with_inks($payload['standings'] ?? null)
+        : 0;
     $slimmed = lorcana_slim_event_payload($payload);
+    $afterInks = function_exists('lorcana_count_standings_with_inks')
+        ? lorcana_count_standings_with_inks($slimmed['standings'] ?? null)
+        : 0;
     $rewrote = false;
-    if ($before !== (int)($slimmed['_slimVersion'] ?? 0) || $before !== LORCANA_PAYLOAD_SLIM_VERSION) {
-        // Persist slimmed form so next HIT skips re-slim + ships smaller disk IO.
+    $needsRewrite = $before !== (int)($slimmed['_slimVersion'] ?? 0)
+        || $before !== LORCANA_PAYLOAD_SLIM_VERSION
+        || $afterInks > $beforeInks
+        || !empty($slimmed['_inksEnriched']);
+    if ($needsRewrite) {
+        // Persist slimmed + ink-enriched form so next HIT streams complete standings inks.
+        unset($slimmed['_inksEnriched']);
         if (lorcana_write_cache($eventId, $slimmed)) {
             $rewrote = true;
         }
     }
+    unset($slimmed['_inksEnriched']);
     return ['payload' => $slimmed, 'rewrote' => $rewrote];
 }
 
@@ -362,10 +436,16 @@ if (!$forceRefresh) {
         $ttl = isset($sidecar['ttlSeconds']) ? (int)$sidecar['ttlSeconds'] : null;
 
         // Fast path: already-slim snapshot → stream disk bytes (prefer prebuilt .gz).
-        $canFast = $slimVersion === LORCANA_PAYLOAD_SLIM_VERSION && $ttl !== null;
+        // Skip when durable ink sidecar is richer than snapshot meta (force enrich rewrite).
+        $durableInks = function_exists('lorcana_player_inks_cache_count')
+            ? lorcana_player_inks_cache_count($eventId)
+            : 0;
+        $snapshotInks = isset($sidecar['inksCached']) ? (int)$sidecar['inksCached'] : 0;
+        $inksStaleOnDisk = $durableInks > $snapshotInks;
+        $canFast = $slimVersion === LORCANA_PAYLOAD_SLIM_VERSION && $ttl !== null && !$inksStaleOnDisk;
         $rawForSidecar = null;
         $peekMs = 0;
-        if (!$canFast) {
+        if (!$canFast && !$inksStaleOnDisk) {
             // Peek head+tail without loading the full multi-MB snapshot into PHP.
             $tPeek0 = microtime(true);
             $head = '';

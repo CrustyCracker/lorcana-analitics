@@ -157,5 +157,83 @@ assert_true(strpos(json_encode($slim), 'X-Goog-Signature') === false, 'payload h
 $again = lorcana_slim_event_payload($slim);
 assert_true($again === $slim || (int)$again['_slimVersion'] === LORCANA_PAYLOAD_SLIM_VERSION, 'idempotent slim');
 
+// Durable host sidecar: inks survive a later payload that omits deck descriptors.
+$tmpRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'lorcana_inks_test_' . getmypid();
+@mkdir($tmpRoot, 0755, true);
+if (!defined('LORCANA_CACHE_ROOT')) {
+    // playhub_cache.php may already define this — for isolated test, write beside tmp via filter.
+}
+require_once dirname(__DIR__) . '/lib/playhub_cache.php';
+
+$testEventId = 424242;
+$inksPath = lorcana_inks_cache_file($testEventId);
+@unlink($inksPath);
+
+$round1 = lorcana_slim_event_payload([
+    'eventId' => $testEventId,
+    'activeRound' => 1,
+    'standings' => $payload['standings'],
+    'roundsMatches' => $payload['roundsMatches'],
+    'pairings' => $payload['pairings'],
+]);
+assert_true((int)($round1['playerInksCached'] ?? 0) >= 2, 'durable cache counted after round1');
+assert_true(is_file($inksPath), 'inks sidecar written');
+
+$round2Sparse = [
+    'eventId' => $testEventId,
+    'activeRound' => 2,
+    '_slimVersion' => LORCANA_PAYLOAD_SLIM_VERSION,
+    'standings' => [
+        'standings' => [
+            [
+                'id' => 10,
+                'rank' => 1,
+                'match_points' => 6,
+                'player' => ['id' => 101, 'best_identifier' => 'Alice'],
+                'user_event_status' => ['id' => 1, 'best_identifier' => 'Alice', 'user' => ['id' => 101]],
+            ],
+            [
+                'id' => 11,
+                'rank' => 2,
+                'match_points' => 3,
+                'player' => ['id' => 202, 'best_identifier' => 'Bob'],
+                'user_event_status' => ['id' => 2, 'best_identifier' => 'Bob', 'user' => ['id' => 202]],
+            ],
+            [
+                'id' => 12,
+                'rank' => 3,
+                'match_points' => 3,
+                'player' => ['id' => 303, 'best_identifier' => 'Carol'],
+                'user_event_status' => ['id' => 3, 'best_identifier' => 'Carol', 'user' => ['id' => 303]],
+            ],
+        ],
+    ],
+    'roundsMatches' => [
+        2 => [
+            'round_number' => 2,
+            'matches' => [
+                [
+                    'id' => 100,
+                    'players' => [101, 303],
+                    'player_match_relationships' => [
+                        ['player' => ['id' => 101, 'best_identifier' => 'Alice']],
+                        ['player' => ['id' => 303, 'best_identifier' => 'Carol']],
+                    ],
+                ],
+            ],
+        ],
+    ],
+    'pairings' => ['sourceRound' => 2, 'results' => []],
+];
+
+$enriched = lorcana_slim_event_payload($round2Sparse);
+$erows = $enriched['standings']['standings'];
+assert_true(($erows[0]['inks'][0]['key'] ?? '') === 'emerald', 'Alice inks kept after round2 via durable cache');
+assert_true(($erows[1]['inks'][0]['key'] ?? '') === 'amber', 'Bob inks kept after round2 via durable cache');
+assert_true(empty($erows[2]['inks']), 'Carol still unknown (never harvested)');
+assert_true((int)($enriched['playerInksCached'] ?? 0) >= 2, 'playerInksCached persists');
+
+@unlink($inksPath);
+
 echo "ALL PASSED\n";
 exit(0);

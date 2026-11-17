@@ -142,4 +142,101 @@ describe('ink localStorage cache + tournament meta', () => {
         assert.match(html, /CachedPlayer/);
         assert.match(html, /#71797E/);
     });
+
+    it('harvest merge never drops known inks when later payload omits them', () => {
+        const eventId = '999';
+        app.harvestPlayerInksFromData({
+            eventId,
+            standings: {
+                standings: [
+                    {
+                        player: { id: 1 },
+                        inks: [{ key: 'amber', name: 'Amber' }, { key: 'sapphire', name: 'Sapphire' }]
+                    },
+                    {
+                        player: { id: 2 },
+                        inks: [{ key: 'ruby', name: 'Ruby' }, { key: 'steel', name: 'Steel' }]
+                    }
+                ]
+            },
+            pairings: {
+                results: [
+                    {
+                        players: [
+                            { id: 1, inks: [{ key: 'amber', name: 'Amber' }, { key: 'sapphire', name: 'Sapphire' }] },
+                            { id: 2, inks: [{ key: 'ruby', name: 'Ruby' }, { key: 'steel', name: 'Steel' }] }
+                        ]
+                    }
+                ]
+            }
+        });
+        assert.equal(app.lookupCachedPlayerInks(eventId, 1).length, 2);
+        assert.equal(app.lookupCachedPlayerInks(eventId, 2).length, 2);
+
+        // Round rolled: standings/pairings no longer carry inks (critical mode strip).
+        const again = app.harvestPlayerInksFromData({
+            eventId,
+            standings: {
+                standings: [
+                    { player: { id: 1 } },
+                    { player: { id: 2 } },
+                    { player: { id: 3 } }
+                ]
+            },
+            pairings: { results: [] },
+            roundsMatches: {}
+        });
+        assert.equal(again.totalCached, 2);
+        assert.deepEqual(app.lookupCachedPlayerInks(eventId, 1).map(i => i.key), ['amber', 'sapphire']);
+        assert.deepEqual(app.lookupCachedPlayerInks(eventId, 2).map(i => i.key), ['ruby', 'steel']);
+
+        // LIVE/official cells still paint from cache after round ends.
+        const liveHtml = app.formatPlayerCellHtml(
+            { player: { id: 1 } },
+            'Alice',
+            { strong: true, eventId, playerId: 1 }
+        );
+        assert.match(liveHtml, /ink-dot/);
+        assert.match(liveHtml, /#FFBF00|#FFA500/i);
+
+        const meta = app.computeTournamentInkMeta(eventId, [
+            { player: { id: 1 } },
+            { player: { id: 2 } },
+            { player: { id: 3 } }
+        ]);
+        assert.equal(meta.known, 2);
+        assert.equal(meta.unknown, 1);
+    });
+
+    it('harvest accepts server playerInks map and pairings-only payloads', () => {
+        const eventId = '1002';
+        app.harvestPlayerInksFromData({
+            eventId,
+            playerInks: {
+                '55': [{ key: 'emerald', name: 'Emerald', hex: '#50C878' }]
+            }
+        });
+        assert.deepEqual(app.lookupCachedPlayerInks(eventId, 55).map(i => i.key), ['emerald']);
+
+        app.harvestPlayerInksFromData({
+            eventId,
+            pairings: {
+                results: [
+                    {
+                        player_match_relationships: [
+                            {
+                                player: { id: 56 },
+                                user_event_status: {
+                                    inks: [{ key: 'steel', name: 'Steel' }, { key: 'amethyst', name: 'Amethyst' }]
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+        assert.deepEqual(app.lookupCachedPlayerInks(eventId, 56).map(i => i.key), ['steel', 'amethyst']);
+        // Prior server seed kept.
+        assert.equal(app.lookupCachedPlayerInks(eventId, 55).length, 1);
+    });
 });
