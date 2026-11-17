@@ -276,7 +276,8 @@ function applyTournamentSelection(tournament, { track = true, clearLocalCut = fa
         applyAdminCutDefaultsToUi();
         updateCutPrefsHint();
     }
-    syncTieGoalPickerUi();
+    // Soft EUC visibility + goal buttons depend on MAIN1 / MAIN2 / other.
+    refreshModeDependentTieUi({ applyDefaultGoal: 'always', triggerRecalc: false });
     syncRoundsOverrideUi(latestData);
     // New tournament → reset on-demand bracket and sync MAIN1/T8 (etc.) default.
     bracketDrawnOnDemand = false;
@@ -603,15 +604,20 @@ function renderPrizeGoalsPanel(playerId = currentSelectedPlayerId) {
     fillPrizeGroup('prizeMissedList', 'prizeMissedEmpty', ev.groups.missed, api);
 }
 
-/** Mirror soft-EUC hint into the front-and-center host (MAIN1 / soft cut). */
+/** Soft EUC continentals panel — only MAIN1 / MAIN EVENT 1 (never MAIN2/CCQ/custom). */
+function shouldShowSoftEucPanel(mode = getActiveTournamentMode()) {
+    const api = getPrizeLaddersApi();
+    const normalized = api ? api.normalizeMode(mode) : String(mode || 'custom').toUpperCase();
+    return normalized === 'MAIN1';
+}
+
+/** Mirror soft-EUC hint into the front-and-center host (MAIN1 only). */
 function syncFrontSoftEucHost() {
     if (typeof document === 'undefined') return;
     const front = document.getElementById('frontSoftEucHost');
     const src = document.getElementById('softEucPlayHint');
     if (!front) return;
-    const cutRule = document.getElementById('cutRule')?.value || siteConfig.defaultCutRule || 'hard';
-    const mode = getActiveTournamentMode();
-    const show = cutRule === 'soft' || mode === 'MAIN1';
+    const show = shouldShowSoftEucPanel();
     if (!show) {
         front.style.display = 'none';
         front.innerHTML = '';
@@ -619,17 +625,14 @@ function syncFrontSoftEucHost() {
     }
     const html = src ? src.innerHTML : '';
     if (!html) {
-        const api = getPrizeLaddersApi();
         // Idle card via formatter if available
         if (typeof formatSoftCutIdInflationHtml === 'function') {
             front.innerHTML = formatSoftCutIdInflationHtml(null, { alwaysShow: true });
             front.style.display = 'block';
             return;
         }
-        front.style.display = api ? 'block' : 'none';
-        front.innerHTML = api
-            ? '<div class="soft-euc-play-hint soft-euc-play-hint--idle"><div class="soft-euc-play-hint__title">Soft EUC — czekam na dane LIVE</div></div>'
-            : '';
+        front.style.display = 'block';
+        front.innerHTML = '<div class="soft-euc-play-hint soft-euc-play-hint--idle"><div class="soft-euc-play-hint__title">Soft EUC — czekam na dane LIVE</div></div>';
         return;
     }
     front.innerHTML = html;
@@ -773,29 +776,142 @@ const CUT_SIZE_STORAGE_KEY = 'lorcana_cut_size';
 const CUT_RULE_STORAGE_KEY = 'lorcana_cut_rule';
 const ROUNDS_OVERRIDE_KEY_PREFIX = 'lorcana_rounds_override_';
 
+/** Soft EUC Continentals cut size (MAIN1 invite) — independent of Can I Tie goal. */
+const SOFT_EUC_CONTINENTALS_CUT = 32;
+
 /** Presety celu Can I Tie → cutSize + cutRule (soft = równe punkty przy progu). */
 const TIE_GOAL_PRESETS = Object.freeze({
-    top8: Object.freeze({ key: 'top8', cutSize: 8, cutRule: 'hard', label: 'Top 8', hint: 'Twardy cut: awans tylko przy miejscu ≤ 8.' }),
-    top16: Object.freeze({ key: 'top16', cutSize: 16, cutRule: 'hard', label: 'Top 16', hint: 'Twardy cut: awans tylko przy miejscu ≤ 16.' }),
+    top2: Object.freeze({
+        key: 'top2', cutSize: 2, cutRule: 'hard', label: 'Top 2',
+        sub: 'twardy cut', hint: 'Twardy cut: awans tylko przy miejscu ≤ 2.'
+    }),
+    top4: Object.freeze({
+        key: 'top4', cutSize: 4, cutRule: 'hard', label: 'Top 4',
+        sub: 'twardy cut', hint: 'Twardy cut: awans tylko przy miejscu ≤ 4.'
+    }),
+    top8: Object.freeze({
+        key: 'top8', cutSize: 8, cutRule: 'hard', label: 'Top 8',
+        sub: 'twardy cut', hint: 'Twardy cut: awans tylko przy miejscu ≤ 8.'
+    }),
+    top16: Object.freeze({
+        key: 'top16', cutSize: 16, cutRule: 'hard', label: 'Top 16',
+        sub: 'twardy cut', hint: 'Twardy cut: awans tylko przy miejscu ≤ 16.'
+    }),
+    top32: Object.freeze({
+        key: 'top32', cutSize: 32, cutRule: 'hard', label: 'Top 32',
+        sub: 'twardy cut', hint: 'Twardy cut: awans tylko przy miejscu ≤ 32.'
+    }),
     continentals: Object.freeze({
-        key: 'continentals',
-        cutSize: 32,
-        cutRule: 'soft',
-        label: 'Continentals (Top 32 soft)',
+        key: 'continentals', cutSize: 32, cutRule: 'soft',
+        label: 'Continentals',
+        sub: 'soft Top 32 + remisy',
         hint: 'Miękki cut: awans przy punktach ≥ progu gracza #32 (równe punkty też przechodzą).'
+    }),
+    gaston: Object.freeze({
+        key: 'gaston', cutSize: 64, cutRule: 'soft',
+        label: 'Gaston',
+        sub: 'soft Top 64 + remisy',
+        hint: 'Miękki cut: awans przy punktach ≥ progu gracza #64 (równe punkty też przechodzą).'
     })
 });
+
+/** Mode → ordered goal keys for „Czy mogę remis?”. */
+const TIE_GOAL_KEYS_BY_MODE = Object.freeze({
+    MAIN1: Object.freeze(['top8', 'top16', 'continentals', 'gaston']),
+    MAIN2: Object.freeze(['top8', 'top32']),
+    OTHER: Object.freeze(['top2', 'top4', 'top8', 'top16', 'top32'])
+});
+
+function normalizeTieGoalMode(mode) {
+    const api = getPrizeLaddersApi();
+    return api ? api.normalizeMode(mode) : String(mode || 'custom').toUpperCase();
+}
+
+function getTieGoalKeysForMode(mode = getActiveTournamentMode()) {
+    const m = normalizeTieGoalMode(mode);
+    if (m === 'MAIN1') return TIE_GOAL_KEYS_BY_MODE.MAIN1.slice();
+    if (m === 'MAIN2') return TIE_GOAL_KEYS_BY_MODE.MAIN2.slice();
+    return TIE_GOAL_KEYS_BY_MODE.OTHER.slice();
+}
+
+/** Presentation overrides (label/sub/hint) per mode — cutSize/cutRule stay in TIE_GOAL_PRESETS. */
+function getTieGoalCatalogForMode(mode = getActiveTournamentMode()) {
+    const m = normalizeTieGoalMode(mode);
+    return getTieGoalKeysForMode(m).map((key) => {
+        const base = TIE_GOAL_PRESETS[key];
+        if (!base) return null;
+        if (m === 'MAIN1') {
+            if (key === 'top8') {
+                return Object.assign({}, base, { label: 'Top 8', sub: 'twardy cut', hint: 'Hard Top 8 — drabinka / numerowana Hades.' });
+            }
+            if (key === 'top16') {
+                return Object.assign({}, base, {
+                    label: 'Top 16 (mata)',
+                    sub: 'twardy cut',
+                    hint: 'Hard Top 16 — mata Madam Mim (po TB).'
+                });
+            }
+            if (key === 'continentals') {
+                return Object.assign({}, base, {
+                    label: 'Continentals',
+                    sub: 'soft Top 32 + remisy',
+                    hint: 'Soft Top 32+ties — zaproszenie EUC/NAC (równe punkty też wchodzą).'
+                });
+            }
+            if (key === 'gaston') {
+                return Object.assign({}, base, {
+                    label: 'Gaston',
+                    sub: 'soft Top 64 + remisy',
+                    hint: 'Soft Top 64+ties — próg Gaston (równe punkty też wchodzą).'
+                });
+            }
+        }
+        if (m === 'MAIN2') {
+            if (key === 'top8') {
+                return Object.assign({}, base, {
+                    label: 'Top 8',
+                    sub: 'twardy · EUC invite',
+                    hint: 'Hard Top 8 po TB — zaproszenie EUC (bez soft Top32 na ME2).'
+                });
+            }
+            if (key === 'top32') {
+                return Object.assign({}, base, {
+                    label: 'Top 32',
+                    sub: 'twardy · Madam Mim',
+                    hint: 'Hard Top 32 — promo Madam Mim (bez soft EUC).'
+                });
+            }
+        }
+        return Object.assign({}, base);
+    }).filter(Boolean);
+}
+
+function getDefaultTieGoalKeyForMode(mode = getActiveTournamentMode()) {
+    const keys = getTieGoalKeysForMode(mode);
+    // Prefer Top 8 when present (MAIN1/MAIN2/CCQ); else first catalog entry.
+    if (keys.includes('top8')) return 'top8';
+    return keys[0] || 'top8';
+}
 
 function getTieGoalPreset(key) {
     return TIE_GOAL_PRESETS[key] || null;
 }
 
-function resolveTieGoalKey(cutSize, cutRule) {
+function resolveTieGoalKey(cutSize, cutRule, mode = null) {
     const size = Number(cutSize);
     const rule = cutRule === 'soft' ? 'soft' : 'hard';
-    if (size === 8 && rule === 'hard') return 'top8';
-    if (size === 16 && rule === 'hard') return 'top16';
-    if (size === 32 && rule === 'soft') return 'continentals';
+    const keys = mode != null ? getTieGoalKeysForMode(mode) : Object.keys(TIE_GOAL_PRESETS);
+    for (const key of keys) {
+        const p = TIE_GOAL_PRESETS[key];
+        if (p && p.cutSize === size && p.cutRule === rule) return key;
+    }
+    // Fallback global match when mode catalog is narrower (e.g. advanced cut).
+    if (mode != null) {
+        for (const key of Object.keys(TIE_GOAL_PRESETS)) {
+            const p = TIE_GOAL_PRESETS[key];
+            if (p && p.cutSize === size && p.cutRule === rule) return key;
+        }
+    }
     return null;
 }
 
@@ -808,26 +924,91 @@ function readUiCutPrefs() {
     };
 }
 
+function rebuildTieGoalPicker(mode = getActiveTournamentMode()) {
+    if (typeof document === 'undefined') return;
+    const picker = document.getElementById('tieGoalPicker')
+        || document.querySelector('.tie-goal-picker');
+    if (!picker) return;
+    const catalog = getTieGoalCatalogForMode(mode);
+    picker.innerHTML = catalog.map((g) => (
+        `<button type="button" class="tie-goal-btn" id="tieGoalBtn_${g.key}" role="radio" aria-checked="false" data-tie-goal="${g.key}" onclick="onTieGoalSelected('${g.key}')">`
+        + `${escapeHtml(g.label)}`
+        + `<span class="goal-sub">${escapeHtml(g.sub || '')}</span>`
+        + `</button>`
+    )).join('');
+}
+
+/**
+ * Rebuild Soft EUC visibility + goal buttons for active mode.
+ * applyDefaultGoal:
+ *   - true → default only when current cut not in mode catalog
+ *   - 'always' (tournament tab switch):
+ *       MAIN1/MAIN2 → force Top 8
+ *       other → keep tournament cut when it maps to a catalog goal, else Top 8
+ */
+function refreshModeDependentTieUi({ applyDefaultGoal = true, triggerRecalc = false } = {}) {
+    const mode = getActiveTournamentMode();
+    const normalized = normalizeTieGoalMode(mode);
+    rebuildTieGoalPicker(mode);
+    syncFrontSoftEucHost();
+    const prefs = readUiCutPrefs();
+    const modeKeys = getTieGoalKeysForMode(mode);
+    const activeKey = resolveTieGoalKey(prefs.cutSize, prefs.cutRule, mode);
+    const inCatalog = activeKey && modeKeys.includes(activeKey);
+
+    let needDefault = false;
+    if (applyDefaultGoal === 'always') {
+        if (normalized === 'MAIN1' || normalized === 'MAIN2') {
+            needDefault = activeKey !== 'top8';
+        } else {
+            needDefault = !inCatalog;
+        }
+    } else if (applyDefaultGoal) {
+        needDefault = !inCatalog;
+    }
+
+    if (needDefault) {
+        const def = getDefaultTieGoalKeyForMode(mode);
+        applyTieGoalToCutUi(def, { triggerRecalc });
+        return;
+    }
+    syncTieGoalPickerUi(prefs.cutSize, prefs.cutRule);
+}
+
 function syncTieGoalPickerUi(cutSize, cutRule) {
     const prefs = (cutSize != null && cutRule != null)
         ? { cutSize: Number(cutSize), cutRule: cutRule === 'soft' ? 'soft' : 'hard' }
         : readUiCutPrefs();
-    const activeKey = resolveTieGoalKey(prefs.cutSize, prefs.cutRule);
-    const buttons = typeof document !== 'undefined'
+    const mode = getActiveTournamentMode();
+    const modeKeys = getTieGoalKeysForMode(mode);
+    let activeKey = resolveTieGoalKey(prefs.cutSize, prefs.cutRule, mode);
+    if (activeKey && !modeKeys.includes(activeKey)) activeKey = null;
+    const buttons = (typeof document !== 'undefined' && typeof document.querySelectorAll === 'function')
         ? document.querySelectorAll('.tie-goal-btn[data-tie-goal]')
         : [];
-    buttons.forEach((btn) => {
-        const key = btn.getAttribute('data-tie-goal');
-        const on = key === activeKey;
-        btn.classList.toggle('active', on);
-        btn.setAttribute('aria-checked', on ? 'true' : 'false');
-    });
-    const hint = document.getElementById('tieGoalHint');
+    if (buttons && typeof buttons.forEach === 'function') {
+        buttons.forEach((btn) => {
+            const key = btn.getAttribute('data-tie-goal');
+            const on = key === activeKey;
+            if (btn.classList && typeof btn.classList.toggle === 'function') {
+                btn.classList.toggle('active', on);
+            }
+            if (typeof btn.setAttribute === 'function') {
+                btn.setAttribute('aria-checked', on ? 'true' : 'false');
+            }
+        });
+    }
+    const hint = typeof document !== 'undefined' && typeof document.getElementById === 'function'
+        ? document.getElementById('tieGoalHint')
+        : null;
     if (hint) {
-        if (activeKey && TIE_GOAL_PRESETS[activeKey]) {
-            hint.textContent = TIE_GOAL_PRESETS[activeKey].hint;
+        const catalog = getTieGoalCatalogForMode(mode);
+        const active = catalog.find((g) => g.key === activeKey);
+        if (active) {
+            hint.textContent = active.hint;
         } else {
-            hint.textContent = `Własny cut z zaawansowanych: Top ${prefs.cutSize} · ${prefs.cutRule === 'soft' ? 'miękki (równe punkty)' : 'twardy'}. Presety: Top 8 / Top 16 / Continentals (Top 32 soft).`;
+            const labels = catalog.map((g) => g.label).join(' / ');
+            hint.textContent = `Własny cut z zaawansowanych: Top ${prefs.cutSize} · ${prefs.cutRule === 'soft' ? 'miękki (równe punkty)' : 'twardy'}. Presety (${normalizeTieGoalMode(mode)}): ${labels}.`;
         }
     }
 }
@@ -1013,7 +1194,7 @@ function loadCutPrefsIntoUi() {
         }
     } catch (e) {}
     updateCutPrefsHint();
-    syncTieGoalPickerUi();
+    refreshModeDependentTieUi({ applyDefaultGoal: false, triggerRecalc: false });
     syncBracketDrawSizeDefault({ force: !bracketDrawnOnDemand });
 }
 
@@ -1041,7 +1222,7 @@ function resetCutPrefsToAdminDefaults() {
     } catch (e) {}
     applyAdminCutDefaultsToUi();
     updateCutPrefsHint();
-    syncTieGoalPickerUi();
+    refreshModeDependentTieUi({ applyDefaultGoal: true, triggerRecalc: false });
     syncBracketDrawSizeDefault({ force: true });
     lastProcessFingerprint = null;
     if (!latestData) return;
@@ -5938,18 +6119,22 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
         : `<div class="metric-val" style="color: #888;">Brak graczy poza Cut</div><div class="metric-sub">-</div>`;
 
     const pairings = pairingsList != null ? pairingsList : (cachedPairings || []);
-    const inflation = cutRule === 'soft'
-        ? calculateSoftCutIdInflation(liveStandings, pairings, cutSize)
+    // Soft EUC panel always models Continentals soft Top32 on MAIN1, even if Can I Tie goal is hard T8/T16.
+    const softEucMode = shouldShowSoftEucPanel();
+    const softEucCut = softEucMode ? SOFT_EUC_CONTINENTALS_CUT : cutSize;
+    const wantSoftInflation = softEucMode || cutRule === 'soft';
+    const inflation = wantSoftInflation
+        ? calculateSoftCutIdInflation(liveStandings, pairings, softEucCut)
         : null;
-    const inflationHtml = cutRule === 'soft'
-        ? formatSoftCutIdInflationHtml(inflation, { alwaysShow: true })
+    const inflationHtml = wantSoftInflation
+        ? formatSoftCutIdInflationHtml(inflation, { alwaysShow: softEucMode })
         : '';
 
     const hintHost = document.getElementById('softEucPlayHint');
     if (hintHost) {
         // Hidden duplicate source — visible copy lives in #frontSoftEucHost for MAIN1 declutter.
         hintHost.style.display = 'none';
-        hintHost.innerHTML = inflationHtml;
+        hintHost.innerHTML = softEucMode ? inflationHtml : '';
     }
     syncFrontSoftEucHost();
     renderPrizeGoalsPanel();
@@ -7225,9 +7410,18 @@ if (typeof module !== 'undefined' && module.exports) {
         saveCutPrefsFromUi,
         onCutPrefsChanged,
         TIE_GOAL_PRESETS,
+        TIE_GOAL_KEYS_BY_MODE,
+        SOFT_EUC_CONTINENTALS_CUT,
         getTieGoalPreset,
+        getTieGoalKeysForMode,
+        getTieGoalCatalogForMode,
+        getDefaultTieGoalKeyForMode,
+        normalizeTieGoalMode,
         resolveTieGoalKey,
         readUiCutPrefs,
+        rebuildTieGoalPicker,
+        refreshModeDependentTieUi,
+        shouldShowSoftEucPanel,
         syncTieGoalPickerUi,
         applyTieGoalToCutUi,
         onTieGoalSelected,

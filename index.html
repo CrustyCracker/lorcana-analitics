@@ -2343,21 +2343,26 @@
 
     <div class="tie-goal-block" id="tieGoalBlock">
         <span class="tie-goal-label" id="tieGoalLabel">Cel strategii</span>
-        <div class="tie-goal-picker" role="radiogroup" aria-labelledby="tieGoalLabel">
+        <div class="tie-goal-picker" id="tieGoalPicker" role="radiogroup" aria-labelledby="tieGoalLabel">
+            <!-- Rebuilt by refreshModeDependentTieUi() per MAIN1 / MAIN2 / other -->
             <button type="button" class="tie-goal-btn" id="tieGoalBtnTop8" role="radio" aria-checked="false" data-tie-goal="top8" onclick="onTieGoalSelected('top8')">
                 Top 8
-                <span class="goal-sub">twardy cut · ME2 / CCQ</span>
+                <span class="goal-sub">twardy cut</span>
             </button>
             <button type="button" class="tie-goal-btn" id="tieGoalBtnTop16" role="radio" aria-checked="false" data-tie-goal="top16" onclick="onTieGoalSelected('top16')">
-                Top 16
+                Top 16 (mata)
                 <span class="goal-sub">twardy cut</span>
             </button>
             <button type="button" class="tie-goal-btn" id="tieGoalBtnContinentals" role="radio" aria-checked="false" data-tie-goal="continentals" onclick="onTieGoalSelected('continentals')">
                 Continentals
-                <span class="goal-sub">Top 32 soft · równe punkty</span>
+                <span class="goal-sub">soft Top 32 + remisy</span>
+            </button>
+            <button type="button" class="tie-goal-btn" id="tieGoalBtnGaston" role="radio" aria-checked="false" data-tie-goal="gaston" onclick="onTieGoalSelected('gaston')">
+                Gaston
+                <span class="goal-sub">soft Top 64 + remisy</span>
             </button>
         </div>
-        <p class="tie-goal-hint" id="tieGoalHint">Top 8 / Top 16 = sztywne miejsce. Continentals = soft Top 32 (awans przy punktach ≥ progu #32).</p>
+        <p class="tie-goal-hint" id="tieGoalHint">MAIN1: Top 8 / Top 16 (mata) = hard · Continentals = soft 32 · Gaston = soft 64. MAIN2: Top 8 + Top 32 hard. Inne: Top 2–32 hard.</p>
     </div>
 
     <div class="tie-nick-block">
@@ -2796,6 +2801,6 @@
 
 <script src="tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261116softeuc3"></script>
+<script src="app.js?v=20261117modegoals1"></script>
 </body>
 </html>
