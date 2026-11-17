@@ -254,7 +254,7 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(testsHtml, /id="prizeGoalsPanel"/);
         assert.match(testsHtml, /id="testsControlsStrip"/);
         assert.match(testsHtml, /loadR15LondonPreTie\(/);
-        assert.match(testsHtml, /app\.js\?v=20261117declutter1/);
+        assert.match(testsHtml, /app\.js\?v=20261117tierorder1/);
         assert.match(testsHtml, /prize-ladders\.js/);
         assert.match(testsHtml, /Analityka Lorcany/);
         assert.doesNotMatch(testsHtml, /brand-mark">TESTS/);

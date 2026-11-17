@@ -2554,7 +2554,7 @@ async function loadR15LondonPreTie() {
 
     try {
         const url = new URL('fixtures/r15-london-pre-tie.json', window.location.href);
-        url.searchParams.set('v', '20261117declutter1');
+        url.searchParams.set('v', '20261117tierorder1');
         const res = await fetch(url.toString(), { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -4289,9 +4289,9 @@ function selectPlayerForTie(playerId) {
     
     recalculateTieForSelectedPlayer();
 
-    // Prefer „O co jeszcze gramy” in decluttered UX; keep TIE calculable without forcing scroll.
-    const prizePanel = document.getElementById('prizeGoalsPanel');
-    if (prizePanel) prizePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Player pick lives in Can I Tie (above prizes); keep TIE in view — prizes sit just below.
+    const tiePanel = document.getElementById('tieModule');
+    if (tiePanel) tiePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function showTieSimLoadingBanner() {

@@ -2345,38 +2345,11 @@
     </div>
 </div>
 
-<!-- PRIMARY: O CO JESZCZE GRAMY -->
-<div class="panel prize-panel" id="prizeGoalsPanel" data-primary="true">
-    <h3>O co jeszcze gramy</h3>
-    <details class="copy-fold">
-        <summary>Jak czytać nagrody</summary>
-        <p class="prize-panel-lead" id="prizePanelBlurb">Wybierz siebie w tabeli LIVE — pokażemy promo, maty, zaproszenie i cut w prostym języku (wg trybu turnieju).</p>
-    </details>
-    <div class="prize-player-meta" id="prizePlayerMeta"></div>
-    <div class="prize-groups" id="prizeGroups">
-        <div class="prize-group prize-group--play">
-            <h4>Jeszcze w grze</h4>
-            <div class="prize-empty" id="prizeInPlayEmpty">—</div>
-            <div id="prizeInPlayList"></div>
-        </div>
-        <div class="prize-group prize-group--locked">
-            <h4>Masz / trzymasz</h4>
-            <div class="prize-empty" id="prizeLockedEmpty">—</div>
-            <div id="prizeLockedList"></div>
-        </div>
-        <div class="prize-group prize-group--missed">
-            <h4>Już nie</h4>
-            <div class="prize-empty" id="prizeMissedEmpty">—</div>
-            <div id="prizeMissedList"></div>
-        </div>
-    </div>
-</div>
-
 <!-- Soft anti-ID (MAIN1) — front and center host; filled when soft cut -->
 <div id="frontSoftEucHost" class="front-soft-host" style="display:none;" aria-live="polite"></div>
 
-<!-- STRATEGY: CAN I TAKE A TIE (secondary vs prizes/LIVE) — domyślnie otwarty (nick + cel) -->
-<details class="panel tie-panel" id="tieModule" data-primary="false" open>
+<!-- PRIMARY: CAN I TAKE A TIE — domyślnie otwarty (nick + cel); above „O co jeszcze gramy” -->
+<details class="panel tie-panel" id="tieModule" data-primary="true" open>
     <summary>
         <h3 class="tie-summary-title">Czy mogę remis? (Can I Tie)</h3>
         <span class="tie-summary-hint tie-summary-hint--closed">rozwiń kalkulator</span>
@@ -2520,6 +2493,32 @@
     </div>
 </details>
 
+<!-- SECONDARY: O CO JESZCZE GRAMY (after Can I Tie) -->
+<div class="panel prize-panel" id="prizeGoalsPanel" data-primary="false">
+    <h3>O co jeszcze gramy</h3>
+    <details class="copy-fold">
+        <summary>Jak czytać nagrody</summary>
+        <p class="prize-panel-lead" id="prizePanelBlurb">Wybierz siebie w tabeli LIVE — pokażemy promo, maty, zaproszenie i cut w prostym języku (wg trybu turnieju).</p>
+    </details>
+    <div class="prize-player-meta" id="prizePlayerMeta"></div>
+    <div class="prize-groups" id="prizeGroups">
+        <div class="prize-group prize-group--play">
+            <h4>Jeszcze w grze</h4>
+            <div class="prize-empty" id="prizeInPlayEmpty">—</div>
+            <div id="prizeInPlayList"></div>
+        </div>
+        <div class="prize-group prize-group--locked">
+            <h4>Masz / trzymasz</h4>
+            <div class="prize-empty" id="prizeLockedEmpty">—</div>
+            <div id="prizeLockedList"></div>
+        </div>
+        <div class="prize-group prize-group--missed">
+            <h4>Już nie</h4>
+            <div class="prize-empty" id="prizeMissedEmpty">—</div>
+            <div id="prizeMissedList"></div>
+        </div>
+    </div>
+</div>
 
 
 <div class="panel" id="statsPanel" style="display: none;">
@@ -2841,14 +2840,14 @@
 
 <!-- DOLNY PASEK NAWIGACJI MOBILNEJ (STICKY APP BAR) -->
 <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Szybka nawigacja mobilna">
-    <!-- Order = page module order (controls → nagrody → TIE → LIVE → mecze → drabinka) -->
-    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('prizeGoalsPanel', this)">
-        <span class="nav-icon">🎁</span>
-        <span>Nagrody</span>
-    </button>
+    <!-- Order = page module order (controls → TIE → nagrody → LIVE → mecze → drabinka) -->
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('tieModule', this)">
         <span class="nav-icon">🤝</span>
         <span>TIE</span>
+    </button>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('prizeGoalsPanel', this)">
+        <span class="nav-icon">🎁</span>
+        <span>Nagrody</span>
     </button>
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('liveStandingsSection', this)">
         <span class="nav-icon">🔥</span>
@@ -2872,6 +2871,6 @@
 
 <script src="tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261117declutter1"></script>
+<script src="app.js?v=20261117tierorder1"></script>
 </body>
 </html>
