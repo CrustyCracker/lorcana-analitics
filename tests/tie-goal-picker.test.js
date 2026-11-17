@@ -84,7 +84,7 @@ describe('Can I Tie — cel strategii per tryb (MAIN1 / MAIN2 / other)', () => {
         assert.match(indexHtml, /data-tie-goal="gaston"/);
         assert.match(indexHtml, /id="frontSoftEucHost"/);
         assert.match(indexHtml, /id="playerSearchInput"/);
-        assert.match(indexHtml, /app\.js\?v=20261117testshell1/);
+        assert.match(indexHtml, /app\.js\?v=20261117declutter1/);
     });
 
     it('katalog MAIN1: Top8/Top16 hard + Continentals soft32 + Gaston soft64', () => {

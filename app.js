@@ -634,13 +634,17 @@ function syncFrontSoftEucHost() {
         else if ('hidden' in el) el.hidden = true;
     };
 
+    const hideSrcMirror = (el) => {
+        if (!el) return;
+        if (el.style) el.style.display = 'none';
+        if (typeof el.setAttribute === 'function') el.setAttribute('hidden', '');
+        else if ('hidden' in el) el.hidden = true;
+    };
+
     if (!show) {
         hide(front);
         // Keep source hint hidden when Soft EUC is off (MAIN2/CCQ/custom).
-        if (src) {
-            src.style.display = 'none';
-            src.setAttribute('hidden', '');
-        }
+        hideSrcMirror(src);
         return;
     }
 
@@ -656,10 +660,7 @@ function syncFrontSoftEucHost() {
     if (front) {
         paint(front, html);
         // Source stays a hidden mirror when the front host exists.
-        if (src) {
-            src.style.display = 'none';
-            src.setAttribute('hidden', '');
-        }
+        hideSrcMirror(src);
         return;
     }
     // No front host (legacy /tests markup): show the source hint inline.
@@ -2553,7 +2554,7 @@ async function loadR15LondonPreTie() {
 
     try {
         const url = new URL('fixtures/r15-london-pre-tie.json', window.location.href);
-        url.searchParams.set('v', '20261117testshell1');
+        url.searchParams.set('v', '20261117declutter1');
         const res = await fetch(url.toString(), { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -6113,14 +6114,18 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
             <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--idle">
                 <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale</div>
                 <div class="soft-euc-play-hint__title">Minimalny soft cut i ile stołów musi grać</div>
-                <div class="soft-euc-play-hint__body">
-                    Narzędzie działa <strong>na żywo</strong> z aktualnych pairings (otwarte lustrzane stoły + już oddane ID).
-                    Gdy na bubble pojawią się mirory (np. 33v33), pokażemy:
-                    (1) <strong>najniższy soft cut w punktach</strong>, jaki da się jeszcze złapać, jeśli dość osób zagra W/L zamiast ID;
-                    (2) <strong>ile stołów / osób</strong> na tym paśmie musi grać, żeby zejść do tego progu.
-                    Krótko: ID pompują próg w górę. Wynik (W/L) zdejmuje z pasa ≥(S+1) <strong>tylko 1 osobę na stół</strong>
-                    (nie 2 — wygrany i tak zostaje wyżej). Dlatego często trzeba więcej stołów niż „połowa nadmiaru”.
-                </div>
+                <div class="soft-euc-play-hint__answer">Czekam na lustrzane stoły na bubble (LIVE).</div>
+                <details class="copy-fold soft-euc-fold">
+                    <summary>Jak to działa</summary>
+                    <div class="soft-euc-play-hint__body">
+                        Narzędzie działa <strong>na żywo</strong> z aktualnych pairings (otwarte lustrzane stoły + już oddane ID).
+                        Gdy na bubble pojawią się mirory (np. 33v33), pokażemy:
+                        (1) <strong>najniższy soft cut w punktach</strong>, jaki da się jeszcze złapać, jeśli dość osób zagra W/L zamiast ID;
+                        (2) <strong>ile stołów / osób</strong> na tym paśmie musi grać, żeby zejść do tego progu.
+                        Krótko: ID pompują próg w górę. Wynik (W/L) zdejmuje z pasa ≥(S+1) <strong>tylko 1 osobę na stół</strong>
+                        (nie 2 — wygrany i tak zostaje wyżej). Dlatego często trzeba więcej stołów niż „połowa nadmiaru”.
+                    </div>
+                </details>
             </div>
         `;
     }
@@ -6202,17 +6207,20 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
             <div class="soft-euc-play-hint__answer" style="color: ${riskTone === 'warn' ? '#f59e0b' : '#34d399'};">
                 ${escapeHtml(headline)}
             </div>
-            ${whyNotHalfHtml}
-            <div class="soft-euc-play-hint__body">
-                Lustrzane stoły na <strong>${band} pkt</strong> (ID → pas <strong>${high}</strong>):
-                ${lockedBit}, ${openBit}.${climberBit}
-                Teraz soft próg = <strong>${info.currentThresh} pkt</strong> (${info.currentInvites} zaproszeń).
-                Gdyby wszystkie te mirory wzięły ID (+ max wspinacze) → próg <strong>${info.projectedThreshIfAllId}</strong>
-                (${info.projectedInvitesIfAllId} inv.); gdyby wszystkie grały → próg <strong>${info.projectedThreshIfAllPlay}</strong>
-                (${info.projectedInvitesIfAllPlay} inv.).
-                Każdy wynik zamiast ID zdejmuje <strong>1 osobę</strong> z pasa ≥${high}
-                (wygrany zostaje wyżej, przegrany spada) — bez ekstra nagrody rzeczowej za samo ID, tylko soft invite.
-            </div>
+            <details class="copy-fold soft-euc-fold">
+                <summary>więcej / dlaczego</summary>
+                ${whyNotHalfHtml}
+                <div class="soft-euc-play-hint__body">
+                    Lustrzane stoły na <strong>${band} pkt</strong> (ID → pas <strong>${high}</strong>):
+                    ${lockedBit}, ${openBit}.${climberBit}
+                    Teraz soft próg = <strong>${info.currentThresh} pkt</strong> (${info.currentInvites} zaproszeń).
+                    Gdyby wszystkie te mirory wzięły ID (+ max wspinacze) → próg <strong>${info.projectedThreshIfAllId}</strong>
+                    (${info.projectedInvitesIfAllId} inv.); gdyby wszystkie grały → próg <strong>${info.projectedThreshIfAllPlay}</strong>
+                    (${info.projectedInvitesIfAllPlay} inv.).
+                    Każdy wynik zamiast ID zdejmuje <strong>1 osobę</strong> z pasa ≥${high}
+                    (wygrany zostaje wyżej, przegrany spada) — bez ekstra nagrody rzeczowej za samo ID, tylko soft invite.
+                </div>
+            </details>
         </div>
     `;
 }

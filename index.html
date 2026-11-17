@@ -2236,6 +2236,47 @@
         .front-soft-host { margin-bottom: 12px; }
         .secondary-section-note { color: var(--text-mute); font-size: 12px; margin: 8px 0 12px; }
 
+        /* Secondary prose: collapsed by default so first paint stays light */
+        .copy-fold {
+            margin: 6px 0 10px;
+        }
+        .copy-fold > summary {
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 12px;
+            font-weight: 600;
+            list-style: none;
+            user-select: none;
+        }
+        .copy-fold > summary::-webkit-details-marker { display: none; }
+        .copy-fold > summary::before {
+            content: "▸ ";
+            color: var(--gold);
+        }
+        .copy-fold[open] > summary::before { content: "▾ "; }
+        .copy-fold[open] > summary {
+            margin-bottom: 6px;
+            color: var(--gold);
+        }
+        .copy-fold > p,
+        .copy-fold > .field-hint,
+        .copy-fold > .copy-fold-body,
+        .copy-fold > .secondary-section-note,
+        .copy-fold > .tie-goal-hint,
+        .copy-fold > .prize-panel-lead {
+            margin: 0;
+            font-size: 12px;
+            color: var(--text-dim);
+            line-height: 1.45;
+        }
+        .soft-euc-play-hint .copy-fold {
+            margin: 8px 0 0;
+            padding-top: 8px;
+            border-top: 1px solid rgba(148, 163, 184, 0.22);
+        }
+        .prize-chips-legend-fold { margin: 0 0 10px; }
+        .prize-chips-legend-fold .prize-chips-legend { margin: 0; }
+
     </style>
 </head>
 <body>
@@ -2253,7 +2294,10 @@
             <div id="tournamentSwitcher" class="tournament-switcher" role="tablist" aria-label="Wybór turnieju"></div>
             <div id="activeEventDisplay" class="active-event-display" aria-live="polite">Ładowanie turniejów z panelu admina…</div>
             <input type="hidden" id="eventId" value="" autocomplete="off">
-            <div class="field-hint">Przełączanie korzysta z osobnego cache na event — bez zbędnego walenia w PlayHub. Konfiguracja: <a href="admin.php" style="color:var(--gold);">/admin</a>.</div>
+            <details class="copy-fold">
+                <summary>O cache i /admin</summary>
+                <div class="field-hint">Przełączanie korzysta z osobnego cache na event — bez zbędnego walenia w PlayHub. Konfiguracja: <a href="admin.php" style="color:var(--gold);">/admin</a>.</div>
+            </details>
         </div>
 
         <div class="simple-toolbar">
@@ -2304,7 +2348,10 @@
 <!-- PRIMARY: O CO JESZCZE GRAMY -->
 <div class="panel prize-panel" id="prizeGoalsPanel" data-primary="true">
     <h3>O co jeszcze gramy</h3>
-    <p class="prize-panel-lead" id="prizePanelBlurb">Wybierz siebie w tabeli LIVE — pokażemy promo, maty, zaproszenie i cut w prostym języku (wg trybu turnieju).</p>
+    <details class="copy-fold">
+        <summary>Jak czytać nagrody</summary>
+        <p class="prize-panel-lead" id="prizePanelBlurb">Wybierz siebie w tabeli LIVE — pokażemy promo, maty, zaproszenie i cut w prostym języku (wg trybu turnieju).</p>
+    </details>
     <div class="prize-player-meta" id="prizePlayerMeta"></div>
     <div class="prize-groups" id="prizeGroups">
         <div class="prize-group prize-group--play">
@@ -2336,10 +2383,11 @@
         <span class="tie-summary-hint tie-summary-hint--open">zwiń</span>
     </summary>
     <div style="margin-top:12px;">
-    <p style="font-size: 14px; margin: 0 0 12px 0;">
-        Wybierz cel cutu, wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS).
-        <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
-    </p>
+    <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
+    <details class="copy-fold">
+        <summary>Jak korzystać z Can I Tie</summary>
+        <p>Wybierz cel cutu, wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS).</p>
+    </details>
 
     <div class="tie-goal-block" id="tieGoalBlock">
         <span class="tie-goal-label" id="tieGoalLabel">Cel strategii</span>
@@ -2362,7 +2410,10 @@
                 <span class="goal-sub">soft Top 64 + remisy</span>
             </button>
         </div>
-        <p class="tie-goal-hint" id="tieGoalHint">MAIN1: Top 8 / Top 16 (mata) = hard · Continentals = soft 32 · Gaston = soft 64. MAIN2: Top 8 + Top 32 hard. Inne: Top 2–32 hard.</p>
+        <details class="copy-fold">
+            <summary>Presety cutu wg trybu</summary>
+            <p class="tie-goal-hint" id="tieGoalHint">MAIN1: Top 8 / Top 16 (mata) = hard · Continentals = soft 32 · Gaston = soft 64. MAIN2: Top 8 + Top 32 hard. Inne: Top 2–32 hard.</p>
+        </details>
     </div>
 
     <div class="tie-nick-block">
@@ -2448,9 +2499,10 @@
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
                 <div>
                     <span style="font-size: 15px; font-weight: bold; color: #fff;">🔮 Symulator Parowań: Z kim zagram w Rundzie <span id="predictorNextRoundNum">-</span>?</span>
-                    <div style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
-                        Model Swiss z wykluczeniem wcześniejszych rywali (no-rematches) oraz analizą trwających stołów.
-                    </div>
+                    <details class="copy-fold" style="margin-top:4px;">
+                        <summary>Jak liczy model</summary>
+                        <p>Model Swiss z wykluczeniem wcześniejszych rywali (no-rematches) oraz analizą trwających stołów.</p>
+                    </details>
                 </div>
             </div>
             
@@ -2504,11 +2556,14 @@
 
 
 <!-- PRIMARY: LIVE STANDINGS -->
-<p class="secondary-section-note">Tabela LIVE — kliknij siebie, żeby odświeżyć „O co jeszcze gramy”. Soft EUC (MAIN1) jest nad tabelą. Kolorowe chipy = status progów nagród.</p>
 <div class="section-header" id="liveStandingsSection">
     <h3>Klasyfikacja LIVE <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-    <span style="font-size: 11px; color: #888;">(Dotknij gracza = nagrody + TIE · OMWP po szczegóły)</span>
+    <span style="font-size: 11px; color: #888;">(Dotknij gracza = nagrody + TIE)</span>
 </div>
+<details class="copy-fold">
+    <summary>O tabeli LIVE</summary>
+    <p class="secondary-section-note">Tabela LIVE — kliknij siebie, żeby odświeżyć „O co jeszcze gramy”. Soft EUC (MAIN1) jest nad Can I Tie. Kolorowe chipy = status progów nagród. OMWP po szczegóły w Inspektorze.</p>
+</details>
 <div class="filter-controls-row" style="margin: 0 0 10px 0;">
     <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, skład 🐀 Szczury Wrocławskie, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
         <span style="font-size: 16px;">🇵🇱</span>
@@ -2542,7 +2597,10 @@
     <button type="button" id="liveTableSearchClearBtn" class="quick-search-clear" onclick="clearLiveTableSearch()">✕ Wyczyść</button>
 </div>
 
-<div id="livePrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
+<details class="copy-fold prize-chips-legend-fold">
+    <summary>Legenda chipów nagród</summary>
+    <div id="livePrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
+</details>
 
 <div id="liveStandingsViewport" class="live-virt-viewport" onscroll="onLiveStandingsScroll(event)">
     <table>
@@ -2607,7 +2665,10 @@
     </div>
 </div>
 <div id="officialStandingsWrapper">
-    <div id="officialPrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
+    <details class="copy-fold prize-chips-legend-fold">
+        <summary>Legenda chipów nagród</summary>
+        <div id="officialPrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
+    </details>
     <div class="table-responsive">
         <table>
             <thead>
@@ -2638,10 +2699,13 @@
             <h3 style="color: #f1c40f; margin-bottom: 4px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;">
                 🏆 Drabinka Top Cut
             </h3>
-            <div style="font-size: 12px; color: #94a3b8; max-width: 52rem;">
-                Na żądanie — wybierz rozmiar i narysuj drzewko z tabeli LIVE (PLAY/DRAW wg seedu po Swiss).
-                Domyślny rozmiar bierze się z cutu turnieju / admina; w <strong style="color:#f1c40f;">MAIN1</strong> zawsze startuje od hard <strong style="color:#f1c40f;">Top 8</strong>.
-            </div>
+            <details class="copy-fold">
+                <summary>Jak działa drabinka</summary>
+                <div class="copy-fold-body" style="max-width: 52rem;">
+                    Na żądanie — wybierz rozmiar i narysuj drzewko z tabeli LIVE (PLAY/DRAW wg seedu po Swiss).
+                    Domyślny rozmiar bierze się z cutu turnieju / admina; w <strong style="color:#f1c40f;">MAIN1</strong> zawsze startuje od hard <strong style="color:#f1c40f;">Top 8</strong>.
+                </div>
+            </details>
         </div>
     </div>
 
@@ -2673,9 +2737,12 @@
                 <h4 style="color: #e8b84a; margin: 0 0 4px; font-size: 15px;">
                     Top <span id="bracketSizeTitle">8</span> — drzewko &amp; Play/Draw
                 </h4>
-                <div id="bracketPhaseStatusText" style="font-size: 12px; color: #94a3b8;">
-                    Oficjalne drzewko pucharowe (od 1. rundy Top Cut aż do Finału). W każdej rundzie wyższy seed po fazie Swiss ma przywilej <strong>🟢 PLAY</strong>!
-                </div>
+                <details class="copy-fold">
+                    <summary>PLAY / DRAW</summary>
+                    <div id="bracketPhaseStatusText" class="copy-fold-body">
+                        Oficjalne drzewko pucharowe (od 1. rundy Top Cut aż do Finału). W każdej rundzie wyższy seed po fazie Swiss ma przywilej <strong>🟢 PLAY</strong>!
+                    </div>
+                </details>
             </div>
             <div class="bracket-mode-bar" style="margin: 0;">
                 <button type="button" id="bracketModeProjectedBtn" class="bracket-mode-btn active" onclick="setBracketDisplayMode('projected')" title="Pokazuje pełną symulację kolejnych rund drabinki przy założeniu awansu wyższych seedów">🔮 Pełna Ścieżka (Faworyci wg Seedu)</button>
@@ -2691,9 +2758,12 @@
     <div class="section-header">
         <h2 id="tournamentMetaHeading" style="margin: 0;">Meta turnieju</h2>
     </div>
-    <p class="tournament-meta-lede">
-        Co gra pole — pary atramentów zebrane z rund (i z lokalnego cache, żeby nie znikały po zmianie stołów).
-    </p>
+    <details class="copy-fold">
+        <summary>Skąd bierze się meta</summary>
+        <p class="tournament-meta-lede">
+            Co gra pole — pary atramentów zebrane z rund (i z lokalnego cache, żeby nie znikały po zmianie stołów).
+        </p>
+    </details>
     <div id="tournamentMetaRoot" hidden>
         <div class="tournament-meta-empty">Ładowanie meta atramentów…</div>
     </div>
@@ -2771,17 +2841,18 @@
 
 <!-- DOLNY PASEK NAWIGACJI MOBILNEJ (STICKY APP BAR) -->
 <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Szybka nawigacja mobilna">
+    <!-- Order = page module order (controls → nagrody → TIE → LIVE → mecze → drabinka) -->
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('prizeGoalsPanel', this)">
         <span class="nav-icon">🎁</span>
         <span>Nagrody</span>
     </button>
-    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('liveStandingsSection', this)">
-        <span class="nav-icon">🔥</span>
-        <span>Tabela Live</span>
-    </button>
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('tieModule', this)">
         <span class="nav-icon">🤝</span>
         <span>TIE</span>
+    </button>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('liveStandingsSection', this)">
+        <span class="nav-icon">🔥</span>
+        <span>Tabela Live</span>
     </button>
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('pairingsSection', this)">
         <span class="nav-icon">⚔️</span>
@@ -2801,6 +2872,6 @@
 
 <script src="tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261117testshell1"></script>
+<script src="app.js?v=20261117declutter1"></script>
 </body>
 </html>
