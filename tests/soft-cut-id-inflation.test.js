@@ -250,8 +250,13 @@ describe('calculateSoftCutIdInflation', () => {
         const testsHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
         assert.match(testsHtml, /id="frontSoftEucHost"/);
         assert.match(testsHtml, /id="softEucPlayHint"/);
+        assert.match(testsHtml, /id="tournamentSwitcher"/);
+        assert.match(testsHtml, /id="prizeGoalsPanel"/);
+        assert.match(testsHtml, /id="testsControlsStrip"/);
         assert.match(testsHtml, /loadR15LondonPreTie\(/);
-        assert.match(testsHtml, /app\.js\?v=20261117r15softfix1/);
+        assert.match(testsHtml, /app\.js\?v=20261117testshell1/);
         assert.match(testsHtml, /prize-ladders\.js/);
+        assert.match(testsHtml, /Analityka Lorcany/);
+        assert.doesNotMatch(testsHtml, /brand-mark">TESTS/);
     });
 });

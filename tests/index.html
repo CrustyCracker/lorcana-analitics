@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>Testy — Demo 2k | Analityka Lorcany</title>
+    <title>Analityka Lorcany — Testy</title>
+    <meta property="og:title" content="Analityka Lorcany — od Crusty">
+    <meta property="og:site_name" content="Analityka Lorcany">
+    <meta name="description" content="Strategia remisu pod Top Cut — na żywo, z bieżących stołów PlayHub.">
     <link rel="icon" href="../favicon.ico?v=20261111f1" sizes="any">
     <link rel="icon" type="image/png" href="../favicon-32x32.png?v=20261111f1" sizes="32x32">
     <link rel="icon" type="image/png" href="../favicon-16x16.png?v=20261111f1" sizes="16x16">
@@ -122,6 +125,19 @@
             font-size: 12px;
             font-weight: 600;
             color: var(--text-dim);
+            letter-spacing: 0.02em;
+        }
+        .active-event-display {
+            display: flex;
+            align-items: center;
+            min-height: 42px;
+            padding: 10px 12px;
+            border-radius: var(--radius);
+            border: 1px solid var(--line);
+            background: var(--navy-950);
+            color: var(--gold);
+            font-weight: 700;
+            font-size: 15px;
             letter-spacing: 0.02em;
         }
         .field-hint {
@@ -372,7 +388,8 @@
         @keyframes load-spin {
             to { transform: rotate(360deg); }
         }
-        .load-timing-pill {
+        .load-timing-pill,
+        .load-cache-pill {
             display: inline-block;
             font-size: 11px;
             font-weight: 700;
@@ -382,6 +399,15 @@
             border-radius: 4px;
             padding: 1px 7px;
             white-space: nowrap;
+        }
+        .load-timing-api { color: #7dd3a7; border-color: rgba(125, 211, 167, 0.4); background: rgba(125, 211, 167, 0.1); }
+        .load-timing-parse { color: #c4b5fd; border-color: rgba(196, 181, 253, 0.4); background: rgba(196, 181, 253, 0.1); }
+        .load-timing-render { color: #fcd34d; border-color: rgba(252, 211, 77, 0.4); background: rgba(252, 211, 77, 0.1); }
+        .load-timing-server { color: #93c5fd; border-color: rgba(147, 197, 253, 0.4); background: rgba(147, 197, 253, 0.1); }
+        .load-cache-pill {
+            color: #9ec5e8;
+            background: rgba(100, 149, 200, 0.12);
+            border-color: rgba(100, 149, 200, 0.35);
         }
         .btn-load:disabled {
             opacity: 0.55;
@@ -393,6 +419,87 @@
             background: var(--navy-850);
             border: 1px solid var(--line-gold);
             margin-top: 0;
+        }
+        .tie-panel > summary {
+            cursor: pointer;
+            list-style: none;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 8px 12px;
+        }
+        .tie-panel > summary::-webkit-details-marker { display: none; }
+        .tie-panel > summary .tie-summary-title {
+            display: inline;
+            margin: 0;
+            font-family: var(--font-display);
+            font-size: clamp(1.15rem, 3.2vw, 1.45rem);
+            color: var(--gold);
+            letter-spacing: 0.04em;
+        }
+        .tie-panel > summary .tie-summary-hint {
+            color: var(--text-mute);
+            font-size: 13px;
+        }
+        .tie-panel[open] > summary .tie-summary-hint--closed { display: none; }
+        .tie-panel:not([open]) > summary .tie-summary-hint--open { display: none; }
+        .tie-goal-block {
+            margin: 0 0 14px 0;
+            padding: 12px;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: rgba(7, 16, 22, 0.35);
+        }
+        .tie-goal-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: 8px;
+        }
+        .tie-goal-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .tie-goal-btn {
+            border: 1px solid var(--line);
+            background: var(--navy-950);
+            color: var(--text-dim);
+            border-radius: var(--radius);
+            padding: 10px 12px;
+            font-weight: 700;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: var(--font-ui);
+            text-align: left;
+            min-width: min(100%, 148px);
+            flex: 1 1 140px;
+            line-height: 1.25;
+        }
+        .tie-goal-btn .goal-sub {
+            display: block;
+            margin-top: 3px;
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-mute);
+        }
+        .tie-goal-btn.active {
+            border-color: var(--line-gold);
+            color: var(--gold-bright);
+            background: rgba(212, 160, 23, 0.12);
+        }
+        .tie-goal-btn.active .goal-sub { color: var(--gold); }
+        .tie-goal-hint {
+            margin: 8px 0 0 0;
+            font-size: 12px;
+            color: var(--text-mute);
+            line-height: 1.4;
+        }
+        .tie-nick-block {
+            margin-bottom: 4px;
         }
         .autocomplete-wrapper {
             position: relative;
@@ -681,6 +788,148 @@
             color: #d4a017;
         }
 
+        /* Ink pairings (PlayHub deck_descriptor) — compact Lorcana color dots */
+        .ink-pair {
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            margin-right: 6px;
+            vertical-align: middle;
+            flex-shrink: 0;
+        }
+        .ink-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+        }
+        .player-cell-with-inks {
+            display: inline-flex;
+            align-items: center;
+            max-width: 100%;
+            min-width: 0;
+        }
+        .player-cell-with-inks .player-name-text {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            min-width: 0;
+        }
+
+        /* Tournament ink meta (field breakdown) */
+        .tournament-meta-section {
+            margin: 28px 0 8px;
+            padding: 18px 18px 20px;
+            border: 1px solid rgba(212, 160, 23, 0.22);
+            border-radius: 10px;
+            background:
+                linear-gradient(165deg, rgba(18, 38, 46, 0.92) 0%, rgba(10, 22, 28, 0.96) 55%, rgba(14, 28, 34, 0.9) 100%);
+        }
+        .tournament-meta-section .section-header {
+            margin-bottom: 6px;
+        }
+        .tournament-meta-lede {
+            margin: 0 0 14px;
+            font-size: 13px;
+            color: var(--text-mute);
+            max-width: 46rem;
+            line-height: 1.45;
+        }
+        .tournament-meta-summary {
+            font-size: 13px;
+            color: var(--text-dim);
+            margin-bottom: 14px;
+        }
+        .tournament-meta-summary strong {
+            color: var(--gold-bright);
+            font-family: var(--font-display);
+            font-weight: 600;
+        }
+        .tournament-meta-empty {
+            font-size: 13px;
+            color: var(--text-mute);
+            padding: 10px 0 4px;
+            line-height: 1.45;
+        }
+        .tournament-meta-grid {
+            display: grid;
+            grid-template-columns: 1.25fr 1fr;
+            gap: 22px 28px;
+        }
+        @media (max-width: 820px) {
+            .tournament-meta-grid { grid-template-columns: 1fr; gap: 18px; }
+        }
+        .tournament-meta-col-title {
+            margin: 0 0 10px;
+            font-family: var(--font-display);
+            font-size: 0.95rem;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--gold);
+            font-weight: 600;
+        }
+        .meta-bar-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .meta-bar-row {
+            display: grid;
+            grid-template-columns: minmax(9.5rem, 11.5rem) 1fr auto;
+            align-items: center;
+            gap: 10px;
+        }
+        @media (max-width: 520px) {
+            .meta-bar-row {
+                grid-template-columns: minmax(7.5rem, 9rem) 1fr auto;
+                gap: 8px;
+            }
+        }
+        .meta-bar-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+        .meta-bar-name {
+            font-size: 12.5px;
+            color: var(--text);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .meta-bar-track {
+            height: 10px;
+            border-radius: 999px;
+            background: rgba(255, 255, 255, 0.06);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            overflow: hidden;
+        }
+        .meta-bar-fill {
+            height: 100%;
+            border-radius: inherit;
+            background: linear-gradient(90deg, rgba(212, 160, 23, 0.55), rgba(241, 196, 15, 0.85));
+            min-width: 2px;
+        }
+        .meta-bar-stat {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            line-height: 1.15;
+            min-width: 2.6rem;
+        }
+        .meta-bar-stat strong {
+            font-family: var(--font-display);
+            font-size: 14px;
+            color: var(--gold-bright);
+            font-weight: 700;
+        }
+        .meta-bar-stat span {
+            font-size: 11px;
+            color: var(--text-mute);
+        }
+
         /* OMWP MODAL */
         .modal-overlay {
             position: fixed;
@@ -943,7 +1192,6 @@
             color: #cbd5e1;
             margin-top: 3px;
         }
-        .front-soft-host { margin: 0 0 12px; }
         .soft-euc-play-hint {
             margin: 12px 0 4px;
             padding: 14px 16px;
@@ -1055,6 +1303,100 @@
             background: #171a24;
             border-left: 4px solid #f1c40f;
             margin-top: 25px;
+        }
+        .bracket-draw-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 14px;
+            align-items: flex-end;
+            margin-top: 14px;
+            padding: 12px 14px;
+            background: linear-gradient(135deg, rgba(241, 196, 15, 0.08) 0%, rgba(23, 26, 36, 0.9) 55%);
+            border: 1px solid rgba(241, 196, 15, 0.28);
+            border-radius: var(--radius);
+        }
+        .bracket-draw-field {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 140px;
+        }
+        .bracket-draw-field label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #94a3b8;
+            font-family: var(--font-ui);
+        }
+        .bracket-draw-field select {
+            height: 38px;
+            min-width: 120px;
+            padding: 0 10px;
+            border-radius: var(--radius);
+            border: 1px solid #36405a;
+            background: #121826;
+            color: #eef2f6;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: var(--font-ui);
+        }
+        .bracket-draw-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+        }
+        .btn-draw-bracket {
+            height: 38px;
+            padding: 0 18px;
+            border: 1px solid #f1c40f;
+            border-radius: var(--radius);
+            background: linear-gradient(180deg, #e8b84a 0%, #d4a017 100%);
+            color: #1a1203;
+            font-size: 13px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+            font-family: var(--font-display);
+            text-transform: uppercase;
+            cursor: pointer;
+            box-shadow: 0 2px 10px rgba(212, 160, 23, 0.28);
+            transition: transform 0.12s ease, filter 0.12s ease;
+        }
+        .btn-draw-bracket:hover {
+            filter: brightness(1.06);
+            transform: translateY(-1px);
+        }
+        .btn-draw-bracket:active {
+            transform: translateY(0);
+        }
+        .btn-clear-bracket {
+            height: 38px;
+            padding: 0 14px;
+            border: 1px solid #36405a;
+            border-radius: var(--radius);
+            background: #232838;
+            color: #94a3b8;
+            font-size: 12px;
+            font-weight: 700;
+            font-family: var(--font-ui);
+            cursor: pointer;
+        }
+        .btn-clear-bracket:hover {
+            color: #eef2f6;
+            border-color: #64748b;
+        }
+        .bracket-draw-hint {
+            margin-top: 8px;
+            font-size: 12px;
+            color: #94a3b8;
+            line-height: 1.45;
+        }
+        .bracket-draw-hint strong {
+            color: #f1c40f;
+        }
+        .bracket-tree-host[hidden] {
+            display: none !important;
         }
         .bracket-mode-bar {
             display: flex;
@@ -1698,95 +2040,388 @@
             animation: none;
         }
 
+        .tournament-switcher {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 0 0 10px;
+        }
+        .tournament-tab {
+            border: 1px solid var(--line);
+            background: var(--navy-950);
+            color: var(--text-dim);
+            border-radius: var(--radius);
+            padding: 10px 14px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            font-family: var(--font-ui);
+        }
+        .tournament-tab.active {
+            border-color: var(--line-gold);
+            color: var(--gold-bright);
+            background: rgba(212, 160, 23, 0.12);
+        }
+        .tournament-tab .tab-mode {
+            display: block;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-mute);
+            margin-top: 2px;
+        }
+        .tournament-tab.active .tab-mode { color: var(--gold-dim); }
 
+        .prize-panel {
+            border-color: var(--line-gold);
+            background: linear-gradient(165deg, #1a2438 0%, var(--navy-850) 45%, #101827 100%);
+        }
+        .prize-panel h3 { margin-bottom: 6px; }
+        .prize-panel-lead {
+            margin: 0 0 12px;
+            color: var(--text-dim);
+            font-size: 14px;
+            line-height: 1.45;
+        }
+        .prize-player-meta {
+            font-size: 13px;
+            color: var(--text-mute);
+            margin: 0 0 12px;
+        }
+        .prize-groups {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+        @media (min-width: 860px) {
+            .prize-groups { grid-template-columns: 1fr 1fr 1fr; }
+        }
+        .prize-group {
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            padding: 10px 12px;
+            background: rgba(0,0,0,0.18);
+            min-height: 80px;
+        }
+        .prize-group h4 {
+            margin: 0 0 8px;
+            font-size: 12px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--text-mute);
+        }
+        .prize-group--play h4 { color: var(--gold-bright); }
+        .prize-group--locked h4 { color: var(--safe); }
+        .prize-group--missed h4 { color: var(--danger); }
+        .prize-item {
+            margin: 0 0 8px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+        }
+        .prize-item:last-child { margin-bottom: 0; padding-bottom: 0; border-bottom: 0; }
+        .prize-item__title { font-weight: 700; font-size: 14px; color: var(--text); }
+        .prize-item__cat {
+            display: inline-block;
+            margin-left: 6px;
+            font-size: 11px;
+            color: var(--text-mute);
+            font-weight: 600;
+        }
+        .prize-item__note { font-size: 12px; color: var(--text-dim); margin-top: 2px; line-height: 1.35; }
+        .prize-empty { color: var(--text-mute); font-size: 13px; }
+        .prize-chips {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+            max-width: 280px;
+            white-space: normal;
+        }
+        .prize-chips--empty { color: var(--text-mute); font-size: 12px; }
+        .prize-chips-cell {
+            text-align: left;
+            vertical-align: middle;
+            white-space: normal;
+            min-width: 168px;
+        }
+        .prize-chip {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 28px;
+            height: 20px;
+            padding: 0 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.03em;
+            line-height: 1;
+            white-space: nowrap;
+            opacity: 1;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+        }
+        /* Solid fills so chips stay readable on .safe / .bubble / .dead row tints */
+        .prize-chip--locked {
+            background: #1f8f55;
+            color: #f3fff8;
+            border: 1px solid #3ddc84;
+        }
+        .prize-chip--play {
+            background: #b86a0a;
+            color: #fff8eb;
+            border: 1px solid #f0b040;
+        }
+        .prize-chip--missed {
+            background: #8b2e28;
+            color: #ffe8e6;
+            border: 1px solid #e57368;
+        }
+        .prize-chip--neutral {
+            background: #2a3548;
+            color: #e8eef7;
+            border: 1px solid #7f8ea3;
+        }
+        .prize-chips-legend {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 12px;
+            margin: 0 0 10px 0;
+            padding: 8px 10px;
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 8px;
+            background: rgba(15, 23, 42, 0.35);
+            font-size: 12px;
+            color: var(--text-dim, #94a3b8);
+        }
+        .prize-chips-legend__title {
+            font-weight: 700;
+            color: var(--text, #e2e8f0);
+        }
+        .prize-chips-legend__swatch {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .prize-chips-legend__keys {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 3px;
+        }
+        .prize-chips-legend__hint {
+            color: var(--text-mute, #64748b);
+            font-size: 11px;
+        }
+
+        .simple-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+        }
+        .simple-toolbar .btn-load { width: auto; min-width: 160px; flex: 0 0 auto; }
+        .advanced-fold {
+            margin-top: 10px;
+            border-top: 1px solid var(--line);
+            padding-top: 8px;
+        }
+        .advanced-fold > summary {
+            cursor: pointer;
+            color: var(--text-dim);
+            font-size: 13px;
+            font-weight: 600;
+            list-style: none;
+        }
+        .advanced-fold > summary::-webkit-details-marker { display: none; }
+        .advanced-fold[open] > summary { margin-bottom: 10px; color: var(--gold); }
+        .front-soft-host { margin-bottom: 12px; }
+        .secondary-section-note { color: var(--text-mute); font-size: 12px; margin: 8px 0 12px; }
+
+    <style>
+        .tests-controls-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            align-items: center;
+            margin: 0 0 12px;
+            padding: 10px 12px;
+            border: 1px dashed var(--line-gold);
+            border-radius: var(--radius);
+            background: rgba(212, 160, 23, 0.06);
+        }
+        .tests-controls-strip__label {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: var(--gold);
+            margin-right: 4px;
+        }
+        .tests-controls-strip .btn-demo {
+            width: auto;
+            min-height: 36px;
+            height: 36px;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 700;
+            background: transparent;
+            color: var(--gold);
+            border: 1px dashed var(--line-gold);
+            border-radius: var(--radius);
+            cursor: pointer;
+        }
+        .tests-controls-strip .btn-demo:hover {
+            background: rgba(212, 160, 23, 0.12);
+            border-style: solid;
+        }
+        .tests-controls-strip__hint {
+            font-size: 11px;
+            color: var(--text-mute);
+        }
+        .tests-controls-strip__hint code {
+            color: var(--text-dim);
+        }
     </style>
 </head>
 <body data-page="tests">
 
 <header class="site-hero">
-    <p class="brand-mark">TESTS <span class="site-byline">demo / stress</span></p>
-    <p class="hero-tag">Wewnętrzna strona testowa — nie linkowana z aplikacji. <a href="../index.html" style="color: var(--gold);">← Wróć do appki</a></p>
+    <p class="brand-mark">Analityka Lorcany <span class="site-byline">od Crusty</span></p>
+    <p class="hero-tag">Na żywo na o co gramy, czy zrobie kontinentalsy?</p>
 </header>
 
-<div class="panel" id="testsDemoPanel" style="border-color: var(--line-gold);">
-    <h3 style="margin-bottom: 8px;">Demo 2k / 12 rund</h3>
-    <p style="font-size: 13px; color: var(--text-dim); margin: 0 0 12px 0;">Po <strong>11 ukończonych</strong> rundach Swiss — <strong>R12 właśnie wystartowała</strong> z <strong>pełną listą 1000 meczów LIVE</strong> (wszyscy gracze sparowani, IN_PROGRESS). Standings z R11. Top 64. Auto-wybór bubble.</p>
-    <div class="demo-load-row">
-        <button type="button" class="btn-demo" onclick="loadDemo2k12()" title="Załaduj syntetyczne pole 2k">Załaduj demo 2k / 12 rund</button>
-        <span id="testsDemoHint" style="font-size: 12px; color: var(--text-mute);">lub otwórz z <code>?demo=2k</code></span>
-    </div>
+<!-- /tests only: compact scenario loaders — page shell matches homepage -->
+<div id="testsControlsStrip" class="tests-controls-strip" role="region" aria-label="Scenariusze testowe">
+    <span class="tests-controls-strip__label">Testy</span>
+    <button type="button" class="btn-demo" onclick="loadR15LondonPreTie()" title="Fixture MAIN1 R15 pre-tie">Załaduj R15 London bez tajów</button>
+    <button type="button" class="btn-demo" onclick="loadDemo2k12()" title="Syntetyczne pole 2k / 12 rund">Demo 2k / 12 rund</button>
+    <span class="tests-controls-strip__hint">lub <code>?demo=r15-pre-tie</code> · <code>?demo=2k</code></span>
 </div>
 
-<div class="panel" id="testsR15PreTiePanel" style="border-color: var(--line-gold);">
-    <h3 style="margin-bottom: 8px;">DLC London R15 bez tajów</h3>
-    <p style="font-size: 13px; color: var(--text-dim); margin: 0 0 12px 0;">
-        Scenariusz JSON z <strong>MAIN1 1254364</strong>: standings po R14 + <strong>otwarte pairings R15</strong>
-        (nikt jeszcze nie wziął ID). Soft EUC liczy, <strong>ile stołów / osób na 33 musi grać</strong>,
-        żeby soft cut był <strong>jak najszerszy</strong> (próg 33 zamiast nadmuchanego 34) —
-        z wspinaczami z 31/32, nie tylko 11×33v33.
-    </p>
-    <div class="demo-load-row">
-        <button type="button" class="btn-demo" onclick="loadR15LondonPreTie()" title="Załaduj fixture R15 pre-tie">Załaduj R15 London bez tajów</button>
-        <span id="testsR15Hint" style="font-size: 12px; color: var(--text-mute);">lub <code>?demo=r15-pre-tie</code> · oczekiwane: ≥7 stołów / 14 osób</span>
-    </div>
-</div>
-
-<!-- Soft EUC (MAIN1) — front host; filled after R15 / LIVE load. Must exist on /tests too. -->
-<div id="frontSoftEucHost" class="front-soft-host" style="display:none;" aria-live="polite"></div>
-
-<!-- Mobile order: ID → Load → Cut → Rounds → status → Can I Tie → (Poles przy LIVE) -->
+<!-- PUBLIC: tournament switcher + refresh -->
 <div class="panel" id="topControlPanel">
     <div class="controls-stack">
         <div class="field-group" data-control="event-id">
-            <label for="eventId">1. ID turnieju (PlayHub)</label>
-            <input type="number" id="eventId" placeholder="np. 1007231" autocomplete="off" inputmode="numeric" title="ID turnieju z Ravensburger Play Hub. Wciśnij Enter, aby śledzić">
-            <div class="field-hint">Numer eventu z linku Ravensburger Play.</div>
+            <label>Turniej weekendu</label>
+            <div id="tournamentSwitcher" class="tournament-switcher" role="tablist" aria-label="Wybór turnieju"></div>
+            <div id="activeEventDisplay" class="active-event-display" aria-live="polite">Ładowanie turniejów z panelu admina…</div>
+            <input type="hidden" id="eventId" value="" autocomplete="off">
+            <div class="field-hint">Przełączanie korzysta z osobnego cache na event — bez zbędnego walenia w PlayHub. Konfiguracja: <a href="../admin.php" style="color:var(--gold);">/admin</a>.</div>
         </div>
 
-        <button type="button" onclick="startTracking()" class="btn-load" data-control="load">2. Odśwież / Śledź Live</button>
-
-        <div class="controls-pair" data-control="cut">
-            <div class="field-group">
-                <label for="cutSize">3. Top Cut — od którego miejsca</label>
-                <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" inputmode="numeric" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
-                <div class="field-hint">np. 8 = Top 8, 32 = Top 32.</div>
-            </div>
-            <div class="field-group">
-                <label for="cutRule">4. Typ Top Cut</label>
-                <select id="cutRule" onchange="onCutPrefsChanged()">
-                    <option value="hard" selected>Twardy Cut (sztywne Top X) [ME 2]</option>
-                    <option value="soft">Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
-                </select>
-                <div class="field-hint">Twardy = dokładnie X miejsc; miękki = Top X + równi punktami (ME1 / soft EUC). Po wyborze miękkiego: w sekcji LIVE zobaczysz „Ile stołów musi grać, żeby nie podnieść soft progu EUC”.</div>
-            </div>
+        <div class="simple-toolbar">
+            <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache serwera. Shift+klik: wymuś świeże dane z PlayHub (limitowane).">Odśwież LIVE</button>
+            <div id="status" data-control="status" aria-live="polite" aria-busy="false" style="flex:1;min-width:180px;"><span class="load-status-text">Gotowy do pobierania...</span></div>
         </div>
 
-        <div class="field-group" data-control="rounds">
-            <label for="totalRoundsOverride">5. Liczba rund Swiss</label>
-            <div class="rounds-override-row">
-                <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" inputmode="numeric" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Domyślnie z PlayHub. Wpisz własną liczbę, jeśli organizatorzy podali błędną.">
-                <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść ręczną liczbę rund i wróć do wartości z PlayHub">PlayHub</button>
+        <details class="advanced-fold" id="advancedControlsFold">
+            <summary>Zaawansowane: cut, rundy, tymczasowe ID</summary>
+            <div class="controls-pair" data-control="cut">
+                <div class="field-group">
+                    <label for="cutSize">Top Cut — od którego miejsca</label>
+                    <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" inputmode="numeric" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
+                    <div class="field-hint">np. 8 = Top 8, 32 = Top 32. Domyślne z trybu turnieju /admin.</div>
+                </div>
+                <div class="field-group">
+                    <label for="cutRule">Typ Top Cut</label>
+                    <select id="cutRule" onchange="onCutPrefsChanged()">
+                        <option value="hard" selected>Twardy Cut (sztywne Top X) [ME 2]</option>
+                        <option value="soft">Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
+                    </select>
+                    <div class="field-hint">MAIN1 = miękki (soft EUC). MAIN2/CCQ = twardy.</div>
+                </div>
             </div>
-            <div class="field-hint" id="roundsOverrideHint">Domyślnie: wartość z PlayHub. Możesz nadpisać ręcznie.</div>
-        </div>
-
-        <div id="status" data-control="status" aria-live="polite" aria-busy="false"><span class="load-status-text">Gotowy do pobierania...</span></div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-4px 0 8px;">
+                <button type="button" class="btn-secondary" style="width:auto;height:32px;font-size:12px;" onclick="resetCutPrefsToAdminDefaults()" title="Usuń lokalny override cut i wczytaj domyślne z /admin">Domyślne turnieju (cut)</button>
+                <div class="field-hint" id="cutPrefsHint" style="margin:0;">Domyślne z trybu — lokalna zmiana nie wpływa na innych.</div>
+            </div>
+            <div class="field-group" data-control="rounds">
+                <label for="totalRoundsOverride">Liczba rund Swiss</label>
+                <div class="rounds-override-row">
+                    <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" inputmode="numeric" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Bez lokalnego wpisu: domyślne admina, potem PlayHub.">
+                    <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść lokalny override rund — wróć do admina / PlayHub">Wyczyść lokalne</button>
+                </div>
+                <div class="field-hint" id="roundsOverrideHint">Domyślnie: admin lub PlayHub. Lokalny wpis tylko w tej przeglądarce.</div>
+            </div>
+            <details id="eventOverrideDetails" style="margin-top:8px;">
+                <summary style="cursor:pointer;color:var(--text-dim);font-size:12px;">Tymczasowe ID (tylko ta sesja)</summary>
+                <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center;">
+                    <input type="number" id="eventIdOverride" placeholder="np. 1007231" autocomplete="off" inputmode="numeric" style="flex:1;min-width:140px;" title="Tymczasowe ID — nie zmienia ustawienia admina">
+                    <button type="button" class="btn-secondary" style="width:auto;height:36px;" onclick="applySessionEventOverride()">Użyj</button>
+                </div>
+            </details>
+        </details>
     </div>
 </div>
 
+<!-- PRIMARY: O CO JESZCZE GRAMY -->
+<div class="panel prize-panel" id="prizeGoalsPanel" data-primary="true">
+    <h3>O co jeszcze gramy</h3>
+    <p class="prize-panel-lead" id="prizePanelBlurb">Wybierz siebie w tabeli LIVE — pokażemy promo, maty, zaproszenie i cut w prostym języku (wg trybu turnieju).</p>
+    <div class="prize-player-meta" id="prizePlayerMeta"></div>
+    <div class="prize-groups" id="prizeGroups">
+        <div class="prize-group prize-group--play">
+            <h4>Jeszcze w grze</h4>
+            <div class="prize-empty" id="prizeInPlayEmpty">—</div>
+            <div id="prizeInPlayList"></div>
+        </div>
+        <div class="prize-group prize-group--locked">
+            <h4>Masz / trzymasz</h4>
+            <div class="prize-empty" id="prizeLockedEmpty">—</div>
+            <div id="prizeLockedList"></div>
+        </div>
+        <div class="prize-group prize-group--missed">
+            <h4>Już nie</h4>
+            <div class="prize-empty" id="prizeMissedEmpty">—</div>
+            <div id="prizeMissedList"></div>
+        </div>
+    </div>
+</div>
 
+<!-- Soft anti-ID (MAIN1) — front and center host; filled when soft cut -->
+<div id="frontSoftEucHost" class="front-soft-host" style="display:none;" aria-live="polite"></div>
 
-<!-- PRIMARY: CAN I TAKE A TIE + BEST STRATEGY -->
-<div class="panel tie-panel" id="tieModule" data-primary="true">
-    <h3>6. Can I take a TIE?</h3>
+<!-- STRATEGY: CAN I TAKE A TIE (secondary vs prizes/LIVE) — domyślnie otwarty (nick + cel) -->
+<details class="panel tie-panel" id="tieModule" data-primary="false" open>
+    <summary>
+        <h3 class="tie-summary-title">Czy mogę remis? (Can I Tie)</h3>
+        <span class="tie-summary-hint tie-summary-hint--closed">rozwiń kalkulator</span>
+        <span class="tie-summary-hint tie-summary-hint--open">zwiń</span>
+    </summary>
+    <div style="margin-top:12px;">
     <p style="font-size: 14px; margin: 0 0 12px 0;">
-        Wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS) pod próg Cut.
+        Wybierz cel cutu, wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS).
         <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
     </p>
 
+    <div class="tie-goal-block" id="tieGoalBlock">
+        <span class="tie-goal-label" id="tieGoalLabel">Cel strategii</span>
+        <div class="tie-goal-picker" id="tieGoalPicker" role="radiogroup" aria-labelledby="tieGoalLabel">
+            <!-- Rebuilt by refreshModeDependentTieUi() per MAIN1 / MAIN2 / other -->
+            <button type="button" class="tie-goal-btn" id="tieGoalBtnTop8" role="radio" aria-checked="false" data-tie-goal="top8" onclick="onTieGoalSelected('top8')">
+                Top 8
+                <span class="goal-sub">twardy cut</span>
+            </button>
+            <button type="button" class="tie-goal-btn" id="tieGoalBtnTop16" role="radio" aria-checked="false" data-tie-goal="top16" onclick="onTieGoalSelected('top16')">
+                Top 16 (mata)
+                <span class="goal-sub">twardy cut</span>
+            </button>
+            <button type="button" class="tie-goal-btn" id="tieGoalBtnContinentals" role="radio" aria-checked="false" data-tie-goal="continentals" onclick="onTieGoalSelected('continentals')">
+                Continentals
+                <span class="goal-sub">soft Top 32 + remisy</span>
+            </button>
+            <button type="button" class="tie-goal-btn" id="tieGoalBtnGaston" role="radio" aria-checked="false" data-tie-goal="gaston" onclick="onTieGoalSelected('gaston')">
+                Gaston
+                <span class="goal-sub">soft Top 64 + remisy</span>
+            </button>
+        </div>
+        <p class="tie-goal-hint" id="tieGoalHint">MAIN1: Top 8 / Top 16 (mata) = hard · Continentals = soft 32 · Gaston = soft 64. MAIN2: Top 8 + Top 32 hard. Inne: Top 2–32 hard.</p>
+    </div>
+
+    <div class="tie-nick-block">
     <div class="autocomplete-wrapper">
-        <input type="text" id="playerSearchInput" placeholder="Wyszukaj gracza (np. Amanda, Rose, Kelly)..." autocomplete="off" oninput="onPlayerSearchInput()">
+        <input type="text" id="playerSearchInput" placeholder="Wpisz nick gracza (np. Amanda, Rose, Kelly)…" autocomplete="off" oninput="onPlayerSearchInput()" aria-label="Szukaj gracza po nicku">
         <div id="playerSuggestions" class="suggestions-dropdown"></div>
+    </div>
     </div>
 
     <div id="tieResultArea" style="display: none;">
@@ -1882,7 +2517,8 @@
             <div id="predictorCandidatesList" class="candidate-grid"></div>
         </div>
     </div>
-</div>
+    </div>
+</details>
 
 
 
@@ -1919,11 +2555,11 @@
 
 
 
-<!-- SECONDARY: LIVE STANDINGS -->
-<p class="secondary-section-note">Poniżej: kontekst turnieju (tabela LIVE, mecze, drabinka). Główna rada TIE jest wyżej.</p>
+<!-- PRIMARY: LIVE STANDINGS -->
+<p class="secondary-section-note">Tabela LIVE — kliknij siebie, żeby odświeżyć „O co jeszcze gramy”. Soft EUC (MAIN1) jest nad tabelą. Kolorowe chipy = status progów nagród.</p>
 <div class="section-header" id="liveStandingsSection">
-    <h3>Klasyfikacja LIVE &amp; Strategia Awansu <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-    <span style="font-size: 11px; color: #888;">(Dotknij gracza, by zbadać TIE / dotknij OMWP po szczegóły)</span>
+    <h3>Klasyfikacja LIVE <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+    <span style="font-size: 11px; color: #888;">(Dotknij gracza = nagrody + TIE · OMWP po szczegóły)</span>
 </div>
 <div class="filter-controls-row" style="margin: 0 0 10px 0;">
     <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, skład 🐀 Szczury Wrocławskie, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
@@ -1941,7 +2577,7 @@
         </div>
         <div id="breakdownSummarySubtitle" style="font-size: 12px; color: #94a3b8;"></div>
     </div>
-    <div id="softEucPlayHint" style="display: none;" aria-live="polite"></div>
+    <div id="softEucPlayHint" style="display: none;" aria-live="polite" hidden></div>
     <div class="cut-breakdown-grid" id="cutBreakdownMetricsGrid"></div>
     <div class="brackets-pills-row" id="cutBreakdownBracketsRow"></div>
 </div>
@@ -1958,6 +2594,8 @@
     <button type="button" id="liveTableSearchClearBtn" class="quick-search-clear" onclick="clearLiveTableSearch()">✕ Wyczyść</button>
 </div>
 
+<div id="livePrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
+
 <div id="liveStandingsViewport" class="live-virt-viewport" onscroll="onLiveStandingsScroll(event)">
     <table>
         <thead>
@@ -1965,6 +2603,7 @@
                 <th style="width: 45px;">Msc</th>
                 <th>Gracz</th>
                 <th>Pkt LIVE</th>
+                <th style="min-width: 160px;">Nagrody</th>
                 <th>Tiebreakery (OMW / GW / OGW)</th>
                 <th>Wymagane</th>
                 <th>Optymalna Strategia</th>
@@ -1972,7 +2611,7 @@
             </tr>
         </thead>
         <tbody id="liveStandingsBody">
-            <tr><td colspan="7" style="color: #666; padding: 20px;">Trwa symulacja wyników live...</td></tr>
+            <tr><td colspan="8" style="color: #666; padding: 20px;">Trwa symulacja wyników live...</td></tr>
         </tbody>
     </table>
 </div>
@@ -2020,6 +2659,7 @@
     </div>
 </div>
 <div id="officialStandingsWrapper">
+    <div id="officialPrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
     <div class="table-responsive">
         <table>
             <thead>
@@ -2027,13 +2667,14 @@
                     <th style="width: 45px;">Msc</th>
                     <th>Gracz</th>
                     <th>Pkt</th>
+                    <th style="min-width: 160px;">Nagrody</th>
                     <th>Bilans</th>
                     <th>Tiebreakery (OMW / GW / OGW)</th>
                     <th>Status</th>
                 </tr>
             </thead>
             <tbody id="officialStandingsBody">
-                <tr><td colspan="6" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
+                <tr><td colspan="7" style="color: #666; padding: 20px;">Brak oficjalnej tabeli.</td></tr>
             </tbody>
         </table>
     </div>
@@ -2042,23 +2683,73 @@
 
 
 
-<!-- SEKCJA 4: SYMULATOR DRABINKI TOP CUT (BRACKET & PLAY/DRAW PREDICTOR) -->
-<div class="panel bracket-panel" id="topCutBracketPanel" style="display: none;">
+<!-- SEKCJA 4 (dół strony): drabinka Top Cut — rysowana na żądanie -->
+<section class="panel bracket-panel" id="topCutBracketSection" aria-label="Drabinka Top Cut">
     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
         <div>
-            <h3 style="color: #f1c40f; margin-bottom: 4px;">🏆 Drabinka Pucharowa Top Cut (Top <span id="bracketSizeTitle">8</span> — Drzewko & Play/Draw)</h3>
-            <div id="bracketPhaseStatusText" style="font-size: 12px; color: #94a3b8;">
-                Oficjalne drzewko pucharowe (od 1. rundy Top Cut aż do Finału). W każdej rundzie wyższy seed po fazie Swiss ma przywilej <strong>🟢 PLAY</strong>!
+            <h3 style="color: #f1c40f; margin-bottom: 4px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;">
+                🏆 Drabinka Top Cut
+            </h3>
+            <div style="font-size: 12px; color: #94a3b8; max-width: 52rem;">
+                Na żądanie — wybierz rozmiar i narysuj drzewko z tabeli LIVE (PLAY/DRAW wg seedu po Swiss).
+                Domyślny rozmiar bierze się z cutu turnieju / admina; w <strong style="color:#f1c40f;">MAIN1</strong> zawsze startuje od hard <strong style="color:#f1c40f;">Top 8</strong>.
             </div>
         </div>
-        <div class="bracket-mode-bar" style="margin: 0;">
-            <button type="button" id="bracketModeProjectedBtn" class="bracket-mode-btn active" onclick="setBracketDisplayMode('projected')" title="Pokazuje pełną symulację kolejnych rund drabinki przy założeniu awansu wyższych seedów">🔮 Pełna Ścieżka (Faworyci wg Seedu)</button>
-            <button type="button" id="bracketModeStrictBtn" class="bracket-mode-btn" onclick="setBracketDisplayMode('strict')" title="Pokazuje w kolejnych rundach tylko potwierdzonych zwycięzców oraz pary potencjalnych seedów">🌳 Tylko Potwierdzone / TBD</button>
+    </div>
+
+    <div class="bracket-draw-bar" id="bracketDrawControls">
+        <div class="bracket-draw-field">
+            <label for="bracketDrawSize">Ile w top cut</label>
+            <select id="bracketDrawSize" aria-describedby="bracketDrawHint" onchange="updateBracketDrawHint()">
+                <option value="4">Top 4</option>
+                <option value="8" selected>Top 8</option>
+                <option value="16">Top 16</option>
+                <option value="32">Top 32</option>
+                <option value="64">Top 64</option>
+            </select>
+        </div>
+        <div class="bracket-draw-actions">
+            <button type="button" class="btn-draw-bracket" id="drawTopCutBracketBtn" onclick="drawTopCutBracketOnDemand()">
+                Narysuj drabinkę
+            </button>
+            <button type="button" class="btn-clear-bracket" id="clearTopCutBracketBtn" onclick="clearTopCutBracketOnDemand()" title="Schowaj drzewko (kontrola zostaje)">
+                Schowaj
+            </button>
         </div>
     </div>
-    <div id="bracketSelectedPlayerBanner" style="display: none; margin-top: 10px;"></div>
-    <div id="topCutBracketGrid" class="bracket-tree-wrapper"></div>
-</div>
+    <div class="bracket-draw-hint" id="bracketDrawHint">Domyślnie: Top 8 (z ustawień cut / trybu).</div>
+
+    <div id="topCutBracketPanel" class="bracket-tree-host" hidden>
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-top: 14px;">
+            <div>
+                <h4 style="color: #e8b84a; margin: 0 0 4px; font-size: 15px;">
+                    Top <span id="bracketSizeTitle">8</span> — drzewko &amp; Play/Draw
+                </h4>
+                <div id="bracketPhaseStatusText" style="font-size: 12px; color: #94a3b8;">
+                    Oficjalne drzewko pucharowe (od 1. rundy Top Cut aż do Finału). W każdej rundzie wyższy seed po fazie Swiss ma przywilej <strong>🟢 PLAY</strong>!
+                </div>
+            </div>
+            <div class="bracket-mode-bar" style="margin: 0;">
+                <button type="button" id="bracketModeProjectedBtn" class="bracket-mode-btn active" onclick="setBracketDisplayMode('projected')" title="Pokazuje pełną symulację kolejnych rund drabinki przy założeniu awansu wyższych seedów">🔮 Pełna Ścieżka (Faworyci wg Seedu)</button>
+                <button type="button" id="bracketModeStrictBtn" class="bracket-mode-btn" onclick="setBracketDisplayMode('strict')" title="Pokazuje w kolejnych rundach tylko potwierdzonych zwycięzców oraz pary potencjalnych seedów">🌳 Tylko Potwierdzone / TBD</button>
+            </div>
+        </div>
+        <div id="bracketSelectedPlayerBanner" style="display: none; margin-top: 10px;"></div>
+        <div id="topCutBracketGrid" class="bracket-tree-wrapper"></div>
+    </div>
+</section>
+
+<section class="tournament-meta-section" id="tournamentMetaSection" aria-labelledby="tournamentMetaHeading">
+    <div class="section-header">
+        <h2 id="tournamentMetaHeading" style="margin: 0;">Meta turnieju</h2>
+    </div>
+    <p class="tournament-meta-lede">
+        Co gra pole — pary atramentów zebrane z rund (i z lokalnego cache, żeby nie znikały po zmianie stołów).
+    </p>
+    <div id="tournamentMetaRoot" hidden>
+        <div class="tournament-meta-empty">Ładowanie meta atramentów…</div>
+    </div>
+</section>
 
 
 
@@ -2132,19 +2823,23 @@
 
 <!-- DOLNY PASEK NAWIGACJI MOBILNEJ (STICKY APP BAR) -->
 <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Szybka nawigacja mobilna">
-    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('tieModule', this)">
-        <span class="nav-icon">🤝</span>
-        <span>Kalkulator ID</span>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('prizeGoalsPanel', this)">
+        <span class="nav-icon">🎁</span>
+        <span>Nagrody</span>
     </button>
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('liveStandingsSection', this)">
         <span class="nav-icon">🔥</span>
         <span>Tabela Live</span>
     </button>
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('tieModule', this)">
+        <span class="nav-icon">🤝</span>
+        <span>TIE</span>
+    </button>
     <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('pairingsSection', this)">
         <span class="nav-icon">⚔️</span>
         <span>Mecze</span>
     </button>
-    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('topCutBracketPanel', this)">
+    <button type="button" class="mobile-nav-btn" onclick="scrollToMobileSection('topCutBracketSection', this)">
         <span class="nav-icon">🏆</span>
         <span>Drabinka</span>
     </button>
@@ -2157,9 +2852,9 @@
 
 
 <script>window.LORCANA_API_BASE = '../';</script>
-<script src="../prize-ladders.js?v=20261116format1"></script>
-<script src="../scripts/stress-fixture.js"></script>
-<script src="../tie-sim-core.js"></script>
-<script src="../app.js?v=20261117r15softfix1"></script>
+<script src="../scripts/stress-fixture.js?v=20261117testshell1"></script>
+<script src="../tie-sim-core.js?v=20261117testshell1"></script>
+<script src="../prize-ladders.js?v=20261117testshell1"></script>
+<script src="../app.js?v=20261117testshell1"></script>
 </body>
 </html>

@@ -2553,7 +2553,7 @@ async function loadR15LondonPreTie() {
 
     try {
         const url = new URL('fixtures/r15-london-pre-tie.json', window.location.href);
-        url.searchParams.set('v', '20261117r15softfix1');
+        url.searchParams.set('v', '20261117testshell1');
         const res = await fetch(url.toString(), { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -2783,10 +2783,16 @@ async function initDefaultEventAndAutoTrack() {
 
     const urlParams = new URLSearchParams(window.location.search);
 
-    // Demo 2k tylko na stronie /tests (nie na głównej)
+    // Demo fixtures tylko na /tests (nie na głównej). Bez ?demo=… /tests startuje jak homepage
+    // (switcher + LIVE), żeby shell był ten sam — różnią się tylko przyciski scenariuszy.
     if (isTestsPage()) {
         const demoParam = (urlParams.get('demo') || '').toLowerCase();
         if (demoParam === '2k' || demoParam === '2k12' || demoParam === '2000') {
+            // Switcher/admin defaults still useful after fixture load (MAIN1 Soft EUC etc.).
+            fetchSiteConfig().then(() => {
+                loadCutPrefsIntoUi();
+                renderTournamentSwitcher();
+            }).catch(() => {});
             loadDemo2k12();
             return;
         }
@@ -2794,17 +2800,13 @@ async function initDefaultEventAndAutoTrack() {
             demoParam === 'r15' || demoParam === 'r15-pre-tie' || demoParam === 'r15-london-pre-tie'
             || demoParam === 'london-r15' || demoParam === 'bez-tajow'
         ) {
+            fetchSiteConfig().then(() => {
+                loadCutPrefsIntoUi();
+                renderTournamentSwitcher();
+            }).catch(() => {});
             loadR15LondonPreTie();
             return;
         }
-        // Na /tests bez ?demo=… nie auto-startujemy żywego eventu
-        const testsEventId = urlParams.get('eventId') || urlParams.get('event');
-        if (testsEventId && /^\d+$/.test(testsEventId.trim())) {
-            eventInput.value = testsEventId.trim();
-            updateActiveEventDisplay(testsEventId.trim(), siteConfig.predictionAlgorithm);
-            startTracking();
-        }
-        return;
     }
 
     // 1. URL override (?eventId= / ?event=) — tylko sesja, nie zmienia admin config.
