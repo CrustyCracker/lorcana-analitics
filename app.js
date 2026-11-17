@@ -2504,6 +2504,97 @@ function loadDemo2k12() {
 }
 
 /**
+ * /tests scenario: DLC London MAIN1 R15 pre-tie (pairings out, no IDs yet).
+ * Fixture: tests/fixtures/r15-london-pre-tie.json
+ */
+async function loadR15LondonPreTie() {
+    if (typeof window === 'undefined' || typeof document === 'undefined') return;
+    if (!isTestsPage()) {
+        console.warn('[scenario] loadR15LondonPreTie dostępne tylko na /tests');
+        setStatusLoadIdle('Scenariusz dostępny tylko na stronie /tests', null, { error: true });
+        return;
+    }
+
+    if (trackingInterval) {
+        clearInterval(trackingInterval);
+        trackingInterval = null;
+    }
+
+    const loadSeq = ++dataLoadSeq;
+    const tGen0 = nowPerfMs();
+    setStatusLoadBusy('Ładowanie DLC London R15 bez tajów…');
+
+    try {
+        const url = new URL('fixtures/r15-london-pre-tie.json', window.location.href);
+        url.searchParams.set('v', '20261117r15pretie1');
+        const res = await fetch(url.toString(), { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (loadSeq !== dataLoadSeq) return;
+
+        const genMs = Math.round(nowPerfMs() - tGen0);
+
+        // Soft EUC panel is MAIN1-only — pin the MAIN1 slot for this event.
+        const main1 = (siteConfig.tournaments || []).find((t) => {
+            const mode = String(t.mode || '').toUpperCase();
+            return mode === 'MAIN1' && String(t.eventId) === String(data.eventId || 1254364);
+        }) || (siteConfig.tournaments || []).find((t) => String(t.mode || '').toUpperCase() === 'MAIN1')
+            || {
+                id: 't_main1_r15_scenario',
+                eventId: data.eventId || 1254364,
+                name: 'DLC MAIN1 R15 scenario',
+                mode: 'MAIN1',
+                cutSize: 8,
+                cutRule: 'hard',
+                swissRounds: 15
+            };
+        try {
+            applyTournamentSelection(main1, { track: false, clearLocalCut: true });
+        } catch (e) {}
+
+        const cutEl = document.getElementById('cutSize');
+        if (cutEl) {
+            cutEl.value = String(data.cutSize || 32);
+            try { saveCutPrefsFromUi(); } catch (e) {}
+        }
+        const cutRuleEl = document.getElementById('cutRule');
+        if (cutRuleEl) {
+            cutRuleEl.value = 'soft';
+            try { saveCutPrefsFromUi(); } catch (e) {}
+        }
+        const eventInput = document.getElementById('eventId');
+        if (eventInput) eventInput.value = String(data.eventId || 1254364);
+
+        try {
+            const overrideInput = document.getElementById('totalRoundsOverride');
+            if (overrideInput) overrideInput.value = String(data.totalRounds || 15);
+            setStoredRoundsOverride(data.eventId, data.totalRounds || 15);
+        } catch (e) {}
+
+        lastTrackedEventId = String(data.eventId);
+        lastProcessFingerprint = null;
+        lastAutoCutSyncedEventId = null;
+        currentSelectedPlayerId = null;
+        simulatedResultsCache = new Map();
+        tieSimResultCache.clear();
+
+        const liveN = data.demoMeta?.liveMatchCount ?? getActivePairingsList(data).length;
+        const liveOpen = data.demoMeta?.liveInProgressCount ?? liveN;
+        const uiHint = data.demoMeta?.uiHint || data.scenarioMeta?.labelPl || 'R15 pre-tie';
+        applyLoadedTournamentData(data, {
+            statusPrefix: `Scenariusz R15 bez tajów: ${uiHint} · mecze R${data.activeRound}: ${liveOpen}/${liveN} IN_PROGRESS (load ${genMs} ms)`,
+            autoSelectBubble: true,
+            loadStartedAt: tGen0,
+            loadSeq
+        });
+    } catch (err) {
+        if (loadSeq !== dataLoadSeq) return;
+        console.error('[scenario] R15 pre-tie load failed', err);
+        setStatusLoadIdle('Nie udało się załadować fixtures/r15-london-pre-tie.json: ' + (err?.message || err), null, { error: true });
+    }
+}
+
+/**
  * Wspólna ścieżka po fetch API / demo: process + opcjonalny auto-wybór bubble.
  * First paint: LIVE standings ASAP; pairings / Polish / bracket / TIE after paint.
  */
@@ -2654,7 +2745,14 @@ async function initDefaultEventAndAutoTrack() {
             loadDemo2k12();
             return;
         }
-        // Na /tests bez ?demo=2k nie auto-startujemy żywego eventu
+        if (
+            demoParam === 'r15' || demoParam === 'r15-pre-tie' || demoParam === 'r15-london-pre-tie'
+            || demoParam === 'london-r15' || demoParam === 'bez-tajow'
+        ) {
+            loadR15LondonPreTie();
+            return;
+        }
+        // Na /tests bez ?demo=… nie auto-startujemy żywego eventu
         const testsEventId = urlParams.get('eventId') || urlParams.get('event');
         if (testsEventId && /^\d+$/.test(testsEventId.trim())) {
             eventInput.value = testsEventId.trim();
@@ -5697,6 +5795,8 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
             lockedIdTables: 0,
             openMirrorTables: 0,
             mirrorTables: 0,
+            climberTables: 0,
+            maxClimbersToBand: 0,
             geBandNow: currentInvites,
             geBandIfAllId: currentInvites,
             geBandIfAllPlay: currentInvites,
@@ -5712,12 +5812,18 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
         };
     }
 
-    // Prefer mirrors that feed the current soft threshold (S → S+1 = thresh).
-    let mirrorScore = currentThresh - 1;
-    if (!mirrorsByScore.has(mirrorScore)) {
-        // Else pick open/locked mirror score closest below threshold, else densest.
+    // Prefer mirrors that feed soft-cut inflation:
+    // - Pre-round / open: mirrors AT currentThresh (33v33 while soft #32 still sits on 33)
+    //   inflate the band to thresh+1.
+    // - Post-round locked IDs: players already on thresh, mirrors recorded as thresh-1.
+    let mirrorScore;
+    if (mirrorsByScore.has(currentThresh)) {
+        mirrorScore = currentThresh;
+    } else if (mirrorsByScore.has(currentThresh - 1)) {
+        mirrorScore = currentThresh - 1;
+    } else {
         const candidates = [...mirrorsByScore.keys()].sort((a, b) => b - a);
-        mirrorScore = candidates.find((s) => s < currentThresh) ?? candidates[0];
+        mirrorScore = candidates.find((s) => s <= currentThresh) ?? candidates[0];
     }
 
     const tables = mirrorsByScore.get(mirrorScore) || [];
@@ -5736,6 +5842,58 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
         }
     }
 
+    // Pre-round climbers: open non-mirror tables that can still reach ≥band
+    // (e.g. 31→34 via W, lone 33 vs 32 via W/ID). Max-inflation path — same
+    // trap as docs/soft-cut-pre-round-forecast.md (without them k looks like 3–4).
+    const mirrorPlayerIds = new Set();
+    for (const t of tables) {
+        for (const pl of t.players) mirrorPlayerIds.add(String(pl.id));
+    }
+    const climberTables = [];
+    for (const match of matches) {
+        if (!match || match.match_is_bye || match.is_bye) continue;
+        const status = String(match.status || match.state || '').toUpperCase();
+        const { hasScore, winnerId } = getMatchScores(match);
+        const isDraw = Boolean(
+            match.match_is_intentional_draw
+            || match.match_is_unintentional_draw
+            || status === 'DRAW'
+        );
+        const isComplete = status === 'COMPLETE' || status === 'FINISHED' || status === 'COMPLETED'
+            || winnerId != null || hasScore || isDraw;
+        if (isComplete) continue; // finished players already sit at post points
+
+        const raw1 = getMatchParticipant(match, 1);
+        const raw2 = getMatchParticipant(match, 2);
+        const id1 = raw1 && typeof raw1 === 'object'
+            ? (raw1.id ?? raw1.player?.id ?? null)
+            : raw1;
+        const id2 = raw2 && typeof raw2 === 'object'
+            ? (raw2.id ?? raw2.player?.id ?? null)
+            : raw2;
+        if (id1 == null || id2 == null) continue;
+        const k1 = String(id1);
+        const k2 = String(id2);
+        if (!ptsById.has(k1) || !ptsById.has(k2)) continue;
+        if (mirrorPlayerIds.has(k1) || mirrorPlayerIds.has(k2)) continue;
+
+        const cur1 = ptsById.get(k1);
+        const cur2 = ptsById.get(k2);
+        // Someone below the band who can still climb onto ≥band this round
+        // (includes equal-score mirrors at lower scores, e.g. 31v31 → winner 34).
+        const canClimb = (cur1 < bandPts && (cur1 + 3 >= bandPts || cur1 + 1 >= bandPts))
+            || (cur2 < bandPts && (cur2 + 3 >= bandPts || cur2 + 1 >= bandPts));
+        if (!canClimb) continue;
+
+        climberTables.push({
+            table: match.table_number ?? match.tableNumber ?? null,
+            players: [
+                { id: id1, pts: cur1 },
+                { id: id2, pts: cur2 }
+            ]
+        });
+    }
+
     const countGe = (map, band) => {
         let n = 0;
         for (const v of map.values()) if (v >= band) n++;
@@ -5751,11 +5909,48 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
         return countGe(map, th);
     };
 
+    /** Apply outcome that maximizes people on ≥band for one open climber table. */
+    const applyClimberMaxToMap = (m, climber, band) => {
+        const a = String(climber.players[0].id);
+        const b = String(climber.players[1].id);
+        const pa = climber.players[0].pts;
+        const pb = climber.players[1].pts;
+        const outcomes = [
+            [[a, pa + 3], [b, pb]],
+            [[a, pa], [b, pb + 3]],
+            [[a, pa + 1], [b, pb + 1]]
+        ];
+        let best = outcomes[0];
+        let bestGe = -1;
+        for (const o of outcomes) {
+            let ge = 0;
+            for (const [, pts] of o) if (pts >= band) ge++;
+            if (ge > bestGe) {
+                bestGe = ge;
+                best = o;
+            }
+        }
+        for (const [id, pts] of best) m.set(id, pts);
+        return bestGe;
+    };
+    const applyMaxClimbers = (m, band) => {
+        let added = 0;
+        for (const c of climberTables) {
+            // Count how many of these two were already ≥band before applying.
+            const before = (Number(m.get(String(c.players[0].id)) || 0) >= band ? 1 : 0)
+                + (Number(m.get(String(c.players[1].id)) || 0) >= band ? 1 : 0);
+            const afterLocal = applyClimberMaxToMap(m, c, band);
+            added += Math.max(0, afterLocal - before);
+        }
+        return added;
+    };
+
     const applyAllId = () => {
         const m = new Map(basePts);
         for (const t of tables) {
             for (const pl of t.players) m.set(String(pl.id), mirrorScore + 1);
         }
+        applyMaxClimbers(m, bandPts);
         return m;
     };
     const applyAllPlay = () => {
@@ -5766,6 +5961,7 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
             m.set(a, mirrorScore + 3);
             m.set(b, mirrorScore);
         }
+        applyMaxClimbers(m, bandPts);
         return m;
     };
     const applyMixed = (playCount) => {
@@ -5781,6 +5977,7 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
                 m.set(b, mirrorScore + 1);
             }
         });
+        applyMaxClimbers(m, bandPts);
         return m;
     };
 
@@ -5789,6 +5986,16 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
     const geBandIfAllId = countGe(ifAllId, bandPts);
     const geBandIfAllPlay = countGe(ifAllPlay, bandPts);
     const geBandNow = countGe(ptsById, bandPts);
+    const maxClimbersToBand = climberTables.reduce((sum, c) => {
+        const pa = c.players[0].pts;
+        const pb = c.players[1].pts;
+        const local = Math.max(
+            (pa + 3 >= bandPts ? 1 : 0) + (pb >= bandPts ? 1 : 0),
+            (pa >= bandPts ? 1 : 0) + (pb + 3 >= bandPts ? 1 : 0),
+            (pa + 1 >= bandPts ? 1 : 0) + (pb + 1 >= bandPts ? 1 : 0)
+        );
+        return sum + local;
+    }, 0);
 
     // Min decisive results among these mirrors so soft threshold stays at mirrorScore
     // (i.e. fewer than cutSize players reach bandPts) — that floor is the min soft cut
@@ -5830,6 +6037,8 @@ function calculateSoftCutIdInflation(liveStandings, pairingsList = [], cutSize =
         lockedIdTables,
         openMirrorTables,
         mirrorTables,
+        climberTables: climberTables.length,
+        maxClimbersToBand,
         geBandNow,
         geBandIfAllId,
         geBandIfAllPlay,
@@ -5885,7 +6094,7 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
         headline = `Soft próg EUC nie zależy już od tych ID — 0 stołów musi grać. Minimalny soft cut z tych mirorów: ${minCut} pkt.`;
         riskTone = 'ok';
     } else {
-        headline = `Żeby złapać minimalny soft cut ${minCut} pkt: ≥ ${must} stołów (${people} osób) na ${band} pkt musi GRAĆ (W/L, nie ID) — z ${info.mirrorTables} lustrzanych.`;
+        headline = `Żeby złapać najszerszy soft cut (${minCut} pkt): ≥ ${must} stołów (${people} osób) na ${band} pkt musi GRAĆ (W/L, nie ID) — z ${info.mirrorTables} lustrzanych.`;
         riskTone = 'warn';
     }
 
@@ -5893,6 +6102,9 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
         ? `<strong>${info.openMirrorTables}</strong> nadal otwarte (LIVE)`
         : `<strong>0</strong> otwartych`;
     const lockedBit = `<strong>${info.lockedIdTables}</strong> już wzięło ID`;
+    const climberBit = (info.climberTables > 0 && info.maxClimbersToBand > 0)
+        ? ` W prognozie max wspinaczy z dołu: <strong>+${info.maxClimbersToBand}</strong> na ≥${high} (z ${info.climberTables} stołów poza mirorami) — bez nich „ile musi grać” wyglądałoby zbyt optymistycznie.`
+        : '';
 
     const minCutStat = must == null
         ? `${minCut} pkt <span class="soft-euc-play-hint__stat-note">(tych mirorów nie starczy)</span>`
@@ -5946,9 +6158,9 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
             ${whyNotHalfHtml}
             <div class="soft-euc-play-hint__body">
                 Lustrzane stoły na <strong>${band} pkt</strong> (ID → pas <strong>${high}</strong>):
-                ${lockedBit}, ${openBit}.
+                ${lockedBit}, ${openBit}.${climberBit}
                 Teraz soft próg = <strong>${info.currentThresh} pkt</strong> (${info.currentInvites} zaproszeń).
-                Gdyby wszystkie te mirory wzięły ID → próg <strong>${info.projectedThreshIfAllId}</strong>
+                Gdyby wszystkie te mirory wzięły ID (+ max wspinacze) → próg <strong>${info.projectedThreshIfAllId}</strong>
                 (${info.projectedInvitesIfAllId} inv.); gdyby wszystkie grały → próg <strong>${info.projectedThreshIfAllPlay}</strong>
                 (${info.projectedInvitesIfAllPlay} inv.).
                 Każdy wynik zamiast ID zdejmuje <strong>1 osobę</strong> z pasa ≥${high}
@@ -7429,6 +7641,7 @@ if (typeof module !== 'undefined' && module.exports) {
         clearRoundsOverride,
         syncRoundsOverrideUi,
         loadDemo2k12,
+        loadR15LondonPreTie,
         applyLoadedTournamentData,
         isTestsPage,
         canReuseCachedEventSnapshot,

@@ -1716,6 +1716,20 @@
     </div>
 </div>
 
+<div class="panel" id="testsR15PreTiePanel" style="border-color: var(--line-gold);">
+    <h3 style="margin-bottom: 8px;">DLC London R15 bez tajów</h3>
+    <p style="font-size: 13px; color: var(--text-dim); margin: 0 0 12px 0;">
+        Scenariusz JSON z <strong>MAIN1 1254364</strong>: standings po R14 + <strong>otwarte pairings R15</strong>
+        (nikt jeszcze nie wziął ID). Soft EUC liczy, <strong>ile stołów / osób na 33 musi grać</strong>,
+        żeby soft cut był <strong>jak najszerszy</strong> (próg 33 zamiast nadmuchanego 34) —
+        z wspinaczami z 31/32, nie tylko 11×33v33.
+    </p>
+    <div class="demo-load-row">
+        <button type="button" class="btn-demo" onclick="loadR15LondonPreTie()" title="Załaduj fixture R15 pre-tie">Załaduj R15 London bez tajów</button>
+        <span id="testsR15Hint" style="font-size: 12px; color: var(--text-mute);">lub <code>?demo=r15-pre-tie</code> · oczekiwane: ≥7 stołów / 14 osób</span>
+    </div>
+</div>
+
 
 <!-- Mobile order: ID → Load → Cut → Rounds → status → Can I Tie → (Poles przy LIVE) -->
 <div class="panel" id="topControlPanel">
@@ -2142,6 +2156,6 @@
 <script>window.LORCANA_API_BASE = '../';</script>
 <script src="../scripts/stress-fixture.js"></script>
 <script src="../tie-sim-core.js"></script>
-<script src="../app.js"></script>
+<script src="../app.js?v=20261117r15pretie1"></script>
 </body>
 </html>

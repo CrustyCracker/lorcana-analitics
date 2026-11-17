@@ -184,6 +184,7 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(html, /Minimalny soft cut i ile stołów musi grać/);
         assert.match(html, /Minimalny soft cut osiągalny/);
         assert.match(html, /Ile musi grać na tym paśmie/);
+        assert.match(html, /najszerszy soft cut/);
         assert.match(html, /≥ 7 stołów \(14 osób\) na 33 pkt/);
         assert.match(html, /33 pkt/);
         assert.match(html, /Dlaczego nie „4 stoły = −8 osób”\?/);
@@ -213,5 +214,33 @@ describe('calculateSoftCutIdInflation', () => {
         const idle = formatSoftCutIdInflationHtml(null, { alwaysShow: true });
         assert.match(idle, /Narzędzie działa <strong>na żywo<\/strong>/);
         assert.match(idle, /najniższy soft cut w punktach/);
+    });
+
+    it('DLC London R15 pre-tie fixture: open 33v33 + climbers ⇒ ≥7 tables / 14 people for widest soft cut', () => {
+        const path = require('path');
+        const fixture = require(path.join(__dirname, 'fixtures', 'r15-london-pre-tie.json'));
+        const standings = fixture.standings.standings;
+        const pairings = fixture.pairings.results;
+        assert.ok(standings.length >= 32);
+        assert.equal(fixture.scenarioMeta?.id, 'r15-london-pre-tie');
+
+        const info = calculateSoftCutIdInflation(standings, pairings, 32);
+        assert.equal(info.mirrorScore, 33);
+        assert.equal(info.bandPts, 34);
+        assert.equal(info.openMirrorTables, 11);
+        assert.equal(info.lockedIdTables, 0);
+        assert.ok(info.climberTables >= 3); // 32v33 + 2×31v31 + 31v32
+        assert.equal(info.maxClimbersToBand, 4);
+        assert.equal(info.geBandIfAllId, 38);
+        assert.equal(info.minTablesMustPlay, 7);
+        assert.equal(info.minPeopleMustPlay, 14);
+        assert.equal(info.minAchievableSoftCut, 33);
+        assert.equal(info.projectedThreshIfAllId, 34);
+        assert.equal(info.projectedThreshIfAllPlay, 33);
+
+        const html = formatSoftCutIdInflationHtml(info, { alwaysShow: true });
+        assert.match(html, /najszerszy soft cut/);
+        assert.match(html, /≥ 7 stołów \(14 osób\)/);
+        assert.match(html, /wspinaczy/);
     });
 });
