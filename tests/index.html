@@ -943,6 +943,7 @@
             color: #cbd5e1;
             margin-top: 3px;
         }
+        .front-soft-host { margin: 0 0 12px; }
         .soft-euc-play-hint {
             margin: 12px 0 4px;
             padding: 14px 16px;
@@ -1730,6 +1731,8 @@
     </div>
 </div>
 
+<!-- Soft EUC (MAIN1) — front host; filled after R15 / LIVE load. Must exist on /tests too. -->
+<div id="frontSoftEucHost" class="front-soft-host" style="display:none;" aria-live="polite"></div>
 
 <!-- Mobile order: ID → Load → Cut → Rounds → status → Can I Tie → (Poles przy LIVE) -->
 <div class="panel" id="topControlPanel">
@@ -2154,8 +2157,9 @@
 
 
 <script>window.LORCANA_API_BASE = '../';</script>
+<script src="../prize-ladders.js?v=20261116format1"></script>
 <script src="../scripts/stress-fixture.js"></script>
 <script src="../tie-sim-core.js"></script>
-<script src="../app.js?v=20261117r15pretie1"></script>
+<script src="../app.js?v=20261117r15softfix1"></script>
 </body>
 </html>

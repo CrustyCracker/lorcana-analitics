@@ -616,27 +616,54 @@ function syncFrontSoftEucHost() {
     if (typeof document === 'undefined') return;
     const front = document.getElementById('frontSoftEucHost');
     const src = document.getElementById('softEucPlayHint');
-    if (!front) return;
     const show = shouldShowSoftEucPanel();
+
+    // /tests used to omit #frontSoftEucHost — fall back to making the source hint visible.
+    const paint = (el, html) => {
+        if (!el) return;
+        el.innerHTML = html;
+        if (el.style) el.style.display = 'block';
+        if (typeof el.removeAttribute === 'function') el.removeAttribute('hidden');
+        else if ('hidden' in el) el.hidden = false;
+    };
+    const hide = (el) => {
+        if (!el) return;
+        if (el.style) el.style.display = 'none';
+        el.innerHTML = '';
+        if (typeof el.setAttribute === 'function') el.setAttribute('hidden', '');
+        else if ('hidden' in el) el.hidden = true;
+    };
+
     if (!show) {
-        front.style.display = 'none';
-        front.innerHTML = '';
-        return;
-    }
-    const html = src ? src.innerHTML : '';
-    if (!html) {
-        // Idle card via formatter if available
-        if (typeof formatSoftCutIdInflationHtml === 'function') {
-            front.innerHTML = formatSoftCutIdInflationHtml(null, { alwaysShow: true });
-            front.style.display = 'block';
-            return;
+        hide(front);
+        // Keep source hint hidden when Soft EUC is off (MAIN2/CCQ/custom).
+        if (src) {
+            src.style.display = 'none';
+            src.setAttribute('hidden', '');
         }
-        front.style.display = 'block';
-        front.innerHTML = '<div class="soft-euc-play-hint soft-euc-play-hint--idle"><div class="soft-euc-play-hint__title">Soft EUC — czekam na dane LIVE</div></div>';
         return;
     }
-    front.innerHTML = html;
-    front.style.display = 'block';
+
+    let html = src ? src.innerHTML : '';
+    if (!html) {
+        if (typeof formatSoftCutIdInflationHtml === 'function') {
+            html = formatSoftCutIdInflationHtml(null, { alwaysShow: true });
+        } else {
+            html = '<div class="soft-euc-play-hint soft-euc-play-hint--idle"><div class="soft-euc-play-hint__title">Soft EUC — czekam na dane LIVE</div></div>';
+        }
+    }
+
+    if (front) {
+        paint(front, html);
+        // Source stays a hidden mirror when the front host exists.
+        if (src) {
+            src.style.display = 'none';
+            src.setAttribute('hidden', '');
+        }
+        return;
+    }
+    // No front host (legacy /tests markup): show the source hint inline.
+    paint(src, html);
 }
 
 function scheduleTrackingPoll(eventId) {
@@ -2526,7 +2553,7 @@ async function loadR15LondonPreTie() {
 
     try {
         const url = new URL('fixtures/r15-london-pre-tie.json', window.location.href);
-        url.searchParams.set('v', '20261117r15pretie1');
+        url.searchParams.set('v', '20261117r15softfix1');
         const res = await fetch(url.toString(), { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
@@ -2534,7 +2561,7 @@ async function loadR15LondonPreTie() {
 
         const genMs = Math.round(nowPerfMs() - tGen0);
 
-        // Soft EUC panel is MAIN1-only — pin the MAIN1 slot for this event.
+        // Soft EUC panel is MAIN1-only — pin MAIN1 even if site_config is empty on /tests.
         const main1 = (siteConfig.tournaments || []).find((t) => {
             const mode = String(t.mode || '').toUpperCase();
             return mode === 'MAIN1' && String(t.eventId) === String(data.eventId || 1254364);
@@ -2548,9 +2575,22 @@ async function loadR15LondonPreTie() {
                 cutRule: 'hard',
                 swissRounds: 15
             };
+        // Always stamp activeTournament so shouldShowSoftEucPanel() is true even if
+        // applyTournamentSelection bails on missing DOM (no tournamentSwitcher on /tests).
+        activeTournament = {
+            ...main1,
+            eventId: data.eventId || main1.eventId || 1254364,
+            mode: 'MAIN1'
+        };
+        siteConfig.activeTournamentId = activeTournament.id;
+        siteConfig.activeEventId = Number(activeTournament.eventId);
         try {
-            applyTournamentSelection(main1, { track: false, clearLocalCut: true });
-        } catch (e) {}
+            applyTournamentSelection(activeTournament, { track: false, clearLocalCut: true });
+        } catch (e) {
+            activeTournament = { ...activeTournament, mode: 'MAIN1' };
+        }
+        // Re-assert MAIN1 after applyTournamentSelection / goal rebuild side-effects.
+        if (activeTournament) activeTournament.mode = 'MAIN1';
 
         const cutEl = document.getElementById('cutSize');
         if (cutEl) {
@@ -2587,6 +2627,11 @@ async function loadR15LondonPreTie() {
             loadStartedAt: tGen0,
             loadSeq
         });
+        // Ensure Soft EUC host paints even if deferred cut panel raced; MAIN1 must stay on.
+        try {
+            if (activeTournament) activeTournament.mode = 'MAIN1';
+            syncFrontSoftEucHost();
+        } catch (e) {}
     } catch (err) {
         if (loadSeq !== dataLoadSeq) return;
         console.error('[scenario] R15 pre-tie load failed', err);
@@ -6330,7 +6375,11 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
         `
         : `<div class="metric-val" style="color: #888;">Brak graczy poza Cut</div><div class="metric-sub">-</div>`;
 
-    const pairings = pairingsList != null ? pairingsList : (cachedPairings || []);
+    const pairings = pairingsList != null
+        ? pairingsList
+        : ((cachedPairings && cachedPairings.length)
+            ? cachedPairings
+            : getActivePairingsList(latestData || {}));
     // Soft EUC panel always models Continentals soft Top32 on MAIN1, even if Can I Tie goal is hard T8/T16.
     const softEucMode = shouldShowSoftEucPanel();
     const softEucCut = softEucMode ? SOFT_EUC_CONTINENTALS_CUT : cutSize;
@@ -6345,8 +6394,10 @@ function renderCutLineBreakdownPanel(liveStandings, cutSize, cutRule, activeRoun
     const hintHost = document.getElementById('softEucPlayHint');
     if (hintHost) {
         // Hidden duplicate source — visible copy lives in #frontSoftEucHost for MAIN1 declutter.
+        // syncFrontSoftEucHost may un-hide this when the front host is missing (e.g. old /tests).
         hintHost.style.display = 'none';
-        hintHost.innerHTML = softEucMode ? inflationHtml : '';
+        hintHost.setAttribute('hidden', '');
+        hintHost.innerHTML = (softEucMode || cutRule === 'soft') ? inflationHtml : '';
     }
     syncFrontSoftEucHost();
     renderPrizeGoalsPanel();

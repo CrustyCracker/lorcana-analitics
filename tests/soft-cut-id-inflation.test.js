@@ -1,5 +1,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const path = require('path');
 
 const {
     calculateSoftCutIdInflation,
@@ -242,5 +244,14 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(html, /najszerszy soft cut/);
         assert.match(html, /≥ 7 stołów \(14 osób\)/);
         assert.match(html, /wspinaczy/);
+    });
+
+    it('/tests page hosts Soft EUC front panel + R15 loader + cache-bust', () => {
+        const testsHtml = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+        assert.match(testsHtml, /id="frontSoftEucHost"/);
+        assert.match(testsHtml, /id="softEucPlayHint"/);
+        assert.match(testsHtml, /loadR15LondonPreTie\(/);
+        assert.match(testsHtml, /app\.js\?v=20261117r15softfix1/);
+        assert.match(testsHtml, /prize-ladders\.js/);
     });
 });
