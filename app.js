@@ -532,12 +532,10 @@ function renderPrizeChipsLegendHtml(mode) {
     const chips = typeof api.getTableChipRungs === 'function' ? api.getTableChipRungs(mode) : [];
     const keys = chips.map((c) => `<span class="prize-chip prize-chip--neutral" title="${escapeHtml(c.chipTitle || c.short || '')}">${escapeHtml(c.chip)}</span>`).join('');
     return `<div class="prize-chips-legend">
-        <span class="prize-chips-legend__title">Nagrody w tabeli</span>
         <span class="prize-chips-legend__swatch"><span class="prize-chip prize-chip--locked">●</span> masz</span>
         <span class="prize-chips-legend__swatch"><span class="prize-chip prize-chip--play">●</span> walczysz</span>
         <span class="prize-chips-legend__swatch"><span class="prize-chip prize-chip--missed">●</span> poza</span>
         <span class="prize-chips-legend__keys">${keys}</span>
-        <span class="prize-chips-legend__hint">klik wiersz = „O co jeszcze gramy”</span>
     </div>`;
 }
 
@@ -6316,22 +6314,9 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
         if (!alwaysShow) return '';
         return `
             <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--idle">
-                <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale</div>
-                <div class="soft-euc-play-hint__title">Minimalny soft cut i ile stołów musi grać</div>
-                <div class="soft-euc-play-hint__answer">Czekam na lustrzane stoły na bubble (LIVE).</div>
-                <details class="copy-fold soft-euc-fold">
-                    <summary>Jak to działa</summary>
-                    <div class="soft-euc-play-hint__body">
-                        Narzędzie działa <strong>na żywo</strong> z aktualnych pairings (otwarte lustrzane stoły + już oddane ID) — po każdym wyniku panel się odświeża.
-                        Gdy na bubble pojawią się mirory (np. 33v33), pokażemy:
-                        (1) <strong>najniższy soft cut w punktach</strong>, jaki da się jeszcze złapać, jeśli dość osób zagra W/L zamiast ID;
-                        (2) <strong>ile stołów / osób</strong> na tym paśmie musi grać, żeby zejść do tego progu;
-                        (3) <strong>ostrzeżenia</strong>, gdy masowe „bezpieczne” ID nadmuchują próg (lekcja London R15).
-                        Krótko: ID pompują próg w górę. Wynik (W/L) zdejmuje z pasa ≥(S+1) <strong>tylko 1 osobę na stół</strong>
-                        (nie 2 — wygrany i tak zostaje wyżej). Dlatego często trzeba więcej stołów niż „połowa nadmiaru”.
-                        Modele zakładające grę o wygrane <strong>nie przewidzą</strong>, że cały pas weźmie ID.
-                    </div>
-                </details>
+                <div class="soft-euc-play-hint__eyebrow">Soft EUC</div>
+                <div class="soft-euc-play-hint__title">Minimalny soft cut</div>
+                <div class="soft-euc-play-hint__answer">Czekam na lustrzane stoły na bubble.</div>
             </div>
         `;
     }
@@ -6376,49 +6361,26 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
             ? `0 stołów / 0 osób`
             : `≥ ${must} stołów / ${people} osób na ${band} pkt`);
 
-    // Layman trap: people think 1 played table removes 2 from ≥band. It removes 1.
-    let whyNotHalfHtml = '';
-    if (must != null && must > 0 && Number.isFinite(geAllId)) {
-        const afterFour = geAllId - 4;
-        const afterMust = geAllId - must;
-        whyNotHalfHtml = `
-                <div class="soft-euc-play-hint__why">
-                    <strong>Dlaczego nie „4 stoły = −8 osób”?</strong>
-                    Soft cut patrzy na pas <strong>≥${high}</strong> (nie „dokładnie ${high}”).
-                    Na stole ${band}v${band}: ID → obie osoby na ${high}; W/L → wygrany ${band}+3 (zostaje w ≥${high}),
-                    przegrany zostaje na ${band} (wypada). Czyli <strong>1 zagrany stół = −1 osoba</strong> z ≥${high}, nie −2.
-                    Start przy samym ID: <strong>${geAllId}</strong> osób na ≥${high}.
-                    Po 4 zagranych: ${geAllId}−4 = <strong>${afterFour}</strong>
-                    ${afterFour >= cut
-                        ? `(nadal ≥ Top ${cut} → próg dalej ${high})`
-                        : `(już &lt; Top ${cut})`}.
-                    Dopiero po ${must}: ${geAllId}−${must} = <strong>${afterMust}</strong> (&lt; ${cut}) → próg spada do <strong>${minCut}</strong>.
-                </div>
-        `;
-    }
-
-    const londonFold = `
-                <div class="soft-euc-play-hint__why soft-euc-play-hint__why--teach">
-                    <strong>Lekcja London R15:</strong> „bezpieczne” ID na bubble (33v33) indywidualnie ma sens,
-                    ale gdy <em>wszyscy</em> na paśmie biorą remis, soft cut skacze w górę — nawet jeśli przy grze o wygrane
-                    11–4 nadal dawałoby kontynentale. Predykcje W/L tego nie złapią; ten panel patrzy na realne ID/LIVE.
-                </div>
-    `;
+    const detailBits = [
+        `Mirory ${band} pkt → pas ≥${high}: ${lockedBit}, ${openBit}.`,
+        `Próg teraz: <strong>${info.currentThresh} pkt</strong> (${info.currentInvites} inv.).`,
+        `Wszystkie ID → <strong>${info.projectedThreshIfAllId}</strong>; wszystkie W/L → <strong>${info.projectedThreshIfAllPlay}</strong>.`,
+        `1 stół W/L = −1 osoba z ≥${high} (nie −2).`
+    ];
+    if (climberBit) detailBits.push(climberBit.trim());
 
     return `
         <div id="softEucPlayHintCard" class="soft-euc-play-hint soft-euc-play-hint--${riskTone}">
-            <div class="soft-euc-play-hint__eyebrow">Soft EUC / kontynentale · Top ${cut}</div>
-            <div class="soft-euc-play-hint__title">Minimalny soft cut i ile stołów musi grać</div>
+            <div class="soft-euc-play-hint__eyebrow">Soft EUC · Top ${cut}</div>
+            <div class="soft-euc-play-hint__title">Minimalny soft cut</div>
             <div class="soft-euc-play-hint__stats">
                 <div class="soft-euc-play-hint__stat">
-                    <div class="soft-euc-play-hint__stat-label">Minimalny soft cut osiągalny</div>
+                    <div class="soft-euc-play-hint__stat-label">Min. soft cut</div>
                     <div class="soft-euc-play-hint__stat-value">${minCutStat}</div>
-                    <div class="soft-euc-play-hint__stat-note">najniższy próg w pkt, jeśli dość mirorów zagra W/L zamiast ID</div>
                 </div>
                 <div class="soft-euc-play-hint__stat">
-                    <div class="soft-euc-play-hint__stat-label">Ile musi grać na tym paśmie</div>
+                    <div class="soft-euc-play-hint__stat-label">Musi grać</div>
                     <div class="soft-euc-play-hint__stat-value" style="color: ${riskTone === 'warn' ? '#f59e0b' : '#34d399'};">${playStat}</div>
-                    <div class="soft-euc-play-hint__stat-note">ludzie / stoły na potencjalnym najniższym soft cucie (${band} pkt)</div>
                 </div>
             </div>
             <div class="soft-euc-play-hint__answer" style="color: ${riskTone === 'warn' ? '#f59e0b' : '#34d399'};">
@@ -6426,20 +6388,8 @@ function formatSoftCutIdInflationHtml(info, { alwaysShow = false } = {}) {
             </div>
             ${warningsHtml}
             <details class="copy-fold soft-euc-fold">
-                <summary>więcej / dlaczego</summary>
-                ${whyNotHalfHtml}
-                ${londonFold}
-                <div class="soft-euc-play-hint__body">
-                    Lustrzane stoły na <strong>${band} pkt</strong> (ID → pas <strong>${high}</strong>):
-                    ${lockedBit}, ${openBit}.${climberBit}
-                    Teraz soft próg = <strong>${info.currentThresh} pkt</strong> (${info.currentInvites} zaproszeń).
-                    Gdyby wszystkie te mirory wzięły ID (+ max wspinacze) → próg <strong>${info.projectedThreshIfAllId}</strong>
-                    (${info.projectedInvitesIfAllId} inv.); gdyby wszystkie grały → próg <strong>${info.projectedThreshIfAllPlay}</strong>
-                    (${info.projectedInvitesIfAllPlay} inv.).
-                    Każdy wynik zamiast ID zdejmuje <strong>1 osobę</strong> z pasa ≥${high}
-                    (wygrany zostaje wyżej, przegrany spada) — bez ekstra nagrody rzeczowej za samo ID, tylko soft invite.
-                    Wyniki LIVE aktualizują ten panel na bieżąco.
-                </div>
+                <summary>szczegóły</summary>
+                <div class="soft-euc-play-hint__body">${detailBits.join(' ')}</div>
             </details>
         </div>
     `;

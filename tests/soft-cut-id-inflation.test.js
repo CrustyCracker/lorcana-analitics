@@ -184,16 +184,14 @@ describe('calculateSoftCutIdInflation', () => {
         const { standings, pairings } = buildDlcStyleField();
         const info = calculateSoftCutIdInflation(standings, pairings, 32);
         const html = formatSoftCutIdInflationHtml(info, { alwaysShow: true });
-        assert.match(html, /Minimalny soft cut i ile stołów musi grać/);
-        assert.match(html, /Minimalny soft cut osiągalny/);
-        assert.match(html, /Ile musi grać na tym paśmie/);
+        assert.match(html, /Minimalny soft cut/);
+        assert.match(html, /Min\. soft cut/);
+        assert.match(html, /Musi grać/);
         assert.match(html, /najszerszy soft cut/);
         assert.match(html, /≥ 7 stołów \(14 osób\) na 33 pkt/);
         assert.match(html, /33 pkt/);
-        assert.match(html, /Dlaczego nie „4 stoły = −8 osób”\?/);
-        assert.match(html, /1 zagrany stół = −1 osoba/);
-        assert.match(html, /Po 4 zagranych: 38−4 = <strong>34<\/strong>/);
-        assert.match(html, /Dopiero po 7: 38−7 = <strong>31<\/strong>/);
+        assert.match(html, /1 stół W\/L = −1 osoba/);
+        assert.match(html, /szczegóły/);
 
         // Live path: unfinished equal-score mirrors counted as open.
         const liveStandings = [];
@@ -215,8 +213,9 @@ describe('calculateSoftCutIdInflation', () => {
         assert.ok(liveInfo.minTablesMustPlay === null || liveInfo.minTablesMustPlay >= 1);
         assert.ok(Number.isFinite(liveInfo.minAchievableSoftCut));
         const idle = formatSoftCutIdInflationHtml(null, { alwaysShow: true });
-        assert.match(idle, /Narzędzie działa <strong>na żywo<\/strong>/);
-        assert.match(idle, /najniższy soft cut w punktach/);
+        assert.match(idle, /Czekam na lustrzane stoły na bubble/);
+        assert.match(idle, /Minimalny soft cut/);
+        assert.doesNotMatch(idle, /Narzędzie działa/);
     });
 
     it('DLC London R15 pre-tie fixture: open 33v33 + climbers ⇒ ≥7 tables / 14 people for widest soft cut', () => {
@@ -256,7 +255,7 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(html, /data-soft-euc-warn="model_blind_spot"/);
         assert.match(html, /Masowe ID na 33/);
         assert.match(html, /Modele „wszyscy grają o W\/L”/);
-        assert.match(html, /Lekcja London R15/);
+        assert.match(html, /1 stół W\/L = −1 osoba/);
     });
 
     it('warning: locked IDs aftermath + cut_decided_above when open cannot save', () => {
@@ -325,8 +324,8 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(testsHtml, /id="prizeGoalsPanel"/);
         assert.match(testsHtml, /id="testsControlsStrip"/);
         assert.match(testsHtml, /loadR15LondonPreTie\(/);
-        assert.match(testsHtml, /app\.js\?v=20261117inkcache2/);
-        assert.match(rootHtml, /app\.js\?v=20261117inkcache2/);
+        assert.match(testsHtml, /app\.js\?v=20261119playhub1/);
+        assert.match(rootHtml, /app\.js\?v=20261119playhub1/);
         assert.match(testsHtml, /soft-euc-play-hint__warn--alert/);
         assert.match(rootHtml, /soft-euc-play-hint__warn--alert/);
         assert.match(testsHtml, /prize-ladders\.js/);

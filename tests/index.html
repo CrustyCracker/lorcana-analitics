@@ -13,28 +13,32 @@
     <link rel="apple-touch-icon" href="../apple-touch-icon.png?v=20261111f1">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --navy-950: #070b14;
-            --navy-900: #0c1220;
-            --navy-850: #121a2b;
-            --navy-800: #182236;
-            --navy-700: #223049;
-            --gold: #d4a017;
-            --gold-bright: #e8b84a;
-            --gold-dim: #a67c0f;
-            --text: #eef2f6;
-            --text-dim: #a7b3c5;
-            --text-mute: #7a879c;
-            --line: rgba(255, 255, 255, 0.10);
-            --line-gold: rgba(212, 160, 23, 0.35);
+            /* PlayHub-like: deep ink UI + amber accent (not purple SaaS) */
+            --navy-950: #07090f;
+            --navy-900: #0c1018;
+            --navy-850: #121821;
+            --navy-800: #1a222e;
+            --navy-700: #243041;
+            --gold: #ffd700;
+            --gold-bright: #ffe566;
+            --gold-dim: #c4a000;
+            --text: #f4f6f8;
+            --text-dim: #b4becc;
+            --text-mute: #8490a2;
+            --line: rgba(255, 255, 255, 0.09);
+            --line-gold: rgba(255, 215, 0, 0.32);
             --safe: #3bbf7a;
             --danger: #d9544a;
-            --warn: #d4a017;
-            --font-display: "Oswald", "Arial Narrow", sans-serif;
-            --font-ui: "Source Sans 3", "Segoe UI", sans-serif;
-            --radius: 4px;
+            --warn: #ffd700;
+            --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+            --font-ui: "Barlow", "Segoe UI", sans-serif;
+            --radius: 6px;
+            --surface: var(--navy-850);
+            --surface-2: var(--navy-800);
+            --table-head: #151d28;
         }
 
         * { box-sizing: border-box; }
@@ -45,59 +49,53 @@
             margin: 0;
             min-height: 100vh;
             -webkit-tap-highlight-color: transparent;
-            background: linear-gradient(180deg, #10182a 0%, var(--navy-950) 28%, var(--navy-950) 100%);
+            background:
+                radial-gradient(1200px 420px at 50% -80px, rgba(255, 215, 0, 0.06), transparent 60%),
+                var(--navy-950);
         }
 
         .site-hero {
-            margin: 2px 0 14px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--line-gold);
+            margin: 0 0 12px;
+            padding: 4px 0 10px;
+            border-bottom: 1px solid var(--line);
         }
         .brand-mark {
             font-family: var(--font-display);
             font-weight: 700;
-            font-size: clamp(1.55rem, 5.5vw, 2.35rem);
-            line-height: 1.05;
-            letter-spacing: 0.02em;
+            font-size: clamp(1.65rem, 6vw, 2.4rem);
+            line-height: 1.02;
+            letter-spacing: 0.04em;
             text-transform: uppercase;
             color: var(--text);
             margin: 0;
         }
         .site-byline {
             font-family: var(--font-ui);
-            font-size: 0.42em;
+            font-size: 0.4em;
             font-weight: 600;
             color: var(--gold);
-            margin-left: 0.4em;
-            letter-spacing: 0.04em;
+            margin-left: 0.45em;
+            letter-spacing: 0.06em;
             text-transform: none;
             vertical-align: middle;
         }
-        .hero-tag {
-            margin: 8px 0 0;
-            max-width: 34rem;
-            font-size: 0.95rem;
-            line-height: 1.4;
-            color: var(--text-dim);
-            font-weight: 500;
-        }
 
         .panel {
-            background: var(--navy-850);
+            background: var(--surface);
             padding: 14px;
             border-radius: var(--radius);
             margin-bottom: 12px;
             border: 1px solid var(--line);
         }
         #topControlPanel {
-            background: var(--navy-850);
+            background: var(--surface);
             border: 1px solid var(--line);
             padding: 14px;
             margin-bottom: 12px;
         }
 
-        h2 { margin: 0 0 12px 0; font-family: var(--font-display); font-size: 1.2rem; color: var(--text); letter-spacing: 0.03em; text-transform: uppercase; }
-        h3 { margin: 0; font-family: var(--font-display); font-size: 1.05rem; color: var(--gold); font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; }
+        h2 { margin: 0 0 10px 0; font-family: var(--font-display); font-size: 1.25rem; color: var(--text); letter-spacing: 0.05em; text-transform: uppercase; font-weight: 700; }
+        h3 { margin: 0; font-family: var(--font-display); font-size: 1.12rem; color: var(--gold); font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; }
 
         /* Mobile-first: one column stack */
         .controls-stack {
@@ -173,15 +171,19 @@
         input:focus, select:focus {
             outline: none;
             border-color: var(--gold);
+            box-shadow: 0 0 0 1px rgba(255, 215, 0, 0.25);
         }
 
         button {
             background: var(--gold);
-            color: #140f05;
+            color: #12100a;
             font-weight: 700;
             cursor: pointer;
             border: 1px solid var(--gold-dim);
-            letter-spacing: 0.02em;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            font-family: var(--font-display);
+            font-size: 15px;
         }
         button:hover { background: var(--gold-bright); }
         button:active { background: var(--gold-dim); color: #fff; }
@@ -190,10 +192,13 @@
             background: var(--navy-800);
             color: var(--text-dim);
             font-weight: 600;
-            font-size: 15px;
+            font-size: 14px;
             border: 1px solid var(--line);
+            text-transform: none;
+            font-family: var(--font-ui);
+            letter-spacing: 0.01em;
         }
-        .btn-secondary:hover { color: var(--text); background: var(--navy-700); }
+        .btn-secondary:hover { color: var(--text); background: var(--navy-700); border-color: var(--line-gold); }
 
         #tokenPanel {
             display: none;
@@ -289,7 +294,7 @@
             width: 100%;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
-            background: rgba(7, 16, 22, 0.55);
+            background: var(--navy-900);
             border-radius: var(--radius);
             border: 1px solid var(--line);
             margin-bottom: 20px;
@@ -301,7 +306,7 @@
             max-height: min(72vh, 704px);
             overflow: auto;
             -webkit-overflow-scrolling: touch;
-            background: rgba(7, 16, 22, 0.55);
+            background: var(--navy-900);
             border-radius: var(--radius);
             border: 1px solid var(--line);
             margin-bottom: 8px;
@@ -317,7 +322,7 @@
             position: sticky;
             top: 0;
             z-index: 2;
-            background: #12262e;
+            background: var(--table-head);
         }
         .live-virt-spacer td {
             padding: 0 !important;
@@ -341,10 +346,18 @@
         }
         th, td { 
             padding: 10px 12px; 
-            border-bottom: 1px solid #252525; 
+            border-bottom: 1px solid var(--line); 
             text-align: center; 
         }
-        th { background: #12262e; color: var(--text-dim); font-weight: 600; }
+        th {
+            background: var(--table-head);
+            color: var(--text-mute);
+            font-weight: 700;
+            font-family: var(--font-display);
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            font-size: 12px;
+        }
         
         tbody tr.clickable-row { cursor: pointer; }
         tbody tr.clickable-row:hover { background: rgba(212, 160, 23, 0.12); }
@@ -819,12 +832,11 @@
 
         /* Tournament ink meta (field breakdown) */
         .tournament-meta-section {
-            margin: 28px 0 8px;
-            padding: 18px 18px 20px;
-            border: 1px solid rgba(212, 160, 23, 0.22);
-            border-radius: 10px;
-            background:
-                linear-gradient(165deg, rgba(18, 38, 46, 0.92) 0%, rgba(10, 22, 28, 0.96) 55%, rgba(14, 28, 34, 0.9) 100%);
+            margin: 20px 0 8px;
+            padding: 14px 14px 16px;
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            background: var(--surface);
         }
         .tournament-meta-section .section-header {
             margin-bottom: 6px;
@@ -900,8 +912,8 @@
             white-space: nowrap;
         }
         .meta-bar-track {
-            height: 10px;
-            border-radius: 999px;
+            height: 8px;
+            border-radius: 2px;
             background: rgba(255, 255, 255, 0.06);
             border: 1px solid rgba(255, 255, 255, 0.08);
             overflow: hidden;
@@ -909,8 +921,9 @@
         .meta-bar-fill {
             height: 100%;
             border-radius: inherit;
-            background: linear-gradient(90deg, rgba(212, 160, 23, 0.55), rgba(241, 196, 15, 0.85));
+            background: var(--gold);
             min-width: 2px;
+            opacity: 0.85;
         }
         .meta-bar-stat {
             display: flex;
@@ -1036,10 +1049,9 @@
         }
         .scenario-toggle-btn:hover { background: #282e44; color: #fff; }
         .scenario-toggle-btn.active {
-            background: #8e44ad;
-            border-color: #9b59b6;
-            color: #fff;
-            box-shadow: 0 0 10px rgba(155, 89, 182, 0.35);
+            background: rgba(255, 215, 0, 0.18);
+            border-color: var(--line-gold);
+            color: var(--gold-bright);
         }
 
         .candidate-grid {
@@ -1194,17 +1206,17 @@
         }
         .soft-euc-play-hint {
             margin: 12px 0 4px;
-            padding: 14px 16px;
-            border-radius: 8px;
-            border: 1px solid #3d4f2f;
-            background: linear-gradient(135deg, #1a2a18 0%, #1e293b 55%, #182033 100%);
+            padding: 12px 14px;
+            border-radius: var(--radius);
+            border: 1px solid rgba(59, 191, 122, 0.35);
+            background: var(--navy-900);
         }
         .soft-euc-play-hint--warn {
-            border-color: #b45309;
-            background: linear-gradient(135deg, #2a2110 0%, #1e293b 60%, #182033 100%);
+            border-color: rgba(255, 215, 0, 0.4);
+            background: var(--navy-900);
         }
         .soft-euc-play-hint--idle {
-            border-color: #334155;
+            border-color: var(--line);
             opacity: 0.95;
         }
         .soft-euc-play-hint__eyebrow {
@@ -1810,13 +1822,10 @@
             bottom: 0;
             left: 0;
             right: 0;
-            background: rgba(7, 11, 20, 0.96);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            background: var(--navy-950);
             border-top: 1px solid var(--line);
             padding: 6px 6px calc(6px + env(safe-area-inset-bottom));
             z-index: 950;
-            box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.4);
             justify-content: space-around;
             align-items: center;
             gap: 4px;
@@ -2303,7 +2312,7 @@
         .prize-chips-legend-fold { margin: 0 0 10px; }
         .prize-chips-legend-fold .prize-chips-legend { margin: 0; }
 
-    <style>
+    
         .tests-controls-strip {
             display: flex;
             flex-wrap: wrap;
@@ -2313,7 +2322,7 @@
             padding: 10px 12px;
             border: 1px dashed var(--line-gold);
             border-radius: var(--radius);
-            background: rgba(212, 160, 23, 0.06);
+            background: rgba(255, 215, 0, 0.06);
         }
         .tests-controls-strip__label {
             font-size: 11px;
@@ -2321,24 +2330,23 @@
             letter-spacing: 0.04em;
             text-transform: uppercase;
             color: var(--gold);
-            margin-right: 4px;
         }
         .tests-controls-strip .btn-demo {
             width: auto;
             min-height: 36px;
             height: 36px;
-            padding: 6px 12px;
-            font-size: 13px;
-            font-weight: 700;
+            padding: 0 12px;
+            font-size: 12px;
+            text-transform: none;
+            font-family: var(--font-ui);
             background: transparent;
-            color: var(--gold);
-            border: 1px dashed var(--line-gold);
-            border-radius: var(--radius);
-            cursor: pointer;
+            color: var(--text-dim);
+            border: 1px dashed var(--line);
         }
         .tests-controls-strip .btn-demo:hover {
-            background: rgba(212, 160, 23, 0.12);
+            background: rgba(255, 215, 0, 0.12);
             border-style: solid;
+            color: var(--text);
         }
         .tests-controls-strip__hint {
             font-size: 11px;
@@ -2353,8 +2361,8 @@
 
 <header class="site-hero">
     <p class="brand-mark">Analityka Lorcany <span class="site-byline">od Crusty</span></p>
-    <p class="hero-tag">Na żywo na o co gramy, czy zrobie kontinentalsy?</p>
 </header>
+
 
 <!-- /tests only: compact scenario loaders — page shell matches homepage -->
 <div id="testsControlsStrip" class="tests-controls-strip" role="region" aria-label="Scenariusze testowe">
@@ -2372,10 +2380,6 @@
             <div id="tournamentSwitcher" class="tournament-switcher" role="tablist" aria-label="Wybór turnieju"></div>
             <div id="activeEventDisplay" class="active-event-display" aria-live="polite">Ładowanie turniejów z panelu admina…</div>
             <input type="hidden" id="eventId" value="" autocomplete="off">
-            <details class="copy-fold">
-                <summary>O cache i /admin</summary>
-                <div class="field-hint">Przełączanie korzysta z osobnego cache na event — bez zbędnego walenia w PlayHub. Konfiguracja: <a href="../admin.php" style="color:var(--gold);">/admin</a>.</div>
-            </details>
         </div>
 
         <div class="simple-toolbar">
@@ -2389,7 +2393,6 @@
                 <div class="field-group">
                     <label for="cutSize">Top Cut — od którego miejsca</label>
                     <input type="number" id="cutSize" value="4" min="2" max="256" placeholder="np. 8" inputmode="numeric" onchange="onCutPrefsChanged()" oninput="onCutPrefsChanged()">
-                    <div class="field-hint">np. 8 = Top 8, 32 = Top 32. Domyślne z trybu turnieju /admin.</div>
                 </div>
                 <div class="field-group">
                     <label for="cutRule">Typ Top Cut</label>
@@ -2397,12 +2400,11 @@
                         <option value="hard" selected>Twardy Cut (sztywne Top X) [ME 2]</option>
                         <option value="soft">Miękki Cut (Top X + remisy punktowe) [ME 1]</option>
                     </select>
-                    <div class="field-hint">MAIN1 = miękki (soft EUC). MAIN2/CCQ = twardy.</div>
                 </div>
             </div>
             <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-4px 0 8px;">
                 <button type="button" class="btn-secondary" style="width:auto;height:32px;font-size:12px;" onclick="resetCutPrefsToAdminDefaults()" title="Usuń lokalny override cut i wczytaj domyślne z /admin">Domyślne turnieju (cut)</button>
-                <div class="field-hint" id="cutPrefsHint" style="margin:0;">Domyślne z trybu — lokalna zmiana nie wpływa na innych.</div>
+                <div class="field-hint" id="cutPrefsHint" style="margin:0;"></div>
             </div>
             <div class="field-group" data-control="rounds">
                 <label for="totalRoundsOverride">Liczba rund Swiss</label>
@@ -2410,7 +2412,7 @@
                     <input type="number" id="totalRoundsOverride" min="1" max="20" placeholder="Auto z PlayHub" inputmode="numeric" onchange="onRoundsOverrideChanged()" oninput="onRoundsOverrideChanged()" title="Bez lokalnego wpisu: domyślne admina, potem PlayHub.">
                     <button type="button" class="btn-secondary" onclick="clearRoundsOverride()" title="Wyczyść lokalny override rund — wróć do admina / PlayHub">Wyczyść lokalne</button>
                 </div>
-                <div class="field-hint" id="roundsOverrideHint">Domyślnie: admin lub PlayHub. Lokalny wpis tylko w tej przeglądarce.</div>
+                <div class="field-hint" id="roundsOverrideHint"></div>
             </div>
             <details id="eventOverrideDetails" style="margin-top:8px;">
                 <summary style="cursor:pointer;color:var(--text-dim);font-size:12px;">Tymczasowe ID (tylko ta sesja)</summary>
@@ -2435,10 +2437,6 @@
     </summary>
     <div style="margin-top:12px;">
     <span id="tieSimTimingDisplay" style="display: none;" aria-live="polite"></span>
-    <details class="copy-fold">
-        <summary>Jak korzystać z Can I Tie</summary>
-        <p>Wybierz cel cutu, wpisz nick albo kliknij siebie w tabeli LIVE — dostaniesz najlepszą strategię (WIN / TIE / LOSS).</p>
-    </details>
 
     <div class="tie-goal-block" id="tieGoalBlock">
         <span class="tie-goal-label" id="tieGoalLabel">Cel strategii</span>
@@ -2461,10 +2459,7 @@
                 <span class="goal-sub">soft Top 64 + remisy</span>
             </button>
         </div>
-        <details class="copy-fold">
-            <summary>Presety cutu wg trybu</summary>
-            <p class="tie-goal-hint" id="tieGoalHint">MAIN1: Top 8 / Top 16 (mata) = hard · Continentals = soft 32 · Gaston = soft 64. MAIN2: Top 8 + Top 32 hard. Inne: Top 2–32 hard.</p>
-        </details>
+        <p class="tie-goal-hint" id="tieGoalHint" hidden></p>
     </div>
 
     <div class="tie-nick-block">
@@ -2496,7 +2491,7 @@
         <!-- DEDYKOWANA PODPOWIEDŹ: CZY 2 REMISY Z RZĘDU DAJĄ TOP CUT? -->
         <div id="doubleTiePromptPanel" class="double-tie-panel" style="display: none;">
             <div class="double-tie-header">
-                <div class="double-tie-title" id="doubleTiePromptTitle">🤝 Czy 2 remisy z rzędu dają Top Cut?</div>
+                <div class="double-tie-title" id="doubleTiePromptTitle">2× remis → Top Cut?</div>
                 <div class="verdict-badge" id="doubleTieVerdictBadge">-</div>
             </div>
             <div id="doubleTiePromptDesc" style="font-size: 13px; color: #cbd5e1; line-height: 1.5;"></div>
@@ -2506,7 +2501,7 @@
         <!-- ŚCIEŻKI AWANSU / SCENARIUSZE WIELORUNDOWE -->
         <div id="multiRoundScenariosWrapper" style="margin-top: 15px; display: none;">
             <div style="font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
-                🛣️ Ścieżki Awansu (Kombinacje wyników do końca turnieju)
+                Ścieżki awansu
             </div>
             <div class="scenario-grid" id="multiRoundScenarioGrid"></div>
         </div>
@@ -2514,7 +2509,7 @@
         <!-- BIEŻĄCY STÓŁ -->
         <div id="currentMatchScenariosWrapper">
             <div style="margin-top: 18px; font-size: 12px; font-weight: bold; color: #94a3b8; text-transform: uppercase; margin-bottom: 6px;">
-                ⚡ Scenariusze dla obecnego meczu (Runda <span id="tieCurrentRoundNum">-</span>)
+                Obecny mecz — runda <span id="tieCurrentRoundNum">-</span>
             </div>
             <div class="simulation-grid">
                 <div class="sim-card">
@@ -2539,7 +2534,7 @@
         <!-- NOWY MODUŁ: PLAY/DRAW & SEEDING W TOP CUT DLA WYBRANEGO GRACZA -->
         <div id="playDrawSeedingPanel" class="double-tie-panel" style="display: none; border-left-color: #f1c40f; margin-top: 15px;">
             <div class="double-tie-header">
-                <div class="double-tie-title">🎲 Rozstawienie (Seeding) i Przywilej Play/Draw w Top Cut</div>
+                <div class="double-tie-title">Seeding / Play-Draw</div>
                 <div id="playDrawCurrentBadge" class="play-draw-pill pill-play">-</div>
             </div>
             <div id="playDrawSeedingBody" style="font-size: 13px; color: #cbd5e1; line-height: 1.5;"></div>
@@ -2549,11 +2544,7 @@
         <div id="nextRoundPairingsPanel" class="pairings-predictor-panel" style="display: none; margin-top: 15px;">
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 6px;">
                 <div>
-                    <span style="font-size: 15px; font-weight: bold; color: #fff;">🔮 Symulator Parowań: Z kim zagram w Rundzie <span id="predictorNextRoundNum">-</span>?</span>
-                    <details class="copy-fold" style="margin-top:4px;">
-                        <summary>Jak liczy model</summary>
-                        <p>Model Swiss z wykluczeniem wcześniejszych rywali (no-rematches) oraz analizą trwających stołów.</p>
-                    </details>
+                    <span style="font-size: 15px; font-weight: bold; color: #fff;">Parowania — runda <span id="predictorNextRoundNum">-</span></span>
                 </div>
             </div>
             
@@ -2574,10 +2565,7 @@
 <!-- SECONDARY: O CO JESZCZE GRAMY (after Can I Tie) -->
 <div class="panel prize-panel" id="prizeGoalsPanel" data-primary="false">
     <h3>O co jeszcze gramy</h3>
-    <details class="copy-fold">
-        <summary>Jak czytać nagrody</summary>
-        <p class="prize-panel-lead" id="prizePanelBlurb">Wybierz siebie w tabeli LIVE — pokażemy promo, maty, zaproszenie i cut w prostym języku (wg trybu turnieju).</p>
-    </details>
+    <p class="prize-panel-lead" id="prizePanelBlurb" hidden></p>
     <div class="prize-player-meta" id="prizePlayerMeta"></div>
     <div class="prize-groups" id="prizeGroups">
         <div class="prize-group prize-group--play">
@@ -2635,12 +2623,7 @@
 <!-- PRIMARY: LIVE STANDINGS -->
 <div class="section-header" id="liveStandingsSection">
     <h3>Klasyfikacja LIVE <span id="livePolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
-    <span style="font-size: 11px; color: #888;">(Dotknij gracza = nagrody + TIE)</span>
 </div>
-<details class="copy-fold">
-    <summary>O tabeli LIVE</summary>
-    <p class="secondary-section-note">Tabela LIVE — kliknij siebie, żeby odświeżyć „O co jeszcze gramy”. Soft EUC (MAIN1) jest nad Can I Tie. Kolorowe chipy = status progów nagród. OMWP po szczegóły w Inspektorze.</p>
-</details>
 <div class="filter-controls-row" style="margin: 0 0 10px 0;">
     <button id="polesFilterToggleBtn" class="poles-toggle-btn" onclick="toggleOnlyPoles()" title="Filtruj tabele, aby wyświetlić tylko polskich graczy (flaga PL, góry, skład 🐀 Szczury Wrocławskie, teamy GPL, M7, OSA, LV, Q2W, L4, EX, IDK)">
         <span style="font-size: 16px;">🇵🇱</span>
@@ -2652,8 +2635,8 @@
 <!-- KALKULATOR ROZKŁADU KOSZYKÓW PUNKTOWYCH (CUT LINE BREAKDOWN) + soft EUC ID hint -->
 <div id="cutBreakdownPanel" class="cut-breakdown-panel" style="display: none;">
     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
-        <div id="cutBreakdownTitle" style="font-size: 14px; font-weight: 700; color: #2ecc71;">
-            <span id="cutBreakdownTitlePrefix">Analiza Kreski i Koszyków Punktowych (Top </span><span id="breakdownCutSizeLabel">4</span>)
+        <div id="cutBreakdownTitle" style="font-size: 14px; font-weight: 700; color: var(--safe);">
+            <span id="cutBreakdownTitlePrefix">Kreska cutu (Top </span><span id="breakdownCutSizeLabel">4</span>)
         </div>
         <div id="breakdownSummarySubtitle" style="font-size: 12px; color: #94a3b8;"></div>
     </div>
@@ -2662,11 +2645,10 @@
     <div class="brackets-pills-row" id="cutBreakdownBracketsRow"></div>
 </div>
 
-<div class="filter-controls-row" style="margin-top: 5px; margin-bottom: 10px;">
-    <span style="font-size: 12px; color: #888; margin-right: 4px;">Filtruj status awansu:</span>
+    <div class="filter-controls-row" style="margin-top: 5px; margin-bottom: 10px;">
     <button class="status-filter-btn active" id="filterStatusAll" onclick="setLiveStatusFilter('all')">Wszyscy</button>
-    <button class="status-filter-btn" id="filterStatusCut" onclick="setLiveStatusFilter('cut')">🎯 W grze o Cut</button>
-    <button class="status-filter-btn" id="filterStatusBubble" onclick="setLiveStatusFilter('bubble')">🟡 Tylko Bubble</button>
+    <button class="status-filter-btn" id="filterStatusCut" onclick="setLiveStatusFilter('cut')">W cut</button>
+    <button class="status-filter-btn" id="filterStatusBubble" onclick="setLiveStatusFilter('bubble')">Bubble</button>
 </div>
 
 <div class="quick-search-row">
@@ -2674,10 +2656,7 @@
     <button type="button" id="liveTableSearchClearBtn" class="quick-search-clear" onclick="clearLiveTableSearch()">✕ Wyczyść</button>
 </div>
 
-<details class="copy-fold prize-chips-legend-fold">
-    <summary>Legenda chipów nagród</summary>
-    <div id="livePrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
-</details>
+<div id="livePrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród" hidden></div>
 
 <div id="liveStandingsViewport" class="live-virt-viewport" onscroll="onLiveStandingsScroll(event)">
     <table>
@@ -2706,7 +2685,7 @@
 <!-- SEKCJA: PAROWANIA NA ŻYWO -->
 <div class="section-header" id="pairingsSection">
     <div class="section-header-row">
-        <h3>⚔️ Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>) <span id="pairingsPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+        <h3>Mecze na żywo (Runda <span id="pairingsRoundNum">-</span>) <span id="pairingsPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
         <span id="matchesProgress" style="font-size: 12px; color: #aaa;">-</span>
     </div>
 </div>
@@ -2737,15 +2716,12 @@
 <!-- SEKCJA 1: TABELA OFICJALNA RAVENSBURGER (STAN PO RUNDZIE X) -->
 <div class="section-header" id="officialStandingsSection">
     <div class="section-header-row">
-        <h3 style="color: #888;">📋 Oficjalna Tabela Ravensburger (Po R<span id="officialRoundNum">-</span>) <span id="officialPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
+        <h3 style="color: #888;">Oficjalna tabela (Po R<span id="officialRoundNum">-</span>) <span id="officialPolesNotice" class="filter-active-pill" style="display: none;">🇵🇱 Tylko Polacy</span></h3>
         <button type="button" id="toggleOfficialTableBtn" class="collapse-toggle-btn" onclick="toggleOfficialTableSection()">Ukryj ▲</button>
     </div>
 </div>
 <div id="officialStandingsWrapper">
-    <details class="copy-fold prize-chips-legend-fold">
-        <summary>Legenda chipów nagród</summary>
-        <div id="officialPrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród"></div>
-    </details>
+    <div id="officialPrizeChipsLegend" class="prize-chips-legend" aria-label="Legenda statusu nagród" hidden></div>
     <div class="table-responsive">
         <table>
             <thead>
@@ -2773,16 +2749,9 @@
 <section class="panel bracket-panel" id="topCutBracketSection" aria-label="Drabinka Top Cut">
     <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px;">
         <div>
-            <h3 style="color: #f1c40f; margin-bottom: 4px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.03em;">
-                🏆 Drabinka Top Cut
+            <h3 style="color: var(--gold); margin-bottom: 4px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.05em;">
+                Drabinka Top Cut
             </h3>
-            <details class="copy-fold">
-                <summary>Jak działa drabinka</summary>
-                <div class="copy-fold-body" style="max-width: 52rem;">
-                    Na żądanie — wybierz rozmiar i narysuj drzewko z tabeli LIVE (PLAY/DRAW wg seedu po Swiss).
-                    Domyślny rozmiar bierze się z cutu turnieju / admina; w <strong style="color:#f1c40f;">MAIN1</strong> zawsze startuje od hard <strong style="color:#f1c40f;">Top 8</strong>.
-                </div>
-            </details>
         </div>
     </div>
 
@@ -2806,24 +2775,19 @@
             </button>
         </div>
     </div>
-    <div class="bracket-draw-hint" id="bracketDrawHint">Domyślnie: Top 8 (z ustawień cut / trybu).</div>
+    <div class="bracket-draw-hint" id="bracketDrawHint"></div>
 
     <div id="topCutBracketPanel" class="bracket-tree-host" hidden>
         <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-top: 14px;">
             <div>
-                <h4 style="color: #e8b84a; margin: 0 0 4px; font-size: 15px;">
-                    Top <span id="bracketSizeTitle">8</span> — drzewko &amp; Play/Draw
+                <h4 style="color: var(--gold-bright); margin: 0 0 4px; font-size: 15px;">
+                    Top <span id="bracketSizeTitle">8</span>
                 </h4>
-                <details class="copy-fold">
-                    <summary>PLAY / DRAW</summary>
-                    <div id="bracketPhaseStatusText" class="copy-fold-body">
-                        Oficjalne drzewko pucharowe (od 1. rundy Top Cut aż do Finału). W każdej rundzie wyższy seed po fazie Swiss ma przywilej <strong>🟢 PLAY</strong>!
-                    </div>
-                </details>
+                <div id="bracketPhaseStatusText" class="bracket-draw-hint"></div>
             </div>
             <div class="bracket-mode-bar" style="margin: 0;">
-                <button type="button" id="bracketModeProjectedBtn" class="bracket-mode-btn active" onclick="setBracketDisplayMode('projected')" title="Pokazuje pełną symulację kolejnych rund drabinki przy założeniu awansu wyższych seedów">🔮 Pełna Ścieżka (Faworyci wg Seedu)</button>
-                <button type="button" id="bracketModeStrictBtn" class="bracket-mode-btn" onclick="setBracketDisplayMode('strict')" title="Pokazuje w kolejnych rundach tylko potwierdzonych zwycięzców oraz pary potencjalnych seedów">🌳 Tylko Potwierdzone / TBD</button>
+                <button type="button" id="bracketModeProjectedBtn" class="bracket-mode-btn active" onclick="setBracketDisplayMode('projected')" title="Pełna ścieżka wg seedu">Pełna ścieżka</button>
+                <button type="button" id="bracketModeStrictBtn" class="bracket-mode-btn" onclick="setBracketDisplayMode('strict')" title="Tylko potwierdzone / TBD">Potwierdzone</button>
             </div>
         </div>
         <div id="bracketSelectedPlayerBanner" style="display: none; margin-top: 10px;"></div>
@@ -2835,12 +2799,6 @@
     <div class="section-header">
         <h2 id="tournamentMetaHeading" style="margin: 0;">Meta turnieju</h2>
     </div>
-    <details class="copy-fold">
-        <summary>Skąd bierze się meta</summary>
-        <p class="tournament-meta-lede">
-            Co gra pole — pary atramentów zebrane z rund (i z lokalnego cache, żeby nie znikały po zmianie stołów).
-        </p>
-    </details>
     <div id="tournamentMetaRoot" hidden>
         <div class="tournament-meta-empty">Ładowanie meta atramentów…</div>
     </div>
@@ -2853,8 +2811,8 @@
     <div class="modal-content" onclick="event.stopPropagation()">
         <div class="modal-header">
             <div>
-                <h3 id="omwpModalTitle" style="color: #fff; margin: 0; font-size: 17px;">🔍 Inspektor Tiebreakerów: <span id="omwpPlayerName">-</span></h3>
-                <div id="omwpPlayerSubtitle" style="font-size: 12px; color: #888; margin-top: 3px;">Szczegółowa analiza 3 wskaźników turniejowych Lorcany: OMW%, GW%, OGW%</div>
+                <h3 id="omwpModalTitle" style="color: #fff; margin: 0; font-size: 17px;">Inspektor: <span id="omwpPlayerName">-</span></h3>
+                <div id="omwpPlayerSubtitle" style="font-size: 12px; color: #888; margin-top: 3px;">OMW% · GW% · OGW%</div>
             </div>
             <button class="modal-close-btn" onclick="closeOmwpInspector()">✕</button>
         </div>
@@ -2870,7 +2828,7 @@
             </div>
             <div class="omwp-stat-card">
                 <div class="label">3. OGW % (Rywali Gry %)</div>
-                <div class="value" id="omwpCurrentOgwp" style="color: #9b59b6;">-%</div>
+                <div class="value" id="omwpCurrentOgwp" style="color: #7dd3fc;">-%</div>
             </div>
             <div class="omwp-stat-card">
                 <div class="label">Max OMW po rundzie</div>
@@ -2949,6 +2907,8 @@
 
 <script src="../tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="../prize-ladders.js?v=20261116format1"></script>
-<script src="../app.js?v=20261117noinks1"></script>
+<script>window.LORCANA_API_BASE = '../';</script>
+<script src="../scripts/stress-fixture.js?v=20261119playhub1"></script>
+<script src="../app.js?v=20261119playhub1"></script>
 </body>
 </html>
