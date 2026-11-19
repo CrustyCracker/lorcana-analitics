@@ -101,10 +101,18 @@ describe('Batch optymalna strategia — okna po 32', () => {
         assert.match(indexHtml, /paczka 32/);
         assert.match(indexHtml, /runNextTop32Strategy/);
         assert.match(indexHtml, /Następne 32|#33–64/);
-        assert.match(indexHtml, /app\.js\?v=20261119top32strat2/);
+        assert.match(indexHtml, /app\.js\?v=20261119top32strat3/);
         assert.match(testsHtml, /id="strategyBatchBtn"/);
         assert.match(testsHtml, /paczka 32/);
-        assert.match(testsHtml, /app\.js\?v=20261119top32strat2/);
+        assert.match(testsHtml, /app\.js\?v=20261119top32strat3/);
+        // Batch finish must not call selectPlayerForTie (that scrolls to Can I Tie).
+        const appSrc = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
+        const batchFn = appSrc.slice(
+            appSrc.indexOf('async function runNextTop32Strategy'),
+            appSrc.indexOf('function roundsOverrideStorageKey')
+        );
+        assert.doesNotMatch(batchFn, /selectPlayerForTie\s*\(/);
+        assert.match(appSrc, /scrollToTie/);
         assert.equal(STRATEGY_BATCH_SIZE, 32);
         assert.equal(formatStrategyBatchRange(0, 32), '#1–32');
         assert.equal(formatStrategyBatchRange(32, 64), '#33–64');

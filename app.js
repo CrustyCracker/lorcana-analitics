@@ -1422,17 +1422,14 @@ async function runNextTop32Strategy() {
 
         try { renderLiveStandingsTable(); } catch (e) {}
 
-        // Open TIE panel for last player in window (reuses cache / existing path).
+        // Mark last player selected for highlight / prize chips — do NOT jump to Can I Tie.
         if (lastResult?.playerId != null) {
             currentSelectedPlayerId = lastResult.playerId;
             if (normalizeTieGoalMode(mode) === 'MAIN1' && lastResult.goalKey) {
                 applyTieGoalToCutUi(lastResult.goalKey, { triggerRecalc: false });
             }
-            const cached = simulatedResultsCache.get(String(lastResult.playerId));
-            if (cached?.sim) {
-                // Light select: scroll + prize panel; sim already cached — trigger recalc (cache hit).
-                selectPlayerForTie(lastResult.playerId);
-            }
+            try { renderPrizeGoalsPanel(lastResult.playerId); } catch (e) {}
+            try { renderLiveStandingsTable(); } catch (e) {}
         }
 
         // Advance window for the next click (wrap).
@@ -4764,7 +4761,15 @@ function onPlayerSearchInput() {
     dropdown.style.display = 'block';
 }
 
-function selectPlayerForTie(playerId) {
+/**
+ * @param {string|number} playerId
+ * @param {{ scrollToTie?: boolean, scrollLiveRow?: boolean }} [opts]
+ *   scrollToTie (default true) — page scroll to Can I Tie; batch finish passes false.
+ *   scrollLiveRow (default true) — jump virtual LIVE viewport to the row.
+ */
+function selectPlayerForTie(playerId, opts = {}) {
+    const scrollToTie = opts.scrollToTie !== false;
+    const scrollLiveRow = opts.scrollLiveRow !== false;
     currentSelectedPlayerId = playerId;
 
     // Przewiń wirtualne okno LIVE do wybranego gracza
@@ -4779,7 +4784,7 @@ function selectPlayerForTie(playerId) {
             simCache: simulatedResultsCache
         });
 
-    if (list && list.length > 0) {
+    if (scrollLiveRow && list && list.length > 0) {
         const pIdx = list.findIndex(p => String(p.player?.id || p.id) === String(playerId));
         if (pIdx !== -1) {
             const viewport = document.getElementById('liveStandingsViewport');
@@ -4799,9 +4804,11 @@ function selectPlayerForTie(playerId) {
     
     recalculateTieForSelectedPlayer();
 
-    // Player pick lives in Can I Tie (above prizes); keep TIE in view — prizes sit just below.
-    const tiePanel = document.getElementById('tieModule');
-    if (tiePanel) tiePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    // Manual pick: keep TIE in view. Batch finish must not yank the page upward.
+    if (scrollToTie) {
+        const tiePanel = document.getElementById('tieModule');
+        if (tiePanel) tiePanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
 }
 
 function showTieSimLoadingBanner() {
