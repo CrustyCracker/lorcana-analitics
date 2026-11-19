@@ -11,6 +11,8 @@ const {
     pickMain1BatchTieGoalForPlayer,
     resolveBatchTieGoalForPlayer,
     getStrategyBatchCohort,
+    getStrategyBatchWindow,
+    formatStrategyBatchRange,
     resetStrategyBatchState,
     getStrategyBatchState,
     applyTieGoalToCutUi,
@@ -41,7 +43,7 @@ function makeEl(id) {
         getAttribute() { return null; },
         querySelector(sel) {
             if (sel === '.strategy-batch-btn-label') {
-                if (!this._label) this._label = { textContent: 'Strategia Top 32' };
+                if (!this._label) this._label = { textContent: 'Strategia ×32' };
                 return this._label;
             }
             return null;
@@ -74,22 +76,38 @@ function makeDomStub() {
     return { els };
 }
 
-describe('Batch optymalna strategia — Top 32', () => {
+function makeStandings(n) {
+    const fake = [];
+    for (let i = 1; i <= n; i++) {
+        fake.push({
+            liveRank: i,
+            player: { id: 'id' + i, best_identifier: 'P' + i },
+            match_points: 40 - Math.floor(i / 2)
+        });
+    }
+    return fake;
+}
+
+describe('Batch optymalna strategia — okna po 32', () => {
     beforeEach(() => {
         makeDomStub();
         resetStrategyBatchState();
     });
 
-    it('UI + cache-bust w index i /tests', () => {
+    it('UI + cache-bust w index i /tests (paczka 32 / następne okno)', () => {
         assert.match(indexHtml, /id="strategyBatchBtn"/);
         assert.match(indexHtml, /id="strategyBatchProgress"/);
         assert.match(indexHtml, /kolejne z Top 32/);
+        assert.match(indexHtml, /paczka 32/);
         assert.match(indexHtml, /runNextTop32Strategy/);
-        assert.match(indexHtml, /app\.js\?v=20261119top32strat1/);
+        assert.match(indexHtml, /Następne 32|#33–64/);
+        assert.match(indexHtml, /app\.js\?v=20261119top32strat2/);
         assert.match(testsHtml, /id="strategyBatchBtn"/);
-        assert.match(testsHtml, /kolejne z Top 32/);
-        assert.match(testsHtml, /app\.js\?v=20261119top32strat1/);
+        assert.match(testsHtml, /paczka 32/);
+        assert.match(testsHtml, /app\.js\?v=20261119top32strat2/);
         assert.equal(STRATEGY_BATCH_SIZE, 32);
+        assert.equal(formatStrategyBatchRange(0, 32), '#1–32');
+        assert.equal(formatStrategyBatchRange(32, 64), '#33–64');
     });
 
     it('mapowanie MAIN1 rung → cel (T8/T16/EUC/Gaston)', () => {
@@ -135,26 +153,38 @@ describe('Batch optymalna strategia — Top 32', () => {
         assert.equal(other.goalKey, 'top4');
     });
 
-    it('getStrategyBatchCohort bierze pierwsze 32 z kolejności tabeli', () => {
-        const fake = [];
-        for (let i = 1; i <= 40; i++) {
-            fake.push({
-                liveRank: i,
-                player: { id: 'id' + i, best_identifier: 'P' + i },
-                match_points: 30 - Math.floor(i / 2)
-            });
-        }
+    it('getStrategyBatchWindow: #1–32 potem #33–64', () => {
         const app = require('../app.js');
-        // cachedLiveStandings starts empty in Node — cohort falls back to latestData.standings
         app.setLatestDataForTest({
-            eventId: 999001,
-            standings: { standings: fake }
+            eventId: 999002,
+            standings: { standings: makeStandings(70) }
         });
         resetStrategyBatchState();
+
+        const first = getStrategyBatchWindow(0, 32);
+        assert.equal(first.players.length, 32);
+        assert.equal(first.start, 0);
+        assert.equal(first.end, 32);
+        assert.equal(String(first.players[0].player.id), 'id1');
+        assert.equal(String(first.players[31].player.id), 'id32');
+        assert.equal(first.maxWindow, 2);
+
+        const second = getStrategyBatchWindow(1, 32);
+        assert.equal(second.players.length, 32);
+        assert.equal(second.start, 32);
+        assert.equal(second.end, 64);
+        assert.equal(String(second.players[0].player.id), 'id33');
+        assert.equal(String(second.players[31].player.id), 'id64');
+
+        const third = getStrategyBatchWindow(2, 32);
+        assert.equal(third.players.length, 6);
+        assert.equal(third.start, 64);
+        assert.equal(third.end, 70);
+        assert.equal(String(third.players[0].player.id), 'id65');
+
         const cohort = getStrategyBatchCohort(32);
         assert.equal(cohort.length, 32);
         assert.equal(String(cohort[0].player.id), 'id1');
-        assert.equal(String(cohort[31].player.id), 'id32');
-        assert.equal(getStrategyBatchState().cursor, -1);
+        assert.equal(getStrategyBatchState().windowIndex, 0);
     });
 });

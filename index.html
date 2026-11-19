@@ -2652,11 +2652,11 @@
 </div>
 
 <div class="strategy-batch-row" id="strategyBatchRow">
-    <button type="button" class="strategy-batch-btn" id="strategyBatchBtn" onclick="runNextTop32Strategy()" title="Liczy optymalną strategię (Can I Tie) kolejno dla Top 32 z tabeli">
-        <span class="strategy-batch-btn-label">Strategia Top 32</span>
+    <button type="button" class="strategy-batch-btn" id="strategyBatchBtn" onclick="runNextTop32Strategy()" title="Jeden klik = strategia dla 32 graczy; następny klik = kolejne 32 (#33–64…)">
+        <span class="strategy-batch-btn-label">Strategia ×32</span>
     </button>
     <div class="strategy-batch-meta">
-        <span class="strategy-batch-progress" id="strategyBatchProgress" aria-live="polite">kolejne z Top 32</span>
+        <span class="strategy-batch-progress" id="strategyBatchProgress" aria-live="polite">kolejne z Top 32 · paczka 32</span>
         <span class="strategy-batch-goal" id="strategyBatchGoalHint"></span>
     </div>
 </div>
@@ -2917,6 +2917,6 @@
 
 <script src="tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261119top32strat1"></script>
+<script src="app.js?v=20261119top32strat2"></script>
 </body>
 </html>

@@ -4,16 +4,19 @@ let currentSelectedPlayerId = null;
 let simulatedResultsCache = new Map();
 let lastTieSimMs = null;
 
-/** Batch „optymalna strategia” po Top 32 z tabeli (kolejne kliknięcia = kolejny gracz). */
+/** Batch „optymalna strategia”: 1 klik = paczka 32; kolejny klik = następne 32 (#33–64…). */
 const STRATEGY_BATCH_SIZE = 32;
 let strategyBatchState = {
-    cursor: -1,
+    windowIndex: 0,
     eventKey: null,
-    cohortKey: null,
+    standingsKey: null,
     lastGoalKey: null,
     lastPlayerId: null,
     lastNick: null,
-    busy: false
+    lastWindowStart: 0,
+    lastWindowEnd: 0,
+    busy: false,
+    runId: 0
 };
 
 const PAGE_SIZE = 32;
@@ -1083,14 +1086,18 @@ const MAIN1_RUNG_TO_TIE_GOAL = Object.freeze({
 const MAIN1_TIE_GOAL_AMBITION = Object.freeze(['top8', 'top16', 'continentals', 'gaston']);
 
 function resetStrategyBatchState() {
+    strategyBatchState.runId = (strategyBatchState.runId || 0) + 1;
     strategyBatchState = {
-        cursor: -1,
+        windowIndex: 0,
         eventKey: null,
-        cohortKey: null,
+        standingsKey: null,
         lastGoalKey: null,
         lastPlayerId: null,
         lastNick: null,
-        busy: false
+        lastWindowStart: 0,
+        lastWindowEnd: 0,
+        busy: false,
+        runId: strategyBatchState.runId
     };
     updateStrategyBatchUi();
 }
@@ -1103,21 +1110,58 @@ function getStrategyBatchEventKey() {
     return `${id || 'none'}|${mode}`;
 }
 
-/**
- * Top N from standings table order (LIVE rank when available).
- * Soft Continentals cohort = first 32 of the table — not filtered by poles/search.
- */
-function getStrategyBatchCohort(limit = STRATEGY_BATCH_SIZE) {
-    const n = Math.max(1, Number(limit) || STRATEGY_BATCH_SIZE);
+/** Full standings order for batch windows (LIVE when available; not poles/search filtered). */
+function getStrategyBatchSource() {
     const source = (cachedLiveStandings && cachedLiveStandings.length)
         ? cachedLiveStandings
         : (latestData?.standings?.standings || []);
-    if (!Array.isArray(source) || source.length === 0) return [];
-    return source.slice(0, Math.min(n, source.length));
+    return Array.isArray(source) ? source : [];
+}
+
+function strategyBatchStandingsKey(source) {
+    return (source || []).map((p) => String(p?.player?.id ?? p?.id ?? '')).join(',');
+}
+
+/**
+ * Window of up to `limit` players starting at windowIndex * limit.
+ * windowIndex 0 → #1–32, 1 → #33–64, …
+ */
+function getStrategyBatchWindow(windowIndex = 0, limit = STRATEGY_BATCH_SIZE) {
+    const n = Math.max(1, Number(limit) || STRATEGY_BATCH_SIZE);
+    const source = getStrategyBatchSource();
+    if (!source.length) return { players: [], start: 0, end: 0, total: 0, windowIndex: 0 };
+    const maxWindow = Math.max(0, Math.ceil(source.length / n) - 1);
+    const w = Math.min(Math.max(0, Number(windowIndex) || 0), maxWindow);
+    const start = w * n;
+    const players = source.slice(start, start + n);
+    return {
+        players,
+        start,
+        end: start + players.length,
+        total: source.length,
+        windowIndex: w,
+        maxWindow
+    };
+}
+
+/** @deprecated use getStrategyBatchWindow — kept for tests / callers expecting first 32. */
+function getStrategyBatchCohort(limit = STRATEGY_BATCH_SIZE) {
+    return getStrategyBatchWindow(0, limit).players;
 }
 
 function strategyBatchCohortKey(cohort) {
     return (cohort || []).map((p) => String(p?.player?.id ?? p?.id ?? '')).join(',');
+}
+
+function yieldStrategyBatchUi() {
+    return new Promise((resolve) => {
+        const viaTimeout = () => setTimeout(resolve, 0);
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(viaTimeout);
+        } else {
+            viaTimeout();
+        }
+    });
 }
 
 function resolveCurrentTieGoalKeyForMode(mode = getActiveTournamentMode()) {
@@ -1190,58 +1234,127 @@ function resolveBatchTieGoalForPlayer(player, mode = getActiveTournamentMode()) 
     return { goalKey: resolveCurrentTieGoalKeyForMode(normalized), source: 'picker' };
 }
 
+function formatStrategyBatchRange(start, end) {
+    if (!end || end <= start) return '';
+    return `#${start + 1}–${end}`;
+}
+
 function updateStrategyBatchUi(opts = {}) {
     if (typeof document === 'undefined') return;
     const progressEl = document.getElementById('strategyBatchProgress');
     const btn = document.getElementById('strategyBatchBtn');
     const goalEl = document.getElementById('strategyBatchGoalHint');
-    const total = opts.total != null ? opts.total : STRATEGY_BATCH_SIZE;
-    const idx = opts.index != null ? opts.index : (strategyBatchState.cursor + 1);
+    const batchTotal = opts.batchTotal != null ? opts.batchTotal : STRATEGY_BATCH_SIZE;
+    const idx = opts.index != null ? opts.index : null;
     const nick = opts.nick != null ? opts.nick : strategyBatchState.lastNick;
     const goalKey = opts.goalKey != null ? opts.goalKey : strategyBatchState.lastGoalKey;
     const busy = opts.busy != null ? opts.busy : strategyBatchState.busy;
+    const rangeStart = opts.rangeStart != null ? opts.rangeStart : strategyBatchState.lastWindowStart;
+    const rangeEnd = opts.rangeEnd != null ? opts.rangeEnd : strategyBatchState.lastWindowEnd;
+    const rangeLabel = formatStrategyBatchRange(rangeStart, rangeEnd);
+    const done = Boolean(opts.done);
+    const hasRun = strategyBatchState.lastWindowEnd > 0;
 
     if (btn) {
         btn.disabled = Boolean(busy);
         btn.setAttribute('aria-busy', busy ? 'true' : 'false');
         const label = btn.querySelector('.strategy-batch-btn-label');
         if (label) {
-            label.textContent = strategyBatchState.cursor < 0
-                ? 'Strategia Top 32'
-                : 'Kolejna strategia';
+            if (!hasRun && !busy) label.textContent = 'Strategia ×32';
+            else if (busy) label.textContent = 'Liczenie ×32…';
+            else label.textContent = 'Następne 32';
         }
     }
     if (progressEl) {
-        if (strategyBatchState.cursor < 0 || !nick) {
-            progressEl.textContent = 'kolejne z Top 32';
+        if (!hasRun && !busy) {
+            progressEl.textContent = 'kolejne z Top 32 · paczka 32';
+        } else if (busy && idx != null && nick) {
+            progressEl.textContent = `Liczenie ${idx}/${batchTotal} — ${nick}`
+                + (rangeLabel ? ` · ${rangeLabel}` : '');
+        } else if (done || hasRun) {
+            progressEl.textContent = rangeLabel
+                ? `Gotowe ${rangeLabel}`
+                : 'Gotowe';
         } else {
-            const safeNick = String(nick);
-            progressEl.textContent = busy
-                ? `Liczenie ${idx}/${total} — ${safeNick}`
-                : `Strategia ${idx}/${total} — ${safeNick}`;
+            progressEl.textContent = 'kolejne z Top 32 · paczka 32';
         }
     }
     if (goalEl) {
         const preset = goalKey ? getTieGoalPreset(goalKey) : null;
         const catalog = getTieGoalCatalogForMode(getActiveTournamentMode());
         const entry = catalog.find((g) => g.key === goalKey);
-        goalEl.textContent = entry
+        if (busy && entry) goalEl.textContent = `cel: ${entry.label}`;
+        else if (busy && preset) goalEl.textContent = `cel: ${preset.label}`;
+        else if (done && rangeLabel) goalEl.textContent = `okno ${rangeLabel}`;
+        else goalEl.textContent = entry
             ? `cel: ${entry.label}`
             : (preset ? `cel: ${preset.label}` : '');
     }
 }
 
 /**
- * First click → #1 of Top 32; each next click → next player (wraps).
- * Resets when tournament / Top-32 cohort identity changes.
- * MAIN1 applies multi-tier prize goal before hybrid/MC/exact path.
+ * Run hybrid/MC/exact for one player into simulatedResultsCache (no heavy TIE panel paint).
+ * MAIN1: applies multi-tier prize goal to cut UI first.
  */
-function runNextTop32Strategy() {
-    if (typeof document !== 'undefined' && strategyBatchState.busy) return;
+async function computeStrategyForPlayerAsync(player, mode = getActiveTournamentMode()) {
+    if (!latestData || !latestData.standings?.standings || !player) return null;
+    const playerId = player?.player?.id ?? player?.id;
+    if (playerId == null) return null;
 
-    const cohort = getStrategyBatchCohort(STRATEGY_BATCH_SIZE);
-    if (!cohort.length) {
-        updateStrategyBatchUi({ nick: null });
+    const { goalKey } = resolveBatchTieGoalForPlayer(player, mode);
+    if (normalizeTieGoalMode(mode) === 'MAIN1') {
+        applyTieGoalToCutUi(goalKey, { triggerRecalc: false });
+    }
+
+    const rawStandings = latestData.standings.standings;
+    const activeRound = resolveActiveRound(latestData);
+    const totalRounds = getEffectiveTotalRounds(latestData);
+    const cutSize = parseInt(document.getElementById('cutSize')?.value || '4', 10);
+    const cutRule = document.getElementById('cutRule')?.value || 'hard';
+    const isCompleted = Boolean(latestData.isCompleted || latestData.displayStatus === 'complete');
+    const isLiveRoundInProgress = Boolean(activeRound > (latestData.standingsRound || 0) && !isCompleted);
+
+    const pairingsList = extractPairingsList(latestData.pairings);
+    const standingsMap = buildStandingsMap(rawStandings);
+    const targetPlayer = rawStandings.find((p) => String(p.player?.id || p.id) === String(playerId))
+        || player;
+    const oppLookup = buildOpponentLookup(pairingsList, standingsMap);
+    let myOpponent = oppLookup.get(String(playerId)) || null;
+    for (const m of pairingsList) {
+        const p1 = resolvePlayer(getMatchParticipant(m, 1), standingsMap);
+        const p2 = resolvePlayer(getMatchParticipant(m, 2), standingsMap);
+        if (p1 && String(p1.id) === String(playerId)) { myOpponent = p2; break; }
+        if (p2 && String(p2.id) === String(playerId)) { myOpponent = p1; break; }
+    }
+
+    let bubbleScore = rawStandings[Math.min(cutSize - 1, rawStandings.length - 1)]?.match_points || 0;
+    if (cachedLiveStandings && cachedLiveStandings.length > 0) {
+        const liveBubbleIdx = Math.min(cutSize - 1, cachedLiveStandings.length - 1);
+        bubbleScore = cachedLiveStandings[liveBubbleIdx]?.livePoints ?? bubbleScore;
+    }
+    const projectedFinalBubble = Math.ceil((bubbleScore / Math.max(1, activeRound)) * totalRounds);
+
+    const ctx = prepareTieSimulationContext(
+        targetPlayer, myOpponent, rawStandings, pairingsList, standingsMap,
+        cutSize, cutRule, activeRound, totalRounds, projectedFinalBubble,
+        isLiveRoundInProgress
+    );
+    const simResults = await runTieSimulationAsync(ctx);
+    simulatedResultsCache.set(String(playerId), { sim: simResults, opp: myOpponent, goalKey });
+    return { playerId, goalKey, nick: formatStandingsPlayerName(targetPlayer), sim: simResults };
+}
+
+/**
+ * One click → compute optimal strategy for all players in the current 32-window.
+ * Next click → next window (#33–64, #65–96, …; wraps to #1–32).
+ * Resets when tournament / standings identity changes. MAIN1 multi-tier per player.
+ */
+async function runNextTop32Strategy() {
+    if (strategyBatchState.busy) return;
+
+    const source = getStrategyBatchSource();
+    if (!source.length) {
+        updateStrategyBatchUi({ nick: null, busy: false });
         const progressEl = typeof document !== 'undefined'
             ? document.getElementById('strategyBatchProgress')
             : null;
@@ -1250,59 +1363,100 @@ function runNextTop32Strategy() {
     }
 
     const eventKey = getStrategyBatchEventKey();
-    const cohortKey = strategyBatchCohortKey(cohort);
-    if (strategyBatchState.eventKey !== eventKey || strategyBatchState.cohortKey !== cohortKey) {
-        strategyBatchState.cursor = -1;
+    const standingsKey = strategyBatchStandingsKey(source);
+    if (strategyBatchState.eventKey !== eventKey || strategyBatchState.standingsKey !== standingsKey) {
+        strategyBatchState.windowIndex = 0;
         strategyBatchState.eventKey = eventKey;
-        strategyBatchState.cohortKey = cohortKey;
+        strategyBatchState.standingsKey = standingsKey;
+        strategyBatchState.lastWindowStart = 0;
+        strategyBatchState.lastWindowEnd = 0;
     }
 
-    const next = (strategyBatchState.cursor + 1) % cohort.length;
-    strategyBatchState.cursor = next;
-    const player = cohort[next];
-    const playerId = player?.player?.id ?? player?.id;
-    if (playerId == null) return;
+    const win = getStrategyBatchWindow(strategyBatchState.windowIndex, STRATEGY_BATCH_SIZE);
+    if (!win.players.length) return;
+
+    const runId = ++strategyBatchState.runId;
+    strategyBatchState.busy = true;
+    strategyBatchState.lastWindowStart = win.start;
+    strategyBatchState.lastWindowEnd = win.end;
+    strategyBatchState.windowIndex = win.windowIndex;
 
     const mode = getActiveTournamentMode();
-    const { goalKey } = resolveBatchTieGoalForPlayer(player, mode);
-    const nick = formatStandingsPlayerName(player);
+    const batchTotal = win.players.length;
+    let lastResult = null;
 
-    strategyBatchState.lastGoalKey = goalKey;
-    strategyBatchState.lastPlayerId = String(playerId);
-    strategyBatchState.lastNick = nick;
-    strategyBatchState.busy = true;
+    try {
+        for (let i = 0; i < win.players.length; i++) {
+            if (strategyBatchState.runId !== runId) return;
+            const player = win.players[i];
+            const nick = formatStandingsPlayerName(player);
+            const previewGoal = resolveBatchTieGoalForPlayer(player, mode).goalKey;
+            strategyBatchState.lastNick = nick;
+            strategyBatchState.lastGoalKey = previewGoal;
+            updateStrategyBatchUi({
+                index: i + 1,
+                batchTotal,
+                nick,
+                goalKey: previewGoal,
+                busy: true,
+                rangeStart: win.start,
+                rangeEnd: win.end
+            });
+            await yieldStrategyBatchUi();
+            if (strategyBatchState.runId !== runId) return;
 
-    // MAIN1: switch cut to the relevant prize rung; MAIN2/other keep picker (goalKey already = picker).
-    if (normalizeTieGoalMode(mode) === 'MAIN1') {
-        applyTieGoalToCutUi(goalKey, { triggerRecalc: false });
-    }
+            lastResult = await computeStrategyForPlayerAsync(player, mode);
+            if (lastResult) {
+                strategyBatchState.lastPlayerId = String(lastResult.playerId);
+                strategyBatchState.lastGoalKey = lastResult.goalKey;
+                strategyBatchState.lastNick = lastResult.nick;
+            }
+            // Refresh strategy column without freezing on full TIE panel paints.
+            if (i === 0 || i === win.players.length - 1 || (i + 1) % 4 === 0) {
+                try { renderLiveStandingsTable(); } catch (e) {}
+                await yieldStrategyBatchUi();
+            }
+        }
 
-    updateStrategyBatchUi({
-        index: next + 1,
-        total: cohort.length,
-        nick,
-        goalKey,
-        busy: true
-    });
+        if (strategyBatchState.runId !== runId) return;
 
-    const yieldFn = (typeof requestAnimationFrame === 'function')
-        ? (fn) => requestAnimationFrame(() => setTimeout(fn, 0))
-        : (fn) => setTimeout(fn, 0);
+        try { renderLiveStandingsTable(); } catch (e) {}
 
-    yieldFn(() => {
-        try {
-            selectPlayerForTie(playerId);
-        } finally {
+        // Open TIE panel for last player in window (reuses cache / existing path).
+        if (lastResult?.playerId != null) {
+            currentSelectedPlayerId = lastResult.playerId;
+            if (normalizeTieGoalMode(mode) === 'MAIN1' && lastResult.goalKey) {
+                applyTieGoalToCutUi(lastResult.goalKey, { triggerRecalc: false });
+            }
+            const cached = simulatedResultsCache.get(String(lastResult.playerId));
+            if (cached?.sim) {
+                // Light select: scroll + prize panel; sim already cached — trigger recalc (cache hit).
+                selectPlayerForTie(lastResult.playerId);
+            }
+        }
+
+        // Advance window for the next click (wrap).
+        const nextWindow = win.windowIndex >= win.maxWindow ? 0 : win.windowIndex + 1;
+        strategyBatchState.windowIndex = nextWindow;
+    } catch (err) {
+        console.error('Błąd batch strategii Top 32:', err);
+        const progressEl = typeof document !== 'undefined'
+            ? document.getElementById('strategyBatchProgress')
+            : null;
+        if (progressEl) progressEl.textContent = 'Błąd batch — spróbuj ponownie';
+    } finally {
+        if (strategyBatchState.runId === runId) {
             strategyBatchState.busy = false;
             updateStrategyBatchUi({
-                index: next + 1,
-                total: cohort.length,
-                nick,
-                goalKey,
-                busy: false
+                busy: false,
+                done: true,
+                rangeStart: win.start,
+                rangeEnd: win.end,
+                nick: strategyBatchState.lastNick,
+                goalKey: strategyBatchState.lastGoalKey
             });
         }
-    });
+    }
 }
 
 function roundsOverrideStorageKey(eventId) {
@@ -8124,13 +8278,17 @@ if (typeof module !== 'undefined' && module.exports) {
         MAIN1_RUNG_TO_TIE_GOAL,
         MAIN1_TIE_GOAL_AMBITION,
         resetStrategyBatchState,
+        getStrategyBatchSource,
+        getStrategyBatchWindow,
         getStrategyBatchCohort,
         pickMain1TieGoalByRank,
         pickMain1BatchTieGoalForPlayer,
         resolveBatchTieGoalForPlayer,
         resolveCurrentTieGoalKeyForMode,
+        computeStrategyForPlayerAsync,
         runNextTop32Strategy,
         updateStrategyBatchUi,
+        formatStrategyBatchRange,
         getStrategyBatchState: () => strategyBatchState,
         onRoundsOverrideChanged,
         clearRoundsOverride,
