@@ -4,6 +4,18 @@ let currentSelectedPlayerId = null;
 let simulatedResultsCache = new Map();
 let lastTieSimMs = null;
 
+/** Batch „optymalna strategia” po Top 32 z tabeli (kolejne kliknięcia = kolejny gracz). */
+const STRATEGY_BATCH_SIZE = 32;
+let strategyBatchState = {
+    cursor: -1,
+    eventKey: null,
+    cohortKey: null,
+    lastGoalKey: null,
+    lastPlayerId: null,
+    lastNick: null,
+    busy: false
+};
+
 const PAGE_SIZE = 32;
 /** Powyżej tego N wyłączamy ciężkie panele UI (bracket); rada TIE działa zawsze. */
 const LARGE_EVENT_PLAYER_THRESHOLD = 400;
@@ -1057,6 +1069,240 @@ function applyTieGoalToCutUi(goalKey, { triggerRecalc = true } = {}) {
 
 function onTieGoalSelected(goalKey) {
     applyTieGoalToCutUi(goalKey, { triggerRecalc: true });
+}
+
+/** MAIN1 prize-rung id → Can I Tie goal key (multi-tier). */
+const MAIN1_RUNG_TO_TIE_GOAL = Object.freeze({
+    t8: 'top8',
+    t16: 'top16',
+    inv: 'continentals',
+    t64: 'gaston'
+});
+
+/** Ambition order: hardest prize first when several rungs are still in play. */
+const MAIN1_TIE_GOAL_AMBITION = Object.freeze(['top8', 'top16', 'continentals', 'gaston']);
+
+function resetStrategyBatchState() {
+    strategyBatchState = {
+        cursor: -1,
+        eventKey: null,
+        cohortKey: null,
+        lastGoalKey: null,
+        lastPlayerId: null,
+        lastNick: null,
+        busy: false
+    };
+    updateStrategyBatchUi();
+}
+
+function getStrategyBatchEventKey() {
+    const id = normalizeEventIdDigits(
+        (latestData && latestData.eventId != null) ? latestData.eventId : lastTrackedEventId
+    );
+    const mode = normalizeTieGoalMode(getActiveTournamentMode());
+    return `${id || 'none'}|${mode}`;
+}
+
+/**
+ * Top N from standings table order (LIVE rank when available).
+ * Soft Continentals cohort = first 32 of the table — not filtered by poles/search.
+ */
+function getStrategyBatchCohort(limit = STRATEGY_BATCH_SIZE) {
+    const n = Math.max(1, Number(limit) || STRATEGY_BATCH_SIZE);
+    const source = (cachedLiveStandings && cachedLiveStandings.length)
+        ? cachedLiveStandings
+        : (latestData?.standings?.standings || []);
+    if (!Array.isArray(source) || source.length === 0) return [];
+    return source.slice(0, Math.min(n, source.length));
+}
+
+function strategyBatchCohortKey(cohort) {
+    return (cohort || []).map((p) => String(p?.player?.id ?? p?.id ?? '')).join(',');
+}
+
+function resolveCurrentTieGoalKeyForMode(mode = getActiveTournamentMode()) {
+    const prefs = readUiCutPrefs();
+    const key = resolveTieGoalKey(prefs.cutSize, prefs.cutRule, mode);
+    const modeKeys = getTieGoalKeysForMode(mode);
+    if (key && modeKeys.includes(key)) return key;
+    return getDefaultTieGoalKeyForMode(mode);
+}
+
+/**
+ * Rank fallback when prize eval is unavailable: #1–8 Top8, #9–16 Top16,
+ * #17–32 Continentals soft, else Gaston soft64.
+ */
+function pickMain1TieGoalByRank(rank) {
+    const r = Number(rank) || 999;
+    if (r <= 8) return 'top8';
+    if (r <= 16) return 'top16';
+    if (r <= 32) return 'continentals';
+    return 'gaston';
+}
+
+/**
+ * MAIN1: pick Can I Tie goal from prize ladder rungs the player still fights for.
+ * Prefers hardest still in_play (T8 → T16 → EUC soft32 → Gaston soft64).
+ * Falls back to rank heuristic, then current goal picker.
+ */
+function pickMain1BatchTieGoalForPlayer(player, playerId) {
+    const modeKeys = getTieGoalKeysForMode('MAIN1');
+    const rank = player?.liveRank ?? player?.rank ?? player?.standing ?? null;
+    const api = getPrizeLaddersApi();
+    if (api && typeof api.evaluatePlayerPrizes === 'function') {
+        const standings = (cachedLiveStandings && cachedLiveStandings.length)
+            ? cachedLiveStandings
+            : (latestData?.standings?.standings || []);
+        const ev = api.evaluatePlayerPrizes('MAIN1', standings, playerId, buildPrizeEvalOpts(latestData));
+        const inPlay = (ev?.groups?.in_play || []).map((r) => r.id);
+        const mapped = new Set();
+        for (const rid of inPlay) {
+            const gk = MAIN1_RUNG_TO_TIE_GOAL[rid];
+            if (gk && modeKeys.includes(gk)) mapped.add(gk);
+        }
+        for (const ambition of MAIN1_TIE_GOAL_AMBITION) {
+            if (mapped.has(ambition)) return ambition;
+        }
+        // Locked higher rungs, still climbing a softer one? Use first locked-mapped as already secured context —
+        // if nothing in_play, fall through to rank.
+    }
+    if (rank != null) {
+        const byRank = pickMain1TieGoalByRank(rank);
+        if (modeKeys.includes(byRank)) return byRank;
+    }
+    return resolveCurrentTieGoalKeyForMode('MAIN1');
+}
+
+/**
+ * Batch goal: MAIN1 = multi-tier prize awareness; MAIN2/other = current goal picker.
+ * @returns {{ goalKey: string, source: 'prize'|'rank'|'picker' }}
+ */
+function resolveBatchTieGoalForPlayer(player, mode = getActiveTournamentMode()) {
+    const normalized = normalizeTieGoalMode(mode);
+    if (normalized === 'MAIN1') {
+        const playerId = player?.player?.id ?? player?.id;
+        const before = resolveCurrentTieGoalKeyForMode('MAIN1');
+        const goalKey = pickMain1BatchTieGoalForPlayer(player, playerId);
+        const source = goalKey === before ? 'picker' : 'prize';
+        // Distinguish rank vs prize only loosely for UI; tests assert the key.
+        return { goalKey, source };
+    }
+    return { goalKey: resolveCurrentTieGoalKeyForMode(normalized), source: 'picker' };
+}
+
+function updateStrategyBatchUi(opts = {}) {
+    if (typeof document === 'undefined') return;
+    const progressEl = document.getElementById('strategyBatchProgress');
+    const btn = document.getElementById('strategyBatchBtn');
+    const goalEl = document.getElementById('strategyBatchGoalHint');
+    const total = opts.total != null ? opts.total : STRATEGY_BATCH_SIZE;
+    const idx = opts.index != null ? opts.index : (strategyBatchState.cursor + 1);
+    const nick = opts.nick != null ? opts.nick : strategyBatchState.lastNick;
+    const goalKey = opts.goalKey != null ? opts.goalKey : strategyBatchState.lastGoalKey;
+    const busy = opts.busy != null ? opts.busy : strategyBatchState.busy;
+
+    if (btn) {
+        btn.disabled = Boolean(busy);
+        btn.setAttribute('aria-busy', busy ? 'true' : 'false');
+        const label = btn.querySelector('.strategy-batch-btn-label');
+        if (label) {
+            label.textContent = strategyBatchState.cursor < 0
+                ? 'Strategia Top 32'
+                : 'Kolejna strategia';
+        }
+    }
+    if (progressEl) {
+        if (strategyBatchState.cursor < 0 || !nick) {
+            progressEl.textContent = 'kolejne z Top 32';
+        } else {
+            const safeNick = String(nick);
+            progressEl.textContent = busy
+                ? `Liczenie ${idx}/${total} — ${safeNick}`
+                : `Strategia ${idx}/${total} — ${safeNick}`;
+        }
+    }
+    if (goalEl) {
+        const preset = goalKey ? getTieGoalPreset(goalKey) : null;
+        const catalog = getTieGoalCatalogForMode(getActiveTournamentMode());
+        const entry = catalog.find((g) => g.key === goalKey);
+        goalEl.textContent = entry
+            ? `cel: ${entry.label}`
+            : (preset ? `cel: ${preset.label}` : '');
+    }
+}
+
+/**
+ * First click → #1 of Top 32; each next click → next player (wraps).
+ * Resets when tournament / Top-32 cohort identity changes.
+ * MAIN1 applies multi-tier prize goal before hybrid/MC/exact path.
+ */
+function runNextTop32Strategy() {
+    if (typeof document !== 'undefined' && strategyBatchState.busy) return;
+
+    const cohort = getStrategyBatchCohort(STRATEGY_BATCH_SIZE);
+    if (!cohort.length) {
+        updateStrategyBatchUi({ nick: null });
+        const progressEl = typeof document !== 'undefined'
+            ? document.getElementById('strategyBatchProgress')
+            : null;
+        if (progressEl) progressEl.textContent = 'Brak tabeli — wczytaj turniej';
+        return;
+    }
+
+    const eventKey = getStrategyBatchEventKey();
+    const cohortKey = strategyBatchCohortKey(cohort);
+    if (strategyBatchState.eventKey !== eventKey || strategyBatchState.cohortKey !== cohortKey) {
+        strategyBatchState.cursor = -1;
+        strategyBatchState.eventKey = eventKey;
+        strategyBatchState.cohortKey = cohortKey;
+    }
+
+    const next = (strategyBatchState.cursor + 1) % cohort.length;
+    strategyBatchState.cursor = next;
+    const player = cohort[next];
+    const playerId = player?.player?.id ?? player?.id;
+    if (playerId == null) return;
+
+    const mode = getActiveTournamentMode();
+    const { goalKey } = resolveBatchTieGoalForPlayer(player, mode);
+    const nick = formatStandingsPlayerName(player);
+
+    strategyBatchState.lastGoalKey = goalKey;
+    strategyBatchState.lastPlayerId = String(playerId);
+    strategyBatchState.lastNick = nick;
+    strategyBatchState.busy = true;
+
+    // MAIN1: switch cut to the relevant prize rung; MAIN2/other keep picker (goalKey already = picker).
+    if (normalizeTieGoalMode(mode) === 'MAIN1') {
+        applyTieGoalToCutUi(goalKey, { triggerRecalc: false });
+    }
+
+    updateStrategyBatchUi({
+        index: next + 1,
+        total: cohort.length,
+        nick,
+        goalKey,
+        busy: true
+    });
+
+    const yieldFn = (typeof requestAnimationFrame === 'function')
+        ? (fn) => requestAnimationFrame(() => setTimeout(fn, 0))
+        : (fn) => setTimeout(fn, 0);
+
+    yieldFn(() => {
+        try {
+            selectPlayerForTie(playerId);
+        } finally {
+            strategyBatchState.busy = false;
+            updateStrategyBatchUi({
+                index: next + 1,
+                total: cohort.length,
+                nick,
+                goalKey,
+                busy: false
+            });
+        }
+    });
 }
 
 function roundsOverrideStorageKey(eventId) {
@@ -2235,6 +2481,7 @@ function clearStandingsCachesAndDom(nextEventId, opts = {}) {
     simulatedResultsCache = new Map();
     tieSimResultCache.clear();
     currentSelectedPlayerId = null;
+    resetStrategyBatchState();
 
     if (typeof document === 'undefined') {
         stampStandingsEventMarker(nextEventId);
@@ -7873,6 +8120,18 @@ if (typeof module !== 'undefined' && module.exports) {
         syncTieGoalPickerUi,
         applyTieGoalToCutUi,
         onTieGoalSelected,
+        STRATEGY_BATCH_SIZE,
+        MAIN1_RUNG_TO_TIE_GOAL,
+        MAIN1_TIE_GOAL_AMBITION,
+        resetStrategyBatchState,
+        getStrategyBatchCohort,
+        pickMain1TieGoalByRank,
+        pickMain1BatchTieGoalForPlayer,
+        resolveBatchTieGoalForPlayer,
+        resolveCurrentTieGoalKeyForMode,
+        runNextTop32Strategy,
+        updateStrategyBatchUi,
+        getStrategyBatchState: () => strategyBatchState,
         onRoundsOverrideChanged,
         clearRoundsOverride,
         syncRoundsOverrideUi,

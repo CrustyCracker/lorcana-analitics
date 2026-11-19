@@ -787,6 +787,58 @@
         .status-filter-btn:hover { background: rgba(212, 160, 23, 0.12); color: #fff; border-color: rgba(212, 160, 23, 0.4); filter: none; }
         .status-filter-btn.active { background: rgba(212, 160, 23, 0.28); color: #fff; border-color: rgba(212, 160, 23, 0.55); }
 
+        .strategy-batch-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px 12px;
+            margin: 0 0 10px 0;
+        }
+        .strategy-batch-btn {
+            background: rgba(255, 215, 0, 0.14);
+            color: var(--gold-bright);
+            border: 1px solid var(--line-gold);
+            border-radius: 4px;
+            padding: 8px 14px;
+            min-height: 40px;
+            font-family: var(--font-ui);
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            cursor: pointer;
+            width: auto;
+        }
+        .strategy-batch-btn:hover {
+            background: rgba(255, 215, 0, 0.22);
+            color: #fff;
+            border-color: var(--gold);
+        }
+        .strategy-batch-btn:disabled {
+            opacity: 0.55;
+            cursor: wait;
+        }
+        .strategy-batch-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            min-width: 0;
+            flex: 1 1 160px;
+        }
+        .strategy-batch-progress {
+            font-family: var(--font-ui);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .strategy-batch-goal {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-mute);
+        }
+
         /* OMWP CLICKABLE */
         .omwp-clickable {
             cursor: pointer;
@@ -2599,6 +2651,16 @@
     <button class="status-filter-btn" id="filterStatusBubble" onclick="setLiveStatusFilter('bubble')">Bubble</button>
 </div>
 
+<div class="strategy-batch-row" id="strategyBatchRow">
+    <button type="button" class="strategy-batch-btn" id="strategyBatchBtn" onclick="runNextTop32Strategy()" title="Liczy optymalną strategię (Can I Tie) kolejno dla Top 32 z tabeli">
+        <span class="strategy-batch-btn-label">Strategia Top 32</span>
+    </button>
+    <div class="strategy-batch-meta">
+        <span class="strategy-batch-progress" id="strategyBatchProgress" aria-live="polite">kolejne z Top 32</span>
+        <span class="strategy-batch-goal" id="strategyBatchGoalHint"></span>
+    </div>
+</div>
+
 <div class="quick-search-row">
     <input type="text" id="liveTableSearchInput" class="quick-search-input" placeholder="🔎 Filtruj tabelę LIVE po nicku gracza..." autocomplete="off" oninput="onLiveTableSearchInput()">
     <button type="button" id="liveTableSearchClearBtn" class="quick-search-clear" onclick="clearLiveTableSearch()">✕ Wyczyść</button>
@@ -2855,6 +2917,6 @@
 
 <script src="tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261119playhub1"></script>
+<script src="app.js?v=20261119top32strat1"></script>
 </body>
 </html>
