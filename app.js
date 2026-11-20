@@ -246,6 +246,13 @@ function findTournamentByEventId(eventId) {
 }
 
 function getActiveTournamentMode() {
+    // Melee slots never use Lorcana DLC MAIN1 soft-EUC / prize ladders.
+    if (String(activeTournament?.source || '').toLowerCase() === 'melee') {
+        const api = getPrizeLaddersApi();
+        const mode = activeTournament?.mode || 'custom';
+        const normalized = api ? api.normalizeMode(mode) : String(mode || 'custom').toUpperCase();
+        return normalized === 'MAIN1' ? 'custom' : normalized;
+    }
     const api = getPrizeLaddersApi();
     const mode = activeTournament?.mode || 'custom';
     return api ? api.normalizeMode(mode) : String(mode || 'custom').toUpperCase();
@@ -516,8 +523,10 @@ function getPrizeChipEvalContext() {
     const standings = (cachedLiveStandings && cachedLiveStandings.length)
         ? cachedLiveStandings
         : (latestData?.standings?.standings || []);
+    // Melee/Cyberpunk: no DLC MAIN1 Soft EUC / prize ladder chips.
+    const mode = getActiveTournamentSource() === 'melee' ? 'custom' : getActiveTournamentMode();
     return {
-        mode: getActiveTournamentMode(),
+        mode,
         standings,
         opts: buildPrizeEvalOpts(latestData)
     };
@@ -617,11 +626,17 @@ function renderPrizeGoalsPanel(playerId = currentSelectedPlayerId) {
     fillPrizeGroup('prizeMissedList', 'prizeMissedEmpty', ev.groups.missed, api);
 }
 
-/** Soft EUC continentals panel — only MAIN1 / MAIN EVENT 1 (never MAIN2/CCQ/custom). */
+/** Soft EUC continentals panel — only MAIN1 Lorcana/PlayHub (never MAIN2/CCQ/custom/Melee). */
 function shouldShowSoftEucPanel(mode = getActiveTournamentMode()) {
+    const source = String(activeTournament?.source || 'playhub').toLowerCase();
+    if (source === 'melee') return false;
     const api = getPrizeLaddersApi();
     const normalized = api ? api.normalizeMode(mode) : String(mode || 'custom').toUpperCase();
     return normalized === 'MAIN1';
+}
+
+function getActiveTournamentSource() {
+    return String(activeTournament?.source || 'playhub').toLowerCase() === 'melee' ? 'melee' : 'playhub';
 }
 
 /** Mirror soft-EUC hint into the front-and-center host (MAIN1 only). */
@@ -716,7 +731,9 @@ function applyPublicSiteConfigPayload(data) {
             mode: String(t.mode || 'custom'),
             cutSize: Number(t.cutSize) || 8,
             cutRule: t.cutRule === 'soft' ? 'soft' : 'hard',
-            swissRounds: t.swissRounds == null || t.swissRounds === '' ? null : Number(t.swissRounds)
+            swissRounds: t.swissRounds == null || t.swissRounds === '' ? null : Number(t.swissRounds),
+            source: String(t.source || 'playhub').toLowerCase() === 'melee' ? 'melee' : 'playhub',
+            meleeUrl: t.meleeUrl ? String(t.meleeUrl) : null
         })).filter((t) => t.id && t.eventId > 0);
     }
     if (data.predictionAlgorithm) {
@@ -8278,6 +8295,7 @@ if (typeof module !== 'undefined' && module.exports) {
         rebuildTieGoalPicker,
         refreshModeDependentTieUi,
         shouldShowSoftEucPanel,
+        getActiveTournamentSource,
         syncTieGoalPickerUi,
         applyTieGoalToCutUi,
         onTieGoalSelected,

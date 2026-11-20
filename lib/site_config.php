@@ -58,16 +58,76 @@ function lorcana_new_tournament_slot_id() {
 }
 
 /**
- * @return array{id:string,eventId:int,name:string,mode:string,cutSize:int,cutRule:string,swissRounds:?int}
+ * Data source for a tournament slot: PlayHub (Lorcana) or Melee.gg (e.g. Cyberpunk).
+ */
+function lorcana_normalize_data_source($value) {
+    $s = strtolower(trim((string)$value));
+    if (in_array($s, ['melee', 'melee.gg', 'cyberpunk', 'melee_gg'], true)) {
+        return 'melee';
+    }
+    return 'playhub';
+}
+
+/**
+ * Extract Melee tournament id from URL or bare number; 0 if not parseable.
+ */
+function lorcana_parse_melee_tournament_id($raw) {
+    if (function_exists('melee_parse_tournament_id')) {
+        return melee_parse_tournament_id($raw);
+    }
+    $s = trim((string)$raw);
+    if ($s === '') {
+        return 0;
+    }
+    if (preg_match('/Tournament\/(?:View|Control|Edit)\/(\d+)/i', $s, $m)) {
+        return (int)$m[1];
+    }
+    if (preg_match('/^\d{1,9}$/', $s)) {
+        return (int)$s;
+    }
+    return 0;
+}
+
+/**
+ * @return array{id:string,eventId:int,name:string,mode:string,cutSize:int,cutRule:string,swissRounds:?int,source:string,meleeUrl:?string}
  */
 function lorcana_normalize_tournament_slot($raw, $fallbackEventId = 1007231) {
+    $source = 'playhub';
+    if (is_array($raw) && isset($raw['source'])) {
+        $source = lorcana_normalize_data_source($raw['source']);
+    }
+
     $defaultsMode = 'custom';
     if (is_array($raw) && isset($raw['mode'])) {
         $defaultsMode = lorcana_normalize_prize_mode($raw['mode']);
     }
+    // Melee / Cyberpunk: Soft EUC + DLC prize ladders stay Lorcana MAIN1-only.
+    if ($source === 'melee' && $defaultsMode === 'MAIN1') {
+        $defaultsMode = 'custom';
+    }
     $modeDefs = lorcana_prize_mode_defaults($defaultsMode);
 
+    $meleeUrl = null;
+    if (is_array($raw)) {
+        $urlRaw = trim((string)($raw['meleeUrl'] ?? $raw['url'] ?? ''));
+        if ($urlRaw !== '') {
+            $meleeUrl = function_exists('mb_substr') ? mb_substr($urlRaw, 0, 240) : substr($urlRaw, 0, 240);
+        }
+    }
+
     $eventId = is_array($raw) ? (int)($raw['eventId'] ?? $fallbackEventId) : (int)$fallbackEventId;
+    if ($source === 'melee') {
+        // Prefer id embedded in Melee URL when present.
+        $fromUrl = $meleeUrl ? lorcana_parse_melee_tournament_id($meleeUrl) : 0;
+        if ($fromUrl > 0) {
+            $eventId = $fromUrl;
+        } elseif ($eventId <= 0) {
+            $eventId = lorcana_parse_melee_tournament_id(is_array($raw) ? ($raw['eventId'] ?? '') : '');
+        }
+        if ($meleeUrl === null && $eventId > 0) {
+            $meleeUrl = 'https://melee.gg/Tournament/View/' . $eventId;
+        }
+    }
     if ($eventId <= 0 || $eventId > 999999999) {
         $eventId = (int)$fallbackEventId;
     }
@@ -79,7 +139,8 @@ function lorcana_normalize_tournament_slot($raw, $fallbackEventId = 1007231) {
 
     $name = is_array($raw) ? trim((string)($raw['name'] ?? '')) : '';
     if ($name === '') {
-        $name = (string)$modeDefs['label'] . ' #' . $eventId;
+        $prefix = $source === 'melee' ? 'Melee' : (string)$modeDefs['label'];
+        $name = $prefix . ' #' . $eventId;
     }
     if (function_exists('mb_substr')) {
         $name = mb_substr($name, 0, 80);
@@ -92,9 +153,13 @@ function lorcana_normalize_tournament_slot($raw, $fallbackEventId = 1007231) {
         $modeDefs['cutSize']
     );
     $cutRule = lorcana_normalize_cut_rule(
-        is_array($raw) ? ($raw['cutRule'] ?? $modeDefs['cutRule']) : $modeDefs['cutRule'],
-        $modeDefs['cutRule']
+        is_array($raw) ? ($raw['cutRule'] ?? ($source === 'melee' ? 'hard' : $modeDefs['cutRule'])) : $modeDefs['cutRule'],
+        $source === 'melee' ? 'hard' : $modeDefs['cutRule']
     );
+    // Melee defaults to hard cut unless Melee exposes a clear soft cut (it does not publicly).
+    if ($source === 'melee' && $cutRule === 'soft' && $defaultsMode === 'custom') {
+        $cutRule = 'hard';
+    }
     $swiss = null;
     if (is_array($raw) && array_key_exists('swissRounds', $raw)) {
         $swiss = lorcana_normalize_swiss_rounds($raw['swissRounds']);
@@ -108,7 +173,26 @@ function lorcana_normalize_tournament_slot($raw, $fallbackEventId = 1007231) {
         'cutSize' => $cutSize,
         'cutRule' => $cutRule,
         'swissRounds' => $swiss,
+        'source' => $source,
+        'meleeUrl' => $meleeUrl,
     ];
+}
+
+/**
+ * Resolve fetch source for an event id from site config (default playhub).
+ */
+function lorcana_source_for_event_id($eventId) {
+    $eventId = (int)$eventId;
+    if ($eventId <= 0) {
+        return 'playhub';
+    }
+    $cfg = lorcana_load_site_config();
+    foreach ($cfg['tournaments'] ?? [] as $t) {
+        if ((int)($t['eventId'] ?? 0) === $eventId) {
+            return lorcana_normalize_data_source($t['source'] ?? 'playhub');
+        }
+    }
+    return 'playhub';
 }
 
 /**
@@ -148,6 +232,7 @@ function lorcana_site_config_defaults() {
         'cutSize' => 32,
         'cutRule' => 'soft',
         'swissRounds' => null,
+        'source' => 'playhub',
     ], $fallbackEvent);
 
     return [
@@ -532,6 +617,10 @@ function lorcana_public_site_config() {
             'cutSize' => (int)$t['cutSize'],
             'cutRule' => (string)$t['cutRule'],
             'swissRounds' => $t['swissRounds'] === null ? null : (int)$t['swissRounds'],
+            'source' => lorcana_normalize_data_source($t['source'] ?? 'playhub'),
+            'meleeUrl' => isset($t['meleeUrl']) && $t['meleeUrl'] !== null && $t['meleeUrl'] !== ''
+                ? (string)$t['meleeUrl']
+                : null,
         ];
     }
     return [

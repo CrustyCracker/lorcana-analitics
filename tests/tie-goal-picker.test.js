@@ -18,6 +18,8 @@ const {
     shouldShowSoftEucPanel,
     syncFrontSoftEucHost,
     applyTournamentSelection,
+    applyPublicSiteConfigPayload,
+    getActiveTournamentSource,
     siteConfig
 } = require('../app.js');
 
@@ -84,7 +86,7 @@ describe('Can I Tie — cel strategii per tryb (MAIN1 / MAIN2 / other)', () => {
         assert.match(indexHtml, /data-tie-goal="gaston"/);
         assert.match(indexHtml, /id="frontSoftEucHost"/);
         assert.match(indexHtml, /id="playerSearchInput"/);
-        assert.match(indexHtml, /app\.js\?v=20261119top32strat3/);
+        assert.match(indexHtml, /app\.js\?v=20261120melee1/);
     });
 
     it('katalog MAIN1: Top8/Top16 hard + Continentals soft32 + Gaston soft64', () => {
@@ -152,6 +154,25 @@ describe('Can I Tie — cel strategii per tryb (MAIN1 / MAIN2 / other)', () => {
         assert.equal(shouldShowSoftEucPanel('ME2'), false);
         assert.equal(shouldShowSoftEucPanel('CCQ'), false);
         assert.equal(shouldShowSoftEucPanel('custom'), false);
+    });
+
+    it('Soft EUC wyłączony dla Melee nawet przy mode MAIN1', () => {
+        const { els } = makeDomStub();
+        const t = {
+            id: 't_melee',
+            eventId: 496782,
+            name: 'Night City',
+            mode: 'MAIN1',
+            cutSize: 8,
+            cutRule: 'hard',
+            source: 'melee',
+            meleeUrl: 'https://melee.gg/Tournament/View/496782'
+        };
+        siteConfig.tournaments = [t];
+        applyTournamentSelection(t, { track: false, clearLocalCut: true });
+        assert.equal(getActiveTournamentSource(), 'melee');
+        assert.equal(shouldShowSoftEucPanel('MAIN1'), false);
+        assert.equal(els.get('frontSoftEucHost').style.display, 'none');
     });
 
     it('applyTieGoalToCutUi ustawia cutSize/cutRule pod MC/hybrid (w tym gaston + top32)', () => {

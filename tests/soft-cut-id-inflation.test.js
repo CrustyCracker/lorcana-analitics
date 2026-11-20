@@ -324,8 +324,8 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(testsHtml, /id="prizeGoalsPanel"/);
         assert.match(testsHtml, /id="testsControlsStrip"/);
         assert.match(testsHtml, /loadR15LondonPreTie\(/);
-        assert.match(testsHtml, /app\.js\?v=20261119top32strat3/);
-        assert.match(rootHtml, /app\.js\?v=20261119top32strat3/);
+        assert.match(testsHtml, /app\.js\?v=20261120melee1/);
+        assert.match(rootHtml, /app\.js\?v=20261120melee1/);
         assert.match(testsHtml, /soft-euc-play-hint__warn--alert/);
         assert.match(rootHtml, /soft-euc-play-hint__warn--alert/);
         assert.match(testsHtml, /prize-ladders\.js/);

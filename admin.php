@@ -37,6 +37,8 @@ function admin_parse_tournaments_from_post(): array {
     $cutSizes = $_POST['t_cutSize'] ?? [];
     $cutRules = $_POST['t_cutRule'] ?? [];
     $swissList = $_POST['t_swissRounds'] ?? [];
+    $sources = $_POST['t_source'] ?? [];
+    $meleeUrls = $_POST['t_meleeUrl'] ?? [];
 
     if (!is_array($ids)) {
         $ids = [];
@@ -44,19 +46,44 @@ function admin_parse_tournaments_from_post(): array {
     $n = count($ids);
     $out = [];
     for ($i = 0; $i < $n; $i++) {
-        $eid = (int)preg_replace('/\D+/', '', (string)($eventIds[$i] ?? ''));
+        $source = lorcana_normalize_data_source($sources[$i] ?? 'playhub');
+        $meleeUrl = trim((string)($meleeUrls[$i] ?? ''));
+        $eidRaw = trim((string)($eventIds[$i] ?? ''));
+        $eid = (int)preg_replace('/\D+/', '', $eidRaw);
+        if ($source === 'melee') {
+            $fromUrl = lorcana_parse_melee_tournament_id($meleeUrl !== '' ? $meleeUrl : $eidRaw);
+            if ($fromUrl > 0) {
+                $eid = $fromUrl;
+            }
+            if ($meleeUrl === '' && $eid > 0) {
+                $meleeUrl = 'https://melee.gg/Tournament/View/' . $eid;
+            }
+        }
         if ($eid <= 0) {
             continue;
         }
         $swissRaw = trim((string)($swissList[$i] ?? ''));
+        $mode = (string)($modes[$i] ?? 'custom');
+        $cutRule = (string)($cutRules[$i] ?? 'hard');
+        // Melee Cyberpunk: Soft EUC / DLC MAIN1 chips stay Lorcana-only.
+        if ($source === 'melee') {
+            if (lorcana_normalize_prize_mode($mode) === 'MAIN1') {
+                $mode = 'custom';
+            }
+            if ($cutRule === 'soft') {
+                $cutRule = 'hard';
+            }
+        }
         $out[] = [
             'id' => (string)($ids[$i] ?? ''),
             'eventId' => $eid,
             'name' => trim((string)($names[$i] ?? '')),
-            'mode' => (string)($modes[$i] ?? 'custom'),
+            'mode' => $mode,
             'cutSize' => $cutSizes[$i] ?? 8,
-            'cutRule' => $cutRules[$i] ?? 'hard',
+            'cutRule' => $cutRule,
             'swissRounds' => $swissRaw === '' ? null : $swissRaw,
+            'source' => $source,
+            'meleeUrl' => $meleeUrl !== '' ? $meleeUrl : null,
         ];
     }
     return $out;
@@ -328,9 +355,11 @@ if (admin_is_logged_in()) {
             <div class="card">
                 <h2>Turnieje weekendu</h2>
                 <p class="meta" style="margin-top:0;">
-                    Dodaj kilka eventów naraz (np. <strong>DLC MAIN1</strong>, <strong>DLC MAIN2</strong>, <strong>CCQ Infinity</strong>).
-                    Publiczna strona przełącza je zakładkami — każdy event ma własny cache PlayHub (<code>cache_{id}.json</code>).
-                    Tryb ustawia domyślny cut (MAIN1 = soft Top&nbsp;32, MAIN2 = hard Top&nbsp;8, CCQ = hard Top&nbsp;8).
+                    Dodaj kilka eventów naraz (np. <strong>DLC MAIN1</strong>, <strong>DLC MAIN2</strong>, <strong>CCQ Infinity</strong>, albo <strong>Melee Cyberpunk</strong>).
+                    Publiczna strona przełącza je zakładkami — każdy event ma własny cache (<code>cache_{id}.json</code>).
+                    <strong>Źródło danych</strong>: PlayHub (Lorcana) albo Melee.gg (Cyberpunk / inne). Przy Melee podaj ID turnieju lub URL
+                    (<code>https://melee.gg/Tournament/View/496782</code>). Soft EUC / chipy DLC MAIN1 zostają tylko dla Lorcany MAIN1 —
+                    Melee wymusza hard cut (jak „inne” turnieje).
                 </p>
 
                 <div id="tournamentSlots">
@@ -348,6 +377,7 @@ if (admin_is_logged_in()) {
                                 </div>
                             </div>
                             <input type="hidden" name="t_id[]" value="<?= htmlspecialchars((string)$t['id'], ENT_QUOTES, 'UTF-8') ?>">
+                            <?php $slotSource = lorcana_normalize_data_source($t['source'] ?? 'playhub'); ?>
                             <div class="slot-grid">
                                 <div>
                                     <label>Nazwa (publiczna)</label>
@@ -356,9 +386,22 @@ if (admin_is_logged_in()) {
                                            placeholder="np. DLC London MAIN1">
                                 </div>
                                 <div>
-                                    <label>PlayHub event ID</label>
+                                    <label>Źródło danych</label>
+                                    <select name="t_source[]" data-source-select>
+                                        <option value="playhub" <?= $slotSource === 'playhub' ? 'selected' : '' ?>>PlayHub (Lorcana)</option>
+                                        <option value="melee" <?= $slotSource === 'melee' ? 'selected' : '' ?>>Melee.gg (Cyberpunk…)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label data-event-id-label><?= $slotSource === 'melee' ? 'Melee tournament ID' : 'PlayHub event ID' ?></label>
                                     <input type="number" name="t_eventId[]" min="1" max="999999999" required inputmode="numeric"
-                                           value="<?= (int)$t['eventId'] ?>">
+                                           value="<?= (int)$t['eventId'] ?>" data-event-id>
+                                </div>
+                                <div data-melee-url-wrap style="<?= $slotSource === 'melee' ? '' : 'display:none' ?>">
+                                    <label>Melee URL (opcjonalnie)</label>
+                                    <input type="url" name="t_meleeUrl[]" maxlength="240"
+                                           value="<?= htmlspecialchars((string)($t['meleeUrl'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+                                           placeholder="https://melee.gg/Tournament/View/496782" data-melee-url>
                                 </div>
                                 <div>
                                     <label>Tryb nagród / cut</label>
@@ -389,7 +432,7 @@ if (admin_is_logged_in()) {
                                     </select>
                                 </div>
                                 <div>
-                                    <label>Rundy Swiss (puste = PlayHub)</label>
+                                    <label>Rundy Swiss (puste = auto)</label>
                                     <input type="number" name="t_swissRounds[]" min="1" max="20" inputmode="numeric"
                                            value="<?= $t['swissRounds'] === null ? '' : (int)$t['swissRounds'] ?>"
                                            placeholder="Auto">
@@ -428,7 +471,9 @@ if (admin_is_logged_in()) {
                 ?>
                 <p class="meta">
                     <strong><?= htmlspecialchars((string)$t['name'], ENT_QUOTES, 'UTF-8') ?></strong>
-                    · #<?= (int)$t['eventId'] ?> · <?= htmlspecialchars((string)$t['mode'], ENT_QUOTES, 'UTF-8') ?>
+                    · #<?= (int)$t['eventId'] ?>
+                    · <?= htmlspecialchars(lorcana_normalize_data_source($t['source'] ?? 'playhub'), ENT_QUOTES, 'UTF-8') ?>
+                    · <?= htmlspecialchars((string)$t['mode'], ENT_QUOTES, 'UTF-8') ?>
                     <?php if ($st): ?>
                         · Cache: <strong><?= $st['exists'] ? ($st['fresh'] ? 'HIT' : 'STALE') : 'BRAK' ?></strong>
                         <?php if ($st['ageSeconds'] !== null): ?>
@@ -471,8 +516,20 @@ if (admin_is_logged_in()) {
                         <input type="text" name="t_name[]" maxlength="80" placeholder="np. DLC MAIN2" value="">
                     </div>
                     <div>
-                        <label>PlayHub event ID</label>
-                        <input type="number" name="t_eventId[]" min="1" max="999999999" required inputmode="numeric" value="">
+                        <label>Źródło danych</label>
+                        <select name="t_source[]" data-source-select>
+                            <option value="playhub" selected>PlayHub (Lorcana)</option>
+                            <option value="melee">Melee.gg (Cyberpunk…)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label data-event-id-label>PlayHub event ID</label>
+                        <input type="number" name="t_eventId[]" min="1" max="999999999" required inputmode="numeric" value="" data-event-id>
+                    </div>
+                    <div data-melee-url-wrap style="display:none">
+                        <label>Melee URL (opcjonalnie)</label>
+                        <input type="url" name="t_meleeUrl[]" maxlength="240" value=""
+                               placeholder="https://melee.gg/Tournament/View/496782" data-melee-url>
                     </div>
                     <div>
                         <label>Tryb nagród / cut</label>
@@ -495,7 +552,7 @@ if (admin_is_logged_in()) {
                         </select>
                     </div>
                     <div>
-                        <label>Rundy Swiss (puste = PlayHub)</label>
+                        <label>Rundy Swiss (puste = auto)</label>
                         <input type="number" name="t_swissRounds[]" min="1" max="20" inputmode="numeric" value="" placeholder="Auto">
                     </div>
                 </div>
@@ -524,19 +581,43 @@ if (admin_is_logged_in()) {
                 return 't_' + Math.random().toString(16).slice(2, 10);
             }
 
+            function syncSourceUi(slot) {
+                const src = slot.querySelector('[data-source-select]');
+                const wrap = slot.querySelector('[data-melee-url-wrap]');
+                const label = slot.querySelector('[data-event-id-label]');
+                const modeSel = slot.querySelector('[data-mode-select]');
+                const cutRule = slot.querySelector('[data-cut-rule]');
+                const isMelee = src && src.value === 'melee';
+                if (wrap) wrap.style.display = isMelee ? '' : 'none';
+                if (label) label.textContent = isMelee ? 'Melee tournament ID' : 'PlayHub event ID';
+                if (isMelee) {
+                    if (modeSel && modeSel.value === 'MAIN1') modeSel.value = 'custom';
+                    if (cutRule) cutRule.value = 'hard';
+                }
+            }
+
             function bindSlot(slot) {
                 const modeSel = slot.querySelector('[data-mode-select]');
                 const cutSize = slot.querySelector('[data-cut-size]');
                 const cutRule = slot.querySelector('[data-cut-rule]');
+                const sourceSel = slot.querySelector('[data-source-select]');
                 const removeBtn = slot.querySelector('[data-remove-slot]');
                 if (modeSel) {
                     modeSel.addEventListener('change', () => {
+                        const src = sourceSel?.value || 'playhub';
+                        if (src === 'melee' && modeSel.value === 'MAIN1') {
+                            modeSel.value = 'custom';
+                        }
                         const d = MODE_DEFAULTS[modeSel.value] || MODE_DEFAULTS.custom;
                         if (cutSize) cutSize.value = String(d.cutSize);
-                        if (cutRule) cutRule.value = d.cutRule;
+                        if (cutRule) cutRule.value = src === 'melee' ? 'hard' : d.cutRule;
                         const swiss = slot.querySelector('[name="t_swissRounds[]"]');
                         if (swiss) swiss.value = d.swissRounds == null ? '' : String(d.swissRounds);
                     });
+                }
+                if (sourceSel) {
+                    sourceSel.addEventListener('change', () => syncSourceUi(slot));
+                    syncSourceUi(slot);
                 }
                 if (removeBtn) {
                     removeBtn.addEventListener('click', () => {

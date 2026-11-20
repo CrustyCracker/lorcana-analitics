@@ -1,10 +1,15 @@
 <?php
 /**
  * PlayHub / Hydraproxy fetch + aggregate event payload builder.
+ * Refresh dispatches to Melee.gg when the tournament slot source is "melee".
  */
 
 require_once __DIR__ . '/playhub_cache.php';
 require_once __DIR__ . '/playhub_slim.php';
+require_once __DIR__ . '/melee_fetch.php';
+if (is_file(__DIR__ . '/site_config.php')) {
+    require_once __DIR__ . '/site_config.php';
+}
 
 /** Rozmiar strony Hydraproxy — większy = mniej round-tripów przy cold-load 2k–4k. */
 if (!defined('LORCANA_MATCH_PAGE_SIZE')) {
@@ -743,7 +748,19 @@ function lorcana_refresh_event_cache($eventId, $options = []) {
         if (isset($options['roundsMode'])) {
             $buildOpts['roundsMode'] = $options['roundsMode'];
         }
-        $built = lorcana_build_event_payload($eventId, $authToken, $allowLocalSslFallback, $buildOpts);
+        $source = $options['source'] ?? null;
+        if ($source === null && function_exists('lorcana_source_for_event_id')) {
+            $source = lorcana_source_for_event_id($eventId);
+        }
+        $source = function_exists('lorcana_normalize_data_source')
+            ? lorcana_normalize_data_source($source ?? 'playhub')
+            : (string)($source ?? 'playhub');
+
+        if ($source === 'melee') {
+            $built = melee_build_event_payload($eventId, $buildOpts);
+        } else {
+            $built = lorcana_build_event_payload($eventId, $authToken, $allowLocalSslFallback, $buildOpts);
+        }
         if (empty($built['ok'])) {
             return [
                 'ok' => false,
