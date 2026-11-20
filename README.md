@@ -383,8 +383,9 @@ W rundzie 8 przy stole 14 spotkali się **Terry M** (15 pkt) oraz **[GPL] Crusty
 
 ## 🚀 CI/CD & Auto-Deploy (OVHcloud Git Integration)
 
-Projekt posiada w pełni skonfigurowane automatyczne wdrażanie (Auto-Deploy) po każdym `git push` do gałęzi `main`:
-- **Webhook Endpoint**: `https://webhooks-webhosting.eu.ovhapis.com/1.0/vcs/github/push/...`
-- **Rejestracja w GitHub**: Dodano webhook repozytoryjny nasłuchujący zdarzenia `push`.
-- **Bezpieczeństwo Produkcyjne**: Pliki runtime, bazy SQLite, cache oraz konfiguracja subskrypcji są ignorowane w `.gitignore` i chronione w `.htaccess`, co zapobiega konfliktom lub utracie danych podczas deployu z wymuszeniem.
+Projekt posiada automatyczne wdrażanie (Auto-Deploy) po każdym `git push` do gałęzi `main`:
+- **OVH deploy URL**: ustaw `LORCANA_OVH_DEPLOY_URL` albo gitignored `ovh_deploy_url.txt` (nie commituj JWT).
+- **GitHub webhook HMAC**: wymagany (`GITHUB_WEBHOOK_SECRET` / `webhook_secret.txt`) — bez sekretu handler zwraca 401.
+- **Rotacja OVH**: po wycieku wygeneruj nowy webhook w panelu OVH i zaktualizuj env/plik lokalnie.
+- **Bezpieczeństwo Produkcyjne**: Pliki runtime, bazy SQLite, cache oraz konfiguracja subskrypcji są ignorowane w `.gitignore` i chronione w `.htaccess`.
 

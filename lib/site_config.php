@@ -8,12 +8,146 @@ if (!defined('LORCANA_CACHE_ROOT')) {
     define('LORCANA_CACHE_ROOT', dirname(__DIR__));
 }
 
-/** bcrypt of admin password (UTF-8 "jebaćm7") — never the plaintext. */
+/**
+ * Admin bcrypt hash — never commit plaintext passwords.
+ * Load order: env LORCANA_ADMIN_PASSWORD_HASH → gitignored admin_pw.hash.
+ */
+function lorcana_admin_password_hash_file() {
+    return LORCANA_CACHE_ROOT . '/admin_pw.hash';
+}
+
+function lorcana_admin_password_hash() {
+    static $cached = null;
+    if ($cached !== null) {
+        return $cached;
+    }
+    $env = getenv('LORCANA_ADMIN_PASSWORD_HASH');
+    if (is_string($env)) {
+        $env = trim($env);
+        if ($env !== '' && preg_match('/^\$2[ayb]\$/', $env)) {
+            $cached = $env;
+            return $cached;
+        }
+    }
+    $path = lorcana_admin_password_hash_file();
+    if (is_file($path)) {
+        $fromFile = trim((string)@file_get_contents($path));
+        if ($fromFile !== '' && preg_match('/^\$2[ayb]\$/', $fromFile)) {
+            $cached = $fromFile;
+            return $cached;
+        }
+    }
+    $cached = '';
+    return $cached;
+}
+
 if (!defined('LORCANA_ADMIN_PASSWORD_HASH')) {
-    define(
-        'LORCANA_ADMIN_PASSWORD_HASH',
-        '$2y$10$jail64N./r..SsxW6MeK7eZiNAdDI0yL4EGh66yvYLXVphC/VlUbq'
-    );
+    define('LORCANA_ADMIN_PASSWORD_HASH', lorcana_admin_password_hash());
+}
+
+/** True only for loopback (127.0.0.1 / ::1) — never RFC1918 / link-local. */
+function lorcana_is_loopback_request() {
+    $remoteIp = $_SERVER['REMOTE_ADDR'] ?? '';
+    return in_array($remoteIp, ['127.0.0.1', '::1'], true);
+}
+
+/**
+ * Privileged HTTP: loopback OR non-empty LORCANA_ADMIN_KEY match.
+ */
+function lorcana_is_privileged_http() {
+    if (lorcana_is_loopback_request()) {
+        return true;
+    }
+    $expected = getenv('LORCANA_ADMIN_KEY');
+    if (!is_string($expected) || $expected === '') {
+        return false;
+    }
+    $provided = $_POST['admin_key'] ?? ($_GET['admin_key'] ?? ($_SERVER['HTTP_X_ADMIN_KEY'] ?? ''));
+    return hash_equals($expected, (string)$provided);
+}
+
+/**
+ * Event IDs configured in admin tournament slots (public allowlist).
+ *
+ * @return array<int, true>
+ */
+function lorcana_configured_event_ids() {
+    static $map = null;
+    if ($map !== null) {
+        return $map;
+    }
+    $map = [];
+    $cfg = lorcana_load_site_config();
+    foreach ($cfg['tournaments'] ?? [] as $t) {
+        $eid = (int)($t['eventId'] ?? 0);
+        if ($eid > 0) {
+            $map[$eid] = true;
+        }
+    }
+    $active = (int)($cfg['activeEventId'] ?? 0);
+    if ($active > 0) {
+        $map[$active] = true;
+    }
+    return $map;
+}
+
+function lorcana_is_configured_event_id($eventId) {
+    $eventId = (int)$eventId;
+    if ($eventId <= 0) {
+        return false;
+    }
+    return isset(lorcana_configured_event_ids()[$eventId]);
+}
+
+function lorcana_merge_inks_min_interval_seconds() {
+    return 10;
+}
+
+function lorcana_merge_inks_rate_file($eventId) {
+    return LORCANA_CACHE_ROOT . '/cache_' . (int)$eventId . '.merge_at';
+}
+
+/**
+ * Per-event file throttle for merge_player_inks (anti-poison / write churn).
+ */
+function lorcana_allow_merge_inks($eventId, $bypass = false) {
+    $eventId = (int)$eventId;
+    if ($eventId <= 0) {
+        return false;
+    }
+    if ($bypass) {
+        @file_put_contents(lorcana_merge_inks_rate_file($eventId), (string)time(), LOCK_EX);
+        return true;
+    }
+    $path = lorcana_merge_inks_rate_file($eventId);
+    $last = is_file($path) ? (int)trim((string)@file_get_contents($path)) : 0;
+    $min = lorcana_merge_inks_min_interval_seconds();
+    if ($last > 0 && (time() - $last) < $min) {
+        return false;
+    }
+    @file_put_contents($path, (string)time(), LOCK_EX);
+    return true;
+}
+
+/**
+ * OVH deploy webhook URL — env LORCANA_OVH_DEPLOY_URL or gitignored ovh_deploy_url.txt.
+ */
+function lorcana_ovh_deploy_url() {
+    $env = getenv('LORCANA_OVH_DEPLOY_URL');
+    if (is_string($env)) {
+        $env = trim($env);
+        if ($env !== '' && preg_match('#^https://#i', $env)) {
+            return $env;
+        }
+    }
+    $path = LORCANA_CACHE_ROOT . '/ovh_deploy_url.txt';
+    if (is_file($path)) {
+        $fromFile = trim((string)@file_get_contents($path));
+        if ($fromFile !== '' && preg_match('#^https://#i', $fromFile)) {
+            return $fromFile;
+        }
+    }
+    return '';
 }
 
 function lorcana_site_config_file() {

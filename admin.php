@@ -1,14 +1,25 @@
 <?php
 /**
  * Panel admina — hasło sesyjne, multi-turniej (DLC MAIN1/MAIN2/CCQ), algorytm predykcji.
- * Hasło weryfikowane przez bcrypt (LORCANA_ADMIN_PASSWORD_HASH); nie ma plaintextu w JS.
+ * Hasło weryfikowane przez bcrypt (env / admin_pw.hash); nie ma plaintextu w JS.
  */
 declare(strict_types=1);
 
-session_start();
-
 require_once __DIR__ . '/lib/playhub_cache.php';
 require_once __DIR__ . '/lib/site_config.php';
+
+$adminHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+    || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443)
+    || (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strtolower((string)$_SERVER['HTTP_X_FORWARDED_PROTO']) === 'https');
+
+session_set_cookie_params([
+    'lifetime' => 0,
+    'path' => '/',
+    'secure' => $adminHttps,
+    'httponly' => true,
+    'samesite' => 'Lax',
+]);
+session_start();
 
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
@@ -16,6 +27,22 @@ header('Cache-Control: no-store');
 
 function admin_is_logged_in(): bool {
     return !empty($_SESSION['lorcana_admin_ok']) && $_SESSION['lorcana_admin_ok'] === true;
+}
+
+function admin_csrf_token(): string {
+    if (empty($_SESSION['csrf']) || !is_string($_SESSION['csrf'])) {
+        $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf'];
+}
+
+function admin_require_csrf(): void {
+    $token = (string)($_POST['csrf'] ?? '');
+    $session = (string)($_SESSION['csrf'] ?? '');
+    if ($token === '' || $session === '' || !hash_equals($session, $token)) {
+        http_response_code(403);
+        exit('CSRF validation failed');
+    }
 }
 
 function admin_require_post(): void {
@@ -105,19 +132,27 @@ if (isset($_GET['logout'])) {
 
 if (isset($_POST['login'])) {
     admin_require_post();
+    admin_require_csrf();
     $pw = (string)($_POST['password'] ?? '');
-    if ($pw !== '' && password_verify($pw, LORCANA_ADMIN_PASSWORD_HASH)) {
+    $hash = lorcana_admin_password_hash();
+    if ($hash === '') {
+        $error = 'Hasło admina nie jest skonfigurowane (LORCANA_ADMIN_PASSWORD_HASH / admin_pw.hash).';
+    } elseif ($pw !== '' && password_verify($pw, $hash)) {
         session_regenerate_id(true);
         $_SESSION['lorcana_admin_ok'] = true;
         $_SESSION['lorcana_admin_at'] = time();
+        // Rotate CSRF after privilege change.
+        $_SESSION['csrf'] = bin2hex(random_bytes(32));
         header('Location: admin.php');
         exit;
+    } else {
+        $error = 'Nieprawidłowe hasło.';
     }
-    $error = 'Nieprawidłowe hasło.';
 }
 
 if (admin_is_logged_in() && isset($_POST['save_config'])) {
     admin_require_post();
+    admin_require_csrf();
     $algo = strtolower(trim((string)($_POST['predictionAlgorithm'] ?? 'hybrid')));
     $tournaments = admin_parse_tournaments_from_post();
     $activeTid = trim((string)($_POST['activeTournamentId'] ?? ''));
@@ -168,6 +203,7 @@ if (admin_is_logged_in() && isset($_POST['save_config'])) {
 
 if (admin_is_logged_in() && isset($_POST['force_refresh'])) {
     admin_require_post();
+    admin_require_csrf();
     $cfg = lorcana_load_site_config();
     $refreshId = (int)preg_replace('/\D+/', '', (string)($_POST['refreshEventId'] ?? ''));
     if ($refreshId <= 0) {
@@ -344,6 +380,7 @@ if (admin_is_logged_in()) {
     <?php if (!admin_is_logged_in()): ?>
         <div class="card">
             <form method="post" autocomplete="current-password">
+                <input type="hidden" name="csrf" value="<?= htmlspecialchars(admin_csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                 <label for="password">Hasło</label>
                 <input type="password" id="password" name="password" required autofocus>
                 <button type="submit" name="login" value="1">Zaloguj</button>
@@ -352,6 +389,7 @@ if (admin_is_logged_in()) {
         </div>
     <?php else: ?>
         <form method="post" id="adminConfigForm">
+            <input type="hidden" name="csrf" value="<?= htmlspecialchars(admin_csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
             <div class="card">
                 <h2>Turnieje weekendu</h2>
                 <p class="meta" style="margin-top:0;">
@@ -487,6 +525,7 @@ if (admin_is_logged_in()) {
                     <?php endif; ?>
                 </p>
                 <form method="post" style="margin:0 0 14px;">
+                    <input type="hidden" name="csrf" value="<?= htmlspecialchars(admin_csrf_token(), ENT_QUOTES, 'UTF-8') ?>">
                     <input type="hidden" name="refreshEventId" value="<?= (int)$t['eventId'] ?>">
                     <button type="submit" name="force_refresh" value="1" class="secondary">Odśwież cache #<?= (int)$t['eventId'] ?></button>
                 </form>

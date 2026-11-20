@@ -1,33 +1,40 @@
 <?php
 /**
  * GitHub Marketplace & Deployment Webhook Handler
- * 
+ *
  * Obsługuje zdarzenia GitHub Webhook:
- * 1. marketplace_purchase: powiadomienia o zmianach planów kont klientów (purchased, cancelled, changed, pending_change, pending_change_cancelled)
+ * 1. marketplace_purchase: powiadomienia o zmianach planów kont klientów
  * 2. ping: test połączenia z GitHub Marketplace / GitHub Webhooks
- * 3. push: automatyczne przekazywanie zdarzenia push do webhooka auto-deploy na hostingu OVHcloud
+ * 3. push: automatyczne przekazywanie zdarzenia push do webhooka auto-deploy na OVHcloud
+ *
+ * Fail-closed: GitHub event POSTs require a configured HMAC secret.
+ * OVH deploy URL comes from env LORCANA_OVH_DEPLOY_URL or gitignored ovh_deploy_url.txt.
  */
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 
-$remoteIp = $_SERVER['REMOTE_ADDR'] ?? '';
-$isLocalRequest = in_array($remoteIp, ['127.0.0.1', '::1'], true)
-    || ($remoteIp !== '' && filter_var($remoteIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false);
+require_once __DIR__ . '/lib/site_config.php';
+
+$isLocalRequest = lorcana_is_loopback_request();
+$isPrivileged = lorcana_is_privileged_http();
 
 $subscriptionsFile = __DIR__ . '/marketplace_subscriptions.json';
 $logFile = __DIR__ . '/webhook_log.json';
 $secretFile = __DIR__ . '/webhook_secret.txt';
 
-// URL do webhooka automatycznego wdrażania Git na hostingu OVHcloud
-$ovhDeployWebhookUrl = 'https://webhooks-webhosting.eu.ovhapis.com/1.0/vcs/github/push/eyJhbGciOiJFZERTQSIsImtpZCI6IjEiLCJ0eXAiOiJKV1QifQ.eyJzdWIiOiJnaXRodWIvd3IxMjMwNzktb3ZoIiwiZXhwIjoyNTI0NjA3OTk5LCJqdGkiOiJhMWQ3M2IxZTdlNDNiNmVhNWNjZjRiMmM1MzE5YjFiZjdkOGE3ZDlmIiwidmVyc2lvbiI6MSwibmFtZSI6InZvamtvdnEuY2x1c3RlcjAyMS5ob3N0aW5nLm92aC5uZXQiLCJwYXRoIjoic2l0IiwiY291bnRlciI6MH0.aMaCPdbHXtxvU4lMGZdDf20QYdJGhZDLftNUTYEYW2SUk3-2Y38ifnC3-2Pl4byl20CB05TG2_o9NRT7I2m5Aw';
+$ovhDeployWebhookUrl = lorcana_ovh_deploy_url();
 
 // Pobieranie webhook secret (ze zmiennej środowiskowej lub z pliku)
 $webhookSecret = getenv('GITHUB_MARKETPLACE_WEBHOOK_SECRET') ?: getenv('GITHUB_WEBHOOK_SECRET');
 if (empty($webhookSecret) && file_exists($secretFile)) {
     $webhookSecret = trim((string)file_get_contents($secretFile));
 }
+if (!is_string($webhookSecret)) {
+    $webhookSecret = '';
+}
+$webhookSecret = trim($webhookSecret);
 
 // -------------------------------------------------------------
 // GET Endpointy pomocnicze (status, sprawdzenie planu użytkownika)
@@ -41,6 +48,12 @@ if ($requestMethod === 'GET') {
     $action = $_GET['action'] ?? 'status';
 
     if ($action === 'status') {
+        if (!$isPrivileged) {
+            http_response_code(403);
+            echo json_encode(["error" => "Brak uprawnień administratora."]);
+            exit;
+        }
+
         $subs = file_exists($subscriptionsFile) ? json_decode((string)file_get_contents($subscriptionsFile), true) : [];
         $logs = file_exists($logFile) ? json_decode((string)file_get_contents($logFile), true) : [];
         $lastLog = is_array($logs) && !empty($logs) ? end($logs) : null;
@@ -57,10 +70,10 @@ if ($requestMethod === 'GET') {
         echo json_encode([
             "status" => "ok",
             "service" => "Lorcana GitHub Marketplace Webhook Handler",
-            "hasSecretConfigured" => !empty($webhookSecret),
+            "hasSecretConfigured" => $webhookSecret !== '',
             "totalSubscribers" => is_array($subs) ? count($subs) : 0,
             "activeSubscribers" => $activeCount,
-            "ovhDeployConfigured" => true,
+            "ovhDeployConfigured" => $ovhDeployWebhookUrl !== '',
             "lastEvent" => $lastLog ? [
                 "event" => $lastLog['event'] ?? 'unknown',
                 "action" => $lastLog['action'] ?? null,
@@ -103,11 +116,7 @@ if ($requestMethod === 'GET') {
     }
 
     if ($action === 'list_subscriptions') {
-        $providedKey = $_GET['admin_key'] ?? ($_SERVER['HTTP_X_ADMIN_KEY'] ?? '');
-        $expectedKey = getenv('LORCANA_ADMIN_KEY');
-        $authorized = $isLocalRequest || (!empty($expectedKey) && hash_equals($expectedKey, (string)$providedKey));
-
-        if (!$authorized) {
+        if (!$isPrivileged) {
             http_response_code(403);
             echo json_encode(["error" => "Brak uprawnień administratora."]);
             exit;
@@ -127,11 +136,7 @@ if ($requestMethod === 'GET') {
 // POST: Konfiguracja sekretu przez administratora
 // -------------------------------------------------------------
 if ($requestMethod === 'POST' && isset($_POST['set_secret'])) {
-    $providedKey = $_POST['admin_key'] ?? ($_SERVER['HTTP_X_ADMIN_KEY'] ?? '');
-    $expectedKey = getenv('LORCANA_ADMIN_KEY');
-    $authorized = $isLocalRequest || (!empty($expectedKey) && hash_equals($expectedKey, (string)$providedKey));
-
-    if (!$authorized) {
+    if (!$isPrivileged) {
         http_response_code(403);
         echo json_encode(["error" => "Brak uprawnień do zmiany sekretu webhooka."]);
         exit;
@@ -153,13 +158,15 @@ if ($requestMethod === 'POST' && isset($_POST['set_secret'])) {
 // POST: Ręczne wywołanie deployu na OVH (dla administratora)
 // -------------------------------------------------------------
 if ($requestMethod === 'POST' && isset($_GET['action']) && $_GET['action'] === 'deploy_ovh') {
-    $providedKey = $_POST['admin_key'] ?? ($_SERVER['HTTP_X_ADMIN_KEY'] ?? '');
-    $expectedKey = getenv('LORCANA_ADMIN_KEY');
-    $authorized = $isLocalRequest || (!empty($expectedKey) && hash_equals($expectedKey, (string)$providedKey));
-
-    if (!$authorized) {
+    if (!$isPrivileged) {
         http_response_code(403);
         echo json_encode(["error" => "Brak uprawnień do wywołania wdrożenia OVH."]);
+        exit;
+    }
+
+    if ($ovhDeployWebhookUrl === '') {
+        http_response_code(503);
+        echo json_encode(["error" => "OVH deploy URL nie skonfigurowany (LORCANA_OVH_DEPLOY_URL / ovh_deploy_url.txt)."]);
         exit;
     }
 
@@ -183,7 +190,14 @@ if ($requestMethod === 'POST' && isset($_GET['action']) && $_GET['action'] === '
 
 // -------------------------------------------------------------
 // POST: Obsługa zdarzeń GitHub Webhook (Marketplace & Push)
+// Fail closed: HMAC secret must be configured.
 // -------------------------------------------------------------
+if ($webhookSecret === '') {
+    http_response_code(401);
+    echo json_encode(["error" => "Webhook HMAC secret nie jest skonfigurowany."]);
+    exit;
+}
+
 $rawPayload = file_get_contents('php://input');
 if ($rawPayload === false || trim($rawPayload) === '') {
     if (php_sapi_name() === 'cli') {
@@ -207,18 +221,16 @@ if (empty($rawPayload)) {
 $githubSignature256 = $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? '';
 $githubSignature = $_SERVER['HTTP_X_HUB_SIGNATURE'] ?? '';
 
-if (!empty($webhookSecret)) {
-    $expectedSig256 = 'sha256=' . hash_hmac('sha256', $rawPayload, $webhookSecret);
-    $isValid256 = !empty($githubSignature256) && hash_equals($expectedSig256, $githubSignature256);
+$expectedSig256 = 'sha256=' . hash_hmac('sha256', $rawPayload, $webhookSecret);
+$isValid256 = !empty($githubSignature256) && hash_equals($expectedSig256, $githubSignature256);
 
-    $expectedSigSha1 = 'sha1=' . hash_hmac('sha1', $rawPayload, $webhookSecret);
-    $isValidSha1 = !empty($githubSignature) && hash_equals($expectedSigSha1, $githubSignature);
+$expectedSigSha1 = 'sha1=' . hash_hmac('sha1', $rawPayload, $webhookSecret);
+$isValidSha1 = !empty($githubSignature) && hash_equals($expectedSigSha1, $githubSignature);
 
-    if (!$isValid256 && !$isValidSha1) {
-        http_response_code(401);
-        echo json_encode(["error" => "Niepoprawny podpis kryptograficzny X-Hub-Signature-256."]);
-        exit;
-    }
+if (!$isValid256 && !$isValidSha1) {
+    http_response_code(401);
+    echo json_encode(["error" => "Niepoprawny podpis kryptograficzny X-Hub-Signature-256."]);
+    exit;
 }
 
 $payloadData = json_decode($rawPayload, true);
@@ -370,6 +382,12 @@ if ($githubEvent === 'marketplace_purchase') {
 
 // 4. Obsługa zdarzenia 'push' (Auto-Deploy Relay na OVHcloud)
 if ($githubEvent === 'push') {
+    if ($ovhDeployWebhookUrl === '') {
+        http_response_code(503);
+        echo json_encode(["error" => "OVH deploy URL nie skonfigurowany."]);
+        exit;
+    }
+
     // Przekazanie zapytania POST do webhooka auto-deploy na hostingu OVH
     $ch = curl_init($ovhDeployWebhookUrl);
     curl_setopt($ch, CURLOPT_POST, true);

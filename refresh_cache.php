@@ -18,6 +18,7 @@
 
 require_once __DIR__ . '/lib/playhub_cache.php';
 require_once __DIR__ . '/lib/playhub_fetch.php';
+require_once __DIR__ . '/lib/site_config.php';
 
 $isCli = (PHP_SAPI === 'cli' || PHP_SAPI === 'phpdbg');
 
@@ -58,10 +59,13 @@ function lorcana_parse_cli_args(array $argv) {
     return $opts;
 }
 
+/** Loopback only (127.0.0.1 / ::1). Private LAN is not trusted. */
 function lorcana_is_local_http() {
+    if (function_exists('lorcana_is_loopback_request')) {
+        return lorcana_is_loopback_request();
+    }
     $remoteIp = $_SERVER['REMOTE_ADDR'] ?? '';
-    return in_array($remoteIp, ['127.0.0.1', '::1'], true)
-        || ($remoteIp !== '' && filter_var($remoteIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false);
+    return in_array($remoteIp, ['127.0.0.1', '::1'], true);
 }
 
 /**

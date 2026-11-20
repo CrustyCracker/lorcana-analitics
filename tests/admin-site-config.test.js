@@ -42,7 +42,11 @@ $pub = lorcana_public_site_config();
 echo json_encode($pub);
 echo "\\n";
 
-$ok = password_verify("jebaćm7", LORCANA_ADMIN_PASSWORD_HASH) ? 'pw_ok' : 'pw_bad';
+// Hash loaded from gitignored admin_pw.hash (or env) — never assert a real plaintext password.
+$testHash = password_hash('local-test-only', PASSWORD_BCRYPT);
+file_put_contents(lorcana_admin_password_hash_file(), $testHash);
+$hashFile = trim((string)file_get_contents(lorcana_admin_password_hash_file()));
+$ok = (str_starts_with($hashFile, '$2') && password_verify('local-test-only', $hashFile)) ? 'pw_ok' : 'pw_bad';
 echo $ok, "\\n";
 
 $allow1 = lorcana_allow_forced_refresh(424242, false) ? '1' : '0';

@@ -118,6 +118,45 @@ describe('GitHub Marketplace Webhook Handler (webhook.php) Tests', () => {
         assert.ok(res.parsed.error.includes('Niepoprawny podpis'));
     });
 
+    it('fail-closed: brak sekretu HMAC → 401 przed handlerem', () => {
+        const payload = JSON.stringify({ zen: 'no secret' });
+        const env = {
+            ...process.env,
+            REQUEST_METHOD: 'POST',
+            QUERY_STRING: '',
+            CONTENT_LENGTH: Buffer.byteLength(payload, 'utf8').toString(),
+            CONTENT_TYPE: 'application/json',
+            REMOTE_ADDR: '127.0.0.1',
+            HTTP_X_GITHUB_EVENT: 'ping',
+            // Explicitly clear env secrets; also hide file by renaming temporarily.
+        };
+        delete env.GITHUB_MARKETPLACE_WEBHOOK_SECRET;
+        delete env.GITHUB_WEBHOOK_SECRET;
+
+        let renamed = false;
+        const bak = SECRET_FILE + '.bak_test';
+        if (fs.existsSync(SECRET_FILE)) {
+            fs.renameSync(SECRET_FILE, bak);
+            renamed = true;
+        }
+        try {
+            const res = spawnSync(PHP_BIN, [WEBHOOK_SCRIPT], {
+                env,
+                input: payload,
+                encoding: 'utf8'
+            });
+            const output = res.stdout || '';
+            const jsonMatch = output.match(/\{[\s\S]*\}$/);
+            assert.ok(jsonMatch, 'expected JSON body');
+            const parsed = JSON.parse(jsonMatch[0]);
+            assert.ok(String(parsed.error || '').includes('nie jest skonfigurowany'));
+        } finally {
+            if (renamed && fs.existsSync(bak)) {
+                fs.renameSync(bak, SECRET_FILE);
+            }
+        }
+    });
+
     it('obsługuje zakup nowego planu (action: purchased) i zapisuje subskrypcję klienta', () => {
         const purchasePayload = JSON.stringify({
             action: 'purchased',

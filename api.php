@@ -21,17 +21,12 @@ if ($requestMethod === 'OPTIONS') {
     exit;
 }
 
-$remoteIp = $_SERVER['REMOTE_ADDR'] ?? '';
-$isLocalRequest = in_array($remoteIp, ['127.0.0.1', '::1'], true)
-    || ($remoteIp !== '' && filter_var($remoteIp, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false);
+$isLocalRequest = lorcana_is_loopback_request();
+$isPrivileged = lorcana_is_privileged_http();
 
 $tokenFile = lorcana_token_file();
 if ($requestMethod === 'POST' && isset($_POST['set_token'])) {
-    $expectedAdminKey = getenv('LORCANA_ADMIN_KEY');
-    $providedAdminKey = $_POST['admin_key'] ?? ($_SERVER['HTTP_X_ADMIN_KEY'] ?? '');
-    $isAuthorizedAdmin = $isLocalRequest || (!empty($expectedAdminKey) && hash_equals($expectedAdminKey, (string)$providedAdminKey));
-
-    if (!$isAuthorizedAdmin) {
+    if (!$isPrivileged) {
         http_response_code(403);
         echo json_encode(["error" => "Brak uprawnień do modyfikacji tokenu autoryzacyjnego."]);
         exit;
@@ -119,6 +114,18 @@ if (isset($_GET['action']) && $_GET['action'] === 'merge_player_inks') {
         echo json_encode(['error' => 'Nieprawidłowy eventId.']);
         exit;
     }
+    // Only admin-configured tournament slots may accept ink merges (no loopback bypass).
+    if (!lorcana_is_configured_event_id($eventId)) {
+        http_response_code(403);
+        echo json_encode(['error' => 'eventId spoza listy turniejów admina.']);
+        exit;
+    }
+    if (!lorcana_allow_merge_inks($eventId, false)) {
+        http_response_code(429);
+        header('Retry-After: ' . (string)lorcana_merge_inks_min_interval_seconds());
+        echo json_encode(['error' => 'Zbyt częste merge atramentów — spróbuj za chwilę.']);
+        exit;
+    }
     $rawBody = (string)file_get_contents('php://input');
     $parsed = $rawBody !== '' ? json_decode($rawBody, true) : null;
     if (!is_array($parsed)) {
@@ -136,8 +143,40 @@ if (isset($_GET['action']) && $_GET['action'] === 'merge_player_inks') {
         echo json_encode(['error' => 'Za dużo wpisów atramentów.']);
         exit;
     }
+    // Validate / sanitize shape before disk write (player ids + compact inks).
+    $sanitized = [];
+    foreach ($incoming as $pid => $inks) {
+        $key = preg_replace('/[^0-9A-Za-z_-]/', '', (string)$pid);
+        if ($key === '' || strlen($key) > 40) {
+            continue;
+        }
+        $n = lorcana_normalize_compact_inks($inks);
+        if ($n) {
+            $sanitized[$key] = $n;
+        }
+    }
+    if (count($sanitized) === 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Brak poprawnych wpisów atramentów.']);
+        exit;
+    }
     $before = lorcana_player_inks_cache_count($eventId);
-    $merged = lorcana_merge_player_inks_cache($eventId, $incoming);
+    // Cap total durable map size.
+    if ($before >= 8000 && count($sanitized) > 0) {
+        $existing = lorcana_read_player_inks_cache($eventId);
+        $newOnly = 0;
+        foreach ($sanitized as $k => $_) {
+            if (!isset($existing[$k])) {
+                $newOnly++;
+            }
+        }
+        if ($newOnly > 0 && ($before + $newOnly) > 8000) {
+            http_response_code(413);
+            echo json_encode(['error' => 'Limit mapy atramentów na dysku.']);
+            exit;
+        }
+    }
+    $merged = lorcana_merge_player_inks_cache($eventId, $sanitized);
     $after = count($merged);
     // Soft-touch: if a snapshot exists, re-apply durable inks onto standings for next HIT.
     $cached = lorcana_read_cache($eventId);
@@ -572,6 +611,27 @@ if (!$forceRefresh) {
 }
 
 // Force refresh or true cold miss (no cache file): synchronous PlayHub fetch.
+// Prefer admin-configured tournament slots; throttle cold MISS like ?refresh=1.
+if (!lorcana_is_configured_event_id($eventId)) {
+    http_response_code(404);
+    echo json_encode([
+        'error' => 'Nieznany / niekonfigurowany eventId (tylko turnieje z panelu admina).',
+    ]);
+    exit;
+}
+// When ?refresh=1 was already allowed, the rate file was written above.
+// Pure cold MISS (no force flag left) still needs the same throttle (public only).
+if (!$isLocalRequest && !$forceRefresh && !lorcana_allow_forced_refresh($eventId, false)) {
+    http_response_code(429);
+    header('Retry-After: ' . (string)lorcana_refresh_min_interval_seconds());
+    header('X-Lorcana-Refresh-Throttled: 1');
+    echo json_encode([
+        'error' => 'Zbyt częste cold-miss — spróbuj za chwilę.',
+        '_cache' => lorcana_cache_meta('THROTTLED', null, null, null),
+    ]);
+    exit;
+}
+
 // critical = standings + active round only — required for live DLC-scale events
 // (10+ Swiss rounds of ink-pairing matches otherwise time out → empty UI).
 lorcana_raise_fetch_time_limit();
