@@ -138,16 +138,15 @@ function lorcana_slim_winning_player($winner) {
  * Compact one match while keeping every field getMatchScores / pairings / OMWP need.
  */
 function lorcana_slim_match(array $match) {
+    // Always keep players[] as bare ids (PlayHub + Melee). Object refs belong in
+    // player_match_relationships — otherwise getMatchScores compares "[object Object]".
     $players = [];
     if (isset($match['players']) && is_array($match['players'])) {
         foreach ($match['players'] as $p) {
             if (is_int($p) || (is_string($p) && ctype_digit($p))) {
                 $players[] = (int)$p;
-            } else {
-                $ref = lorcana_slim_player_ref(is_array($p) ? $p : null);
-                if ($ref !== null) {
-                    $players[] = $ref;
-                }
+            } elseif (is_array($p) && isset($p['id']) && (is_int($p['id']) || (is_string($p['id']) && ctype_digit((string)$p['id'])))) {
+                $players[] = (int)$p['id'];
             }
         }
     }
@@ -186,7 +185,11 @@ function lorcana_slim_match(array $match) {
             }
             $rels[] = ['player' => $player];
             if (count($players) < 2 && isset($player['id'])) {
-                $players[] = $player['id'];
+                $pid = is_numeric($player['id']) ? (int)$player['id'] : $player['id'];
+                // Avoid bye duplicates when players[] already has the sole competitor.
+                if (!in_array($pid, $players, true)) {
+                    $players[] = $pid;
+                }
             }
         }
     }

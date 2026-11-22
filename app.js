@@ -34,6 +34,9 @@ let currentPages = {
     live: 1
 };
 let cachedPairings = [];
+/** Prior pairings result signatures — used to soft-flash newly posted scores. */
+let previousPairingsResultSig = new Map();
+let freshPairingsKeys = new Set();
 let cachedOfficialStandings = [];
 let cachedLiveStandings = [];
 let cachedFilteredLiveList = [];
@@ -2689,6 +2692,8 @@ function resetTournamentViewForEventSwitch(nextEventId) {
     latestData = null;
     lastProcessFingerprint = null;
     lastAutoCutSyncedEventId = null;
+    previousPairingsResultSig = new Map();
+    freshPairingsKeys = new Set();
     clearStandingsCachesAndDom(nextEventId, { loading: true });
     return uiApplyGeneration;
 }
@@ -2856,7 +2861,7 @@ function startTracking(ev) {
         localStorage.setItem('lorcana_last_event_id', eventId);
     } catch (e) {}
 
-    // Shift+click → force live PlayHub refresh (server-throttled); normal path uses server cache.
+    // Shift+click → force live source refresh (server-throttled); normal path uses SWR cache.
     const forceRefresh = Boolean(ev && ev.shiftKey);
     fetchData(eventId, { forceRefresh });
     scheduleTrackingPoll(eventId);
@@ -3282,7 +3287,10 @@ async function fetchData(eventId, opts = {}) {
     const t0 = nowPerfMs();
     const forceRefresh = Boolean(opts.forceRefresh);
     const allowNotModifiedRetry = opts.allowNotModifiedRetry !== false;
-    setStatusLoadBusy(forceRefresh ? 'Odświeżanie z PlayHub…' : 'Pobieranie (API)…');
+    const sourceLabel = getActiveTournamentSource() === 'melee' ? 'Melee' : 'PlayHub';
+    setStatusLoadBusy(
+        forceRefresh ? `Odświeżanie z ${sourceLabel}…` : 'Pobieranie (API)…'
+    );
 
     if (activeFetchController) {
         try { activeFetchController.abort(); } catch (e) {}
@@ -3435,32 +3443,76 @@ async function fetchData(eventId, opts = {}) {
 // PANCERNY EKSTRAKTOR WYNIKU GIER (Z OBSŁUGĄ GAMES_WON_BY_WINNER)
 // -------------------------------------------------------------
 
+/** Resolve a players[] / relationship slot to a bare player id (Melee used to ship objects). */
+function matchSlotPlayerId(match, slotIndex) {
+    const idx = Number(slotIndex) || 0;
+    const raw = match?.players?.[idx];
+    if (raw != null && typeof raw === 'object') {
+        const oid = raw.id ?? raw.player_id ?? raw.player?.id;
+        if (oid != null && oid !== '') return oid;
+    } else if (raw != null && raw !== '') {
+        return raw;
+    }
+    const rel = match?.player_match_relationships?.[idx]?.player;
+    if (rel != null && typeof rel === 'object') {
+        if (rel.id != null && rel.id !== '') return rel.id;
+    } else if (rel != null && rel !== '') {
+        return rel;
+    }
+    if (idx === 0) {
+        return match?.player_1?.id ?? match?.team_1_id ?? null;
+    }
+    return match?.player_2?.id ?? match?.team_2_id ?? null;
+}
+
 function getMatchScores(match) {
     const winnerId = match.winning_player ?? match.winner_id ?? match.winner?.id ?? null;
     const wonWinner = match.games_won_by_winner;
     const wonLoser = match.games_won_by_loser;
+    const isDraw = !!(match.match_is_intentional_draw || match.match_is_unintentional_draw);
 
     if (wonWinner !== null && wonWinner !== undefined) {
-        const p1Id = match.players?.[0] ?? 
-                     match.player_match_relationships?.[0]?.player?.id ?? 
-                     match.player_1?.id ?? match.team_1_id;
-                     
-        const p2Id = match.players?.[1] ?? 
-                     match.player_match_relationships?.[1]?.player?.id ?? 
-                     match.player_2?.id ?? match.team_2_id;
+        const p1Id = matchSlotPlayerId(match, 0);
+        const p2Id = matchSlotPlayerId(match, 1);
 
-        if (winnerId !== null && String(p1Id) === String(winnerId)) {
+        if (winnerId !== null && p1Id != null && String(p1Id) === String(winnerId)) {
             return { score1: Number(wonWinner), score2: Number(wonLoser ?? 0), hasScore: true, winnerId };
-        } else if (winnerId !== null && String(p2Id) === String(winnerId)) {
+        }
+        if (winnerId !== null && p2Id != null && String(p2Id) === String(winnerId)) {
             return { score1: Number(wonLoser ?? 0), score2: Number(wonWinner), hasScore: true, winnerId };
+        }
+        // Draw / bye / unresolved winner side — still surface the posted game counts.
+        if (isDraw || winnerId == null) {
+            return {
+                score1: Number(wonWinner),
+                score2: Number(wonLoser ?? 0),
+                hasScore: true,
+                winnerId
+            };
         }
     }
 
     const s1 = match.team_1_game_wins ?? match.player_1_game_wins ?? match.team_1_score ?? match.score_1 ?? 0;
     const s2 = match.team_2_game_wins ?? match.player_2_game_wins ?? match.team_2_score ?? match.score_2 ?? 0;
-    const hasScore = (s1 > 0 || s2 > 0);
+    const hasScore = (Number(s1) > 0 || Number(s2) > 0);
 
     return { score1: Number(s1), score2: Number(s2), hasScore, winnerId };
+}
+
+function pairingsMatchKey(match, idx = 0) {
+    if (!match) return `idx:${idx}`;
+    if (match.id != null && match.id !== '') return `id:${match.id}`;
+    if (match.Guid != null && match.Guid !== '') return `guid:${match.Guid}`;
+    const table = match.table_number ?? match.tableNumber;
+    if (table != null && table !== '') return `t:${table}`;
+    return `idx:${idx}`;
+}
+
+function pairingsResultSignature(match) {
+    const { score1, score2, hasScore, winnerId } = getMatchScores(match || {});
+    const status = String(match?.status || match?.state || '').toUpperCase();
+    const draw = match?.match_is_intentional_draw || match?.match_is_unintentional_draw ? 1 : 0;
+    return `${status}|${winnerId ?? ''}|${score1}|${score2}|${hasScore ? 1 : 0}|${draw}`;
 }
 
 // -------------------------------------------------------------
@@ -4080,6 +4132,28 @@ function processPairings(data, opts = {}) {
         }
     }
 
+    // Soft-diff vs previous pairings so newly posted scores can flash in-place.
+    const nextSig = new Map();
+    const nextFresh = new Set();
+    for (let i = 0; i < pairingsList.length; i++) {
+        const match = pairingsList[i];
+        const key = pairingsMatchKey(match, i);
+        const sig = pairingsResultSignature(match);
+        nextSig.set(key, sig);
+        const prevSig = previousPairingsResultSig.get(key);
+        if (prevSig != null && prevSig !== sig) {
+            const { hasScore, winnerId } = getMatchScores(match);
+            const statusRaw = String(match.status || match.state || '').toUpperCase();
+            const becameComplete = statusRaw === 'COMPLETE' || statusRaw === 'FINISHED'
+                || statusRaw === 'COMPLETED' || winnerId != null || hasScore
+                || match.match_is_intentional_draw || match.match_is_unintentional_draw;
+            if (becameComplete || hasScore) nextFresh.add(key);
+        }
+    }
+    // Only keep flash memory when we already had a snapshot (avoid flashing whole table on first load).
+    freshPairingsKeys = previousPairingsResultSig.size > 0 ? nextFresh : new Set();
+    previousPairingsResultSig = nextSig;
+
     cachedPairings = pairingsList;
     cachedStandingsMap = standingsMap;
     // Invalidate OMWP history index — rebuilt lazily on inspector open.
@@ -4112,6 +4186,9 @@ function processPairings(data, opts = {}) {
 function renderPairingsTable() {
     const tbody = document.getElementById('pairingsBody');
     if (!tbody) return;
+
+    const scrollHost = tbody.closest('.table-responsive') || tbody.parentElement;
+    const preservedScrollTop = scrollHost ? scrollHost.scrollTop : 0;
 
     let list = (cachedPairings || []).map((match, origIdx) => ({ match, origIdx }));
     if (filterOnlyPoles) {
@@ -4159,6 +4236,10 @@ function renderPairingsTable() {
     pageItems.forEach(({ match, origIdx }) => {
         const globalIdx = origIdx;
         const tr = document.createElement('tr');
+        const matchKey = pairingsMatchKey(match, globalIdx);
+        if (freshPairingsKeys.has(matchKey)) {
+            tr.classList.add('pairings-row-fresh');
+        }
         const tableNum = match.table_number || match.tableNumber || (globalIdx + 1);
         
         const raw1 = getMatchParticipant(match, 1);
@@ -4233,8 +4314,11 @@ function renderPairingsTable() {
         frag.appendChild(tr);
     });
 
-    tbody.innerHTML = '';
-    tbody.appendChild(frag);
+    // In-place patch: swap rows without blanking the table first (avoids empty flicker).
+    tbody.replaceChildren(frag);
+    if (scrollHost) {
+        scrollHost.scrollTop = preservedScrollTop;
+    }
 
     renderPagination('pairingsPagination', totalItems, currentPages.pairings, 'changePairingsPage');
 }

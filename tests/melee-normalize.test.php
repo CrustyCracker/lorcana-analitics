@@ -68,7 +68,10 @@ assert_true((int)$match['winning_player'] === 1, 'winner from ResultString');
 assert_true((int)$match['games_won_by_winner'] === 2, 'gw');
 assert_true((int)$match['games_won_by_loser'] === 1, 'gl');
 assert_true(count($match['players']) === 2, 'two players');
+assert_true((int)$match['players'][0] === 1 && (int)$match['players'][1] === 2, 'players are bare ids');
+assert_true((int)$match['team_1_game_wins'] === 2 && (int)$match['team_2_game_wins'] === 1, 'slot game wins');
 assert_true($match['status'] === 'COMPLETE', 'complete status');
+assert_true(is_array($match['player_match_relationships'][0]['player'] ?? null), 'rels keep name refs');
 
 $draw = melee_normalize_match_row([
     'Guid' => 'd1',
@@ -81,6 +84,38 @@ $draw = melee_normalize_match_row([
 ]);
 assert_true($draw['match_is_intentional_draw'] === true, 'draw flag');
 assert_true($draw['winning_player'] === null, 'draw no winner');
+
+$bye = melee_normalize_match_row([
+    'Guid' => 'b1',
+    'HasResult' => true,
+    'ResultString' => 'Milqm was assigned a bye',
+    'ByeReason' => 0,
+    'Competitors' => [
+        ['Team' => ['Players' => [['ID' => 9, 'Username' => 'Milqm']]], 'GameWins' => null],
+    ],
+]);
+assert_true($bye['match_is_bye'] === true, 'bye from ByeReason=0');
+assert_true((int)$bye['winning_player'] === 9, 'bye winner');
+assert_true((int)$bye['games_won_by_winner'] === 2, 'bye default score');
+assert_true((int)$bye['players'][0] === 9, 'bye player id');
+
+// Slim must keep players[] as ids even if a legacy object slipped in.
+require_once dirname(__DIR__) . '/lib/playhub_slim.php';
+$slimmed = lorcana_slim_match([
+    'status' => 'COMPLETE',
+    'games_won_by_winner' => 2,
+    'games_won_by_loser' => 1,
+    'winning_player' => 1,
+    'players' => [
+        ['id' => 1, 'best_identifier' => 'Zabson'],
+        ['id' => 2, 'best_identifier' => 'Czeresnia'],
+    ],
+    'player_match_relationships' => [
+        ['player' => ['id' => 1, 'best_identifier' => 'Zabson']],
+        ['player' => ['id' => 2, 'best_identifier' => 'Czeresnia']],
+    ],
+]);
+assert_true((int)$slimmed['players'][0] === 1 && (int)$slimmed['players'][1] === 2, 'slim coerces player objects to ids');
 
 $slot = lorcana_normalize_tournament_slot([
     'id' => 't_melee',

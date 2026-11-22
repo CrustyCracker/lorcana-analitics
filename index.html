@@ -374,6 +374,16 @@
         .badge-complete { background: #27ae60; color: #fff; }
         .badge-bye { background: #7f8c8d; color: #fff; }
         .score-box { font-weight: bold; font-size: 15px; letter-spacing: 2px; }
+        tr.pairings-row-fresh {
+            animation: pairings-fresh-flash 1.4s ease-out;
+        }
+        tr.pairings-row-fresh .score-box {
+            color: var(--gold-bright, #e8b84a);
+        }
+        @keyframes pairings-fresh-flash {
+            0% { background: rgba(232, 184, 74, 0.28); }
+            100% { background: transparent; }
+        }
         
         #status {
             font-size: 12px;
@@ -2383,7 +2393,7 @@
         </div>
 
         <div class="simple-toolbar">
-            <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache serwera. Shift+klik: wymuś świeże dane z PlayHub (limitowane).">Odśwież LIVE</button>
+            <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache SWR (wyniki in-place). Shift+klik: wymuś świeże dane z PlayHub/Melee (limitowane).">Odśwież LIVE</button>
             <div id="status" data-control="status" aria-live="polite" aria-busy="false" style="flex:1;min-width:180px;"><span class="load-status-text">Gotowy do pobierania...</span></div>
         </div>
 
@@ -2917,6 +2927,6 @@
 
 <script src="tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261120melee1"></script>
+<script src="app.js?v=20261122melee-live1"></script>
 </body>
 </html>

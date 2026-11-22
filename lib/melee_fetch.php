@@ -346,9 +346,10 @@ function melee_parse_result_string($resultString) {
  */
 function melee_normalize_match_row(array $row) {
     $competitors = is_array($row['Competitors'] ?? null) ? $row['Competitors'] : [];
-    $players = [];
+    $playerIds = [];
     $rels = [];
     $nameToId = [];
+    $slotGameWins = [];
 
     foreach ($competitors as $comp) {
         if (!is_array($comp)) {
@@ -359,13 +360,23 @@ function melee_normalize_match_row(array $row) {
             continue;
         }
         $ref = ['id' => $p['id'], 'best_identifier' => $p['name']];
-        $players[] = $ref;
+        // PlayHub-slim shape: players[] are bare ids; names live on relationships.
+        $playerIds[] = $p['id'];
         $rels[] = ['player' => $ref];
         $nameToId[strtolower($p['name'])] = $p['id'];
+        $slotGameWins[] = array_key_exists('GameWins', $comp) && $comp['GameWins'] !== null
+            ? (int)$comp['GameWins']
+            : null;
     }
 
-    $isBye = !empty($row['ByeReason']) || !empty($row['ByeReasonDescription']) || count($players) < 2;
-    $parsed = melee_parse_result_string($row['ResultString'] ?? '');
+    $resultString = trim((string)($row['ResultString'] ?? ''));
+    // Melee uses ByeReason=0 for assigned byes (!empty(0) is false in PHP).
+    $byeReason = array_key_exists('ByeReason', $row) ? $row['ByeReason'] : null;
+    $isBye = ($byeReason !== null && $byeReason !== '')
+        || !empty($row['ByeReasonDescription'])
+        || stripos($resultString, 'bye') !== false
+        || count($playerIds) < 2;
+    $parsed = melee_parse_result_string($resultString);
     $hasResult = !empty($row['HasResult']) || ($parsed['winnerName'] !== null) || $parsed['isDraw'] || $isBye;
 
     $winningPlayer = null;
@@ -396,32 +407,63 @@ function melee_normalize_match_row(array $row) {
         }
     }
 
+    // Prefer explicit IsWinner flags when ResultString name did not resolve.
+    if ($winningPlayer === null && $hasResult && !$parsed['isDraw'] && !$isBye) {
+        foreach ($competitors as $comp) {
+            if (!empty($comp['IsWinner'])) {
+                $p = melee_team_primary_player($comp['Team'] ?? null);
+                if ($p) {
+                    $winningPlayer = $p['id'];
+                    break;
+                }
+            }
+        }
+    }
+
     // Infer winner from GameWins when ResultString is missing but HasResult.
     if ($winningPlayer === null && $hasResult && !$parsed['isDraw'] && !$isBye && count($competitors) >= 2) {
-        $g0 = (int)($competitors[0]['GameWins'] ?? -1);
-        $g1 = (int)($competitors[1]['GameWins'] ?? -1);
-        if ($g0 > $g1) {
+        $g0 = array_key_exists('GameWins', $competitors[0]) && $competitors[0]['GameWins'] !== null
+            ? (int)$competitors[0]['GameWins'] : -1;
+        $g1 = array_key_exists('GameWins', $competitors[1]) && $competitors[1]['GameWins'] !== null
+            ? (int)$competitors[1]['GameWins'] : -1;
+        if ($g0 > $g1 && $g0 >= 0) {
             $p = melee_team_primary_player($competitors[0]['Team'] ?? null);
             $winningPlayer = $p['id'] ?? null;
             if ($parsed['gw'] === null) {
                 $parsed['gw'] = $g0;
-                $parsed['gl'] = $g1;
+                $parsed['gl'] = max(0, $g1);
             }
-        } elseif ($g1 > $g0) {
+        } elseif ($g1 > $g0 && $g1 >= 0) {
             $p = melee_team_primary_player($competitors[1]['Team'] ?? null);
             $winningPlayer = $p['id'] ?? null;
             if ($parsed['gw'] === null) {
                 $parsed['gw'] = $g1;
-                $parsed['gl'] = $g0;
+                $parsed['gl'] = max(0, $g0);
             }
         } elseif ($g0 === $g1 && $g0 >= 0) {
             $parsed['isDraw'] = true;
         }
     }
 
+    // Fill missing game scores from competitor GameWins once winner is known.
+    if ($parsed['gw'] === null && $winningPlayer !== null && count($slotGameWins) >= 2
+        && $slotGameWins[0] !== null && $slotGameWins[1] !== null) {
+        if ((int)$playerIds[0] === (int)$winningPlayer) {
+            $parsed['gw'] = $slotGameWins[0];
+            $parsed['gl'] = $slotGameWins[1];
+        } elseif ((int)$playerIds[1] === (int)$winningPlayer) {
+            $parsed['gw'] = $slotGameWins[1];
+            $parsed['gl'] = $slotGameWins[0];
+        }
+    }
+
     $status = $hasResult ? 'COMPLETE' : 'IN_PROGRESS';
-    if ($isBye && $hasResult && $winningPlayer === null && count($players) === 1) {
-        $winningPlayer = $players[0]['id'];
+    if ($isBye && $hasResult && $winningPlayer === null && count($playerIds) === 1) {
+        $winningPlayer = $playerIds[0];
+    }
+    if ($isBye && $parsed['gw'] === null) {
+        $parsed['gw'] = 2;
+        $parsed['gl'] = 0;
     }
 
     $out = [
@@ -434,9 +476,17 @@ function melee_normalize_match_row(array $row) {
         'games_won_by_winner' => $parsed['gw'],
         'games_won_by_loser' => $parsed['gl'],
         'winning_player' => $winningPlayer,
-        'players' => $players,
+        'players' => $playerIds,
         'player_match_relationships' => $rels,
     ];
+    if (count($slotGameWins) >= 1 && $slotGameWins[0] !== null) {
+        $out['team_1_game_wins'] = $slotGameWins[0];
+        $out['player_1_game_wins'] = $slotGameWins[0];
+    }
+    if (count($slotGameWins) >= 2 && $slotGameWins[1] !== null) {
+        $out['team_2_game_wins'] = $slotGameWins[1];
+        $out['player_2_game_wins'] = $slotGameWins[1];
+    }
     if ($isBye) {
         $out['is_bye'] = true;
         $out['round_type'] = 'BYE';
