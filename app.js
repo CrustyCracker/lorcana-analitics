@@ -2861,8 +2861,11 @@ function startTracking(ev) {
         localStorage.setItem('lorcana_last_event_id', eventId);
     } catch (e) {}
 
-    // Shift+click → force live source refresh (server-throttled); normal path uses SWR cache.
-    const forceRefresh = Boolean(ev && ev.shiftKey);
+    // Explicit user click / Shift → force live source refresh (server-throttled ~8s).
+    // Auto-poll and programmatic startTracking() stay on SWR so Melee HTML is re-probed
+    // on Aktualizuj (new round buttons / activeRound) without waiting for STALE TTL.
+    const userClick = Boolean(ev && (ev.type === 'click' || ev.type === 'pointerup' || ev.type === 'pointerdown'));
+    const forceRefresh = Boolean(ev && (ev.shiftKey || userClick));
     fetchData(eventId, { forceRefresh });
     scheduleTrackingPoll(eventId);
 }

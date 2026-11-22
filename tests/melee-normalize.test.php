@@ -20,6 +20,23 @@ assert_true(melee_parse_tournament_id('https://www.melee.gg/Tournament/View/4967
 assert_true(lorcana_normalize_data_source('Melee.gg') === 'melee', 'source melee');
 assert_true(lorcana_normalize_data_source('playhub') === 'playhub', 'source playhub');
 
+// Status chip must win over prize prose ("after the tournament has ended").
+$liveHtml = '<i class="fa fa-info-circle mr-1"></i>In Progress |'
+    . '<p>The organizer pays prizes after the tournament has ended.</p>';
+assert_true(melee_parse_display_status($liveHtml) === 'in_progress', 'live chip over ended prose');
+$endedHtml = '<i class="fa fa-info-circle mr-1"></i>Ended |'
+    . '<p>The organizer pays prizes after the tournament has ended.</p>';
+assert_true(melee_parse_display_status($endedHtml) === 'completed', 'ended chip');
+
+$roundHtml = '<div id="pairings-round-selector-container" class="x">'
+    . '<div class="btn-group">'
+    . '<button class="btn btn-gray round-selector" data-id="10" data-name="Round 1" data-is-started="True" data-is-completed="True">'
+    . '<button class="btn btn-primary round-selector" data-id="11" data-name="Round 2" data-is-started="False">'
+    . '</div></div>';
+$parsedRounds = melee_parse_round_buttons($roundHtml, 'pairings-round-selector-container');
+assert_true(count($parsedRounds) === 2, 'nested btn-group still finds rounds');
+assert_true(!empty($parsedRounds[1]['current']) && !empty($parsedRounds[1]['started']), 'current btn counts as started');
+
 $standing = melee_normalize_standing_row([
     'Team' => [
         'Players' => [[

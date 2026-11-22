@@ -2393,7 +2393,7 @@
         </div>
 
         <div class="simple-toolbar">
-            <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: szybki cache SWR (wyniki in-place). Shift+klik: wymuś świeże dane z PlayHub/Melee (limitowane).">Odśwież LIVE</button>
+            <button type="button" onclick="startTracking(event)" class="btn-load" data-control="load" title="Klik: wymuś odświeżenie z PlayHub/Melee (limit ~8s) — łapie nową rundę. Poll co ~30s zostaje na SWR.">Odśwież LIVE</button>
             <div id="status" data-control="status" aria-live="polite" aria-busy="false" style="flex:1;min-width:180px;"><span class="load-status-text">Gotowy do pobierania...</span></div>
         </div>
 
@@ -2917,7 +2917,7 @@
         <span class="nav-icon">🏆</span>
         <span>Drabinka</span>
     </button>
-    <button type="button" class="mobile-nav-btn nav-refresh" onclick="startTracking()">
+    <button type="button" class="mobile-nav-btn nav-refresh" onclick="startTracking(event)">
         <span class="nav-icon">🔄</span>
         <span>Odśwież</span>
     </button>
@@ -2927,6 +2927,6 @@
 
 <script src="tie-sim-core.js?v=20261116tiegoal1"></script>
 <script src="prize-ladders.js?v=20261116format1"></script>
-<script src="app.js?v=20261122melee-live1"></script>
+<script src="app.js?v=20261122melee-round2"></script>
 </body>
 </html>

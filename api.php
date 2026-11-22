@@ -420,23 +420,29 @@ function lorcana_api_revalidate_async($eventId, $authToken, $allowLocalSslFallba
     $eventId = (int)$eventId;
     $script = LORCANA_CACHE_ROOT . DIRECTORY_SEPARATOR . 'refresh_cache.php';
     $php = defined('PHP_BINARY') && PHP_BINARY ? PHP_BINARY : 'php';
+    // Melee must re-parse Tournament/View HTML for new round buttons — force the
+    // background job so a wrongly-long TTL (legacy completed flag) cannot skip it.
+    $forceMelee = function_exists('lorcana_source_for_event_id')
+        && lorcana_source_for_event_id($eventId) === 'melee';
+    $forceArg = $forceMelee ? ' --force' : '';
 
     // Detached CLI is the only reliable non-block on Apache/mod_php (XAMPP).
     if (is_file($script) && !empty($php)) {
         if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
-            $cmd = 'start /B "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --event=' . $eventId;
+            $cmd = 'start /B "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script)
+                . ' --event=' . $eventId . $forceArg;
             @pclose(@popen($cmd, 'r'));
             return 'spawn_win';
         }
         $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --event=' . $eventId
-            . ' > /dev/null 2>&1 &';
+            . $forceArg . ' > /dev/null 2>&1 &';
         @exec($cmd);
         return 'spawn_unix';
     }
 
     lorcana_raise_fetch_time_limit();
     lorcana_refresh_event_cache($eventId, [
-        'force' => false,
+        'force' => $forceMelee,
         'blocking' => false,
         'allowLocalSslFallback' => $allowLocalSslFallback,
         'authToken' => $authToken,

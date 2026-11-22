@@ -137,24 +137,71 @@ function melee_datatables_body(array $columns, $roundId = null, $start = 0, $len
 }
 
 /**
- * @return list<array{id:int,number:int,name:string,started:bool,completed:bool}>
+ * Inner HTML of a Melee round-selector container (depth-aware — nested btn-group safe).
+ */
+function melee_extract_container_inner($html, $containerId) {
+    if (!is_string($html) || $html === '' || $containerId === '') {
+        return '';
+    }
+    $needle = 'id="' . $containerId . '"';
+    $pos = stripos($html, $needle);
+    if ($pos === false) {
+        $needle = "id='" . $containerId . "'";
+        $pos = stripos($html, $needle);
+    }
+    if ($pos === false) {
+        return '';
+    }
+    // Walk back to the opening '<' of this tag so depth counting starts correctly.
+    $tagStart = strrpos(substr($html, 0, $pos + 1), '<');
+    if ($tagStart === false) {
+        $tagStart = $pos;
+    }
+    $gt = strpos($html, '>', $pos);
+    if ($gt === false) {
+        return '';
+    }
+    $i = $gt + 1;
+    $depth = 1;
+    $len = strlen($html);
+    while ($i < $len && $depth > 0) {
+        $nextOpen = stripos($html, '<div', $i);
+        $nextClose = stripos($html, '</div>', $i);
+        if ($nextClose === false) {
+            break;
+        }
+        if ($nextOpen !== false && $nextOpen < $nextClose) {
+            $depth++;
+            $i = $nextOpen + 4;
+            continue;
+        }
+        $depth--;
+        if ($depth === 0) {
+            return substr($html, $gt + 1, $nextClose - ($gt + 1));
+        }
+        $i = $nextClose + 6;
+    }
+    // Fallback: bounded window (still better than empty).
+    return substr($html, $gt + 1, 4000);
+}
+
+/**
+ * @return list<array{id:int,number:int,name:string,started:bool,completed:bool,current:bool}>
  */
 function melee_parse_round_buttons($html, $containerId) {
     $rounds = [];
-    if (!is_string($html) || $html === '') {
-        return $rounds;
-    }
-    $pattern = '/id="' . preg_quote($containerId, '/') . '"[^>]*>([\s\S]*?)<\/div>/i';
-    if (!preg_match($pattern, $html, $block)) {
+    $slice = melee_extract_container_inner($html, $containerId);
+    if ($slice === '') {
         return $rounds;
     }
     if (!preg_match_all(
         '/<button[^>]*class="[^"]*round-selector[^"]*"[^>]*>/i',
-        $block[1],
+        $slice,
         $btns
     )) {
         return $rounds;
     }
+    $byId = [];
     foreach ($btns[0] as $tag) {
         $id = 0;
         $name = '';
@@ -167,11 +214,16 @@ function melee_parse_round_buttons($html, $containerId) {
             $name = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
         }
         if (preg_match('/data-is-started="([^"]*)"/i', $tag, $m)) {
-            $started = strcasecmp($m[1], 'True') === 0;
+            $started = strcasecmp($m[1], 'True') === 0
+                || $m[1] === '1'
+                || strcasecmp($m[1], 'yes') === 0;
         }
         if (preg_match('/data-is-completed="([^"]*)"/i', $tag, $m)) {
-            $completed = strcasecmp($m[1], 'True') === 0;
+            $completed = strcasecmp($m[1], 'True') === 0
+                || $m[1] === '1'
+                || strcasecmp($m[1], 'yes') === 0;
         }
+        $current = (bool)preg_match('/\b(active|btn-primary|btn-success|selected)\b/i', $tag);
         if ($id <= 0) {
             continue;
         }
@@ -179,16 +231,24 @@ function melee_parse_round_buttons($html, $containerId) {
         if (preg_match('/Round\s+(\d+)/i', $name, $m)) {
             $number = (int)$m[1];
         } else {
-            $number = count($rounds) + 1;
+            $number = count($byId) + 1;
         }
-        $rounds[] = [
+        if (isset($byId[$id])) {
+            $byId[$id]['started'] = $byId[$id]['started'] || $started || $completed || $current;
+            $byId[$id]['completed'] = $byId[$id]['completed'] || $completed;
+            $byId[$id]['current'] = $byId[$id]['current'] || $current;
+            continue;
+        }
+        $byId[$id] = [
             'id' => $id,
             'number' => $number,
             'name' => $name !== '' ? $name : ('Round ' . $number),
-            'started' => $started || $completed,
+            'started' => $started || $completed || $current,
             'completed' => $completed,
+            'current' => $current,
         ];
     }
+    $rounds = array_values($byId);
     usort($rounds, static function ($a, $b) {
         return $a['number'] <=> $b['number'];
     });
@@ -216,11 +276,32 @@ function melee_parse_event_name($html) {
 }
 
 function melee_parse_display_status($html) {
-    if (preg_match('/\bEnded\b/i', $html)) {
-        return 'completed';
+    if (!is_string($html) || $html === '') {
+        return 'unknown';
     }
+    // Prefer the tournament status chip next to fa-info-circle ("In Progress |" / "Ended |").
+    // Do NOT scan bare "ended" — prize copy often says "after the tournament has ended",
+    // which previously forced isCompleted + 600s TTL and blocked live round advances.
+    if (preg_match('/fa-info-circle[^>]*>\s*([^|<]{0,40})\s*\|/i', $html, $m)) {
+        $chip = strtolower(trim(html_entity_decode(strip_tags($m[1]), ENT_QUOTES | ENT_HTML5, 'UTF-8')));
+        if ($chip !== '') {
+            if (strpos($chip, 'progress') !== false) {
+                return 'in_progress';
+            }
+            if (strpos($chip, 'ended') !== false || strpos($chip, 'complete') !== false || strpos($chip, 'finished') !== false) {
+                return 'completed';
+            }
+            if (strpos($chip, 'registration') !== false || strpos($chip, 'upcoming') !== false) {
+                return 'registration';
+            }
+        }
+    }
+    // Explicit chip-ish "Ended |" before prose; In Progress wins over stray "ended".
     if (preg_match('/\bIn\s*Progress\b/i', $html)) {
         return 'in_progress';
+    }
+    if (preg_match('/\bEnded\s*\|/i', $html) || preg_match('/fa[^>]*>\s*Ended\b/i', $html)) {
+        return 'completed';
     }
     if (preg_match('/\bRegistration\b/i', $html)) {
         return 'registration';
@@ -598,11 +679,40 @@ function melee_build_event_payload($tournamentId, $options = []) {
 
     $activeRoundNumber = 0;
     $pairingsRoundId = null;
+    // Prefer explicitly current button, else highest started/completed pairings round.
     foreach ($pairRounds as $r) {
-        if (!empty($r['started'])) {
-            if ($r['number'] >= $activeRoundNumber) {
-                $activeRoundNumber = $r['number'];
-                $pairingsRoundId = $r['id'];
+        if (!empty($r['current'])) {
+            $activeRoundNumber = (int)$r['number'];
+            $pairingsRoundId = (int)$r['id'];
+        }
+    }
+    if ($pairingsRoundId === null) {
+        foreach ($pairRounds as $r) {
+            if (!empty($r['started'])) {
+                if ($r['number'] >= $activeRoundNumber) {
+                    $activeRoundNumber = $r['number'];
+                    $pairingsRoundId = $r['id'];
+                }
+            }
+        }
+    }
+    // New round just paired: button may exist before data-is-started flips — advance past
+    // fully completed standings rounds when a higher pairings round id is present.
+    if ($pairRounds) {
+        $maxPair = $pairRounds[count($pairRounds) - 1];
+        $maxPairNum = (int)$maxPair['number'];
+        if ($maxPairNum > $activeRoundNumber && $standingsRoundNumber > 0 && $maxPairNum >= $standingsRoundNumber) {
+            // If standings already completed previous round and a newer pairings button exists, use it.
+            $prevCompleted = false;
+            foreach ($standRounds as $sr) {
+                if ((int)$sr['number'] === $maxPairNum - 1 && !empty($sr['completed'])) {
+                    $prevCompleted = true;
+                    break;
+                }
+            }
+            if ($prevCompleted || $maxPairNum > $standingsRoundNumber) {
+                $activeRoundNumber = $maxPairNum;
+                $pairingsRoundId = (int)$maxPair['id'];
             }
         }
     }
@@ -626,9 +736,16 @@ function melee_build_event_payload($tournamentId, $options = []) {
 
     $toFetch = [];
     foreach ($pairRounds as $r) {
-        if (!empty($r['started']) || !empty($r['completed'])) {
-            $toFetch[$r['number']] = $r['id'];
+        $rNum = (int)$r['number'];
+        // Include activeRound even when Melee has not flipped data-is-started yet.
+        if (!empty($r['started']) || !empty($r['completed']) || !empty($r['current'])
+            || ($activeRoundNumber > 0 && $rNum === $activeRoundNumber)
+            || ($pairingsRoundId && (int)$r['id'] === (int)$pairingsRoundId)) {
+            $toFetch[$rNum] = $r['id'];
         }
+    }
+    if ($pairingsRoundId && $activeRoundNumber > 0 && !isset($toFetch[$activeRoundNumber])) {
+        $toFetch[$activeRoundNumber] = $pairingsRoundId;
     }
     if ($roundsMode === 'critical' && $activeRoundNumber > 0 && isset($toFetch[$activeRoundNumber])) {
         $crit = [$activeRoundNumber => $toFetch[$activeRoundNumber]];
