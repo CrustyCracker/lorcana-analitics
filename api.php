@@ -413,42 +413,67 @@ function lorcana_api_finish_response($body, $etag = null, $status = null, $age =
 }
 
 /**
- * Kick a non-blocking refresh for one event (CLI spawn when possible).
- * Falls back to in-process refresh after the HTTP response is finished.
+ * True when shell exec helpers are disabled (common on shared hosting).
+ */
+function lorcana_api_shell_exec_disabled() {
+    $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
+    $disabled = array_filter($disabled, static function ($fn) {
+        return $fn !== '';
+    });
+    return in_array('exec', $disabled, true)
+        || in_array('popen', $disabled, true)
+        || in_array('proc_open', $disabled, true);
+}
+
+/**
+ * Kick a background refresh for one event AFTER the HTTP response was finished
+ * (caller uses fastcgi_finish_request / flush).
+ *
+ * Shared hosting (php-fpm): CLI spawn via exec(PHP_BINARY) is a silent no-op
+ * (PHP_BINARY is often php-fpm/cgi, or exec is disabled) — that left Melee STALE
+ * caches aging for 30+ minutes. Prefer in-process refresh after the response.
+ * Windows XAMPP keeps detached `start /B` spawn.
  */
 function lorcana_api_revalidate_async($eventId, $authToken, $allowLocalSslFallback) {
     $eventId = (int)$eventId;
-    $script = LORCANA_CACHE_ROOT . DIRECTORY_SEPARATOR . 'refresh_cache.php';
-    $php = defined('PHP_BINARY') && PHP_BINARY ? PHP_BINARY : 'php';
-    // Melee must re-parse Tournament/View HTML for new round buttons — force the
-    // background job so a wrongly-long TTL (legacy completed flag) cannot skip it.
+    // Melee must re-parse Tournament/View HTML for new round buttons — force so a
+    // wrongly-long TTL / fresh skip cannot block round discovery.
     $forceMelee = function_exists('lorcana_source_for_event_id')
         && lorcana_source_for_event_id($eventId) === 'melee';
-    $forceArg = $forceMelee ? ' --force' : '';
 
-    // Detached CLI is the only reliable non-block on Apache/mod_php (XAMPP).
-    if (is_file($script) && !empty($php)) {
-        if (strtoupper(substr(PHP_OS, 0, 3)) === 'WIN') {
+    $isWin = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
+    if ($isWin && !lorcana_api_shell_exec_disabled()) {
+        $script = LORCANA_CACHE_ROOT . DIRECTORY_SEPARATOR . 'refresh_cache.php';
+        $php = defined('PHP_BINARY') && PHP_BINARY ? PHP_BINARY : 'php';
+        if (is_file($script) && $php !== '') {
+            $forceArg = $forceMelee ? ' --force' : '';
             $cmd = 'start /B "" ' . escapeshellarg($php) . ' ' . escapeshellarg($script)
                 . ' --event=' . $eventId . $forceArg;
             @pclose(@popen($cmd, 'r'));
             return 'spawn_win';
         }
-        $cmd = escapeshellarg($php) . ' ' . escapeshellarg($script) . ' --event=' . $eventId
-            . $forceArg . ' > /dev/null 2>&1 &';
-        @exec($cmd);
-        return 'spawn_unix';
     }
 
+    // In-process (post-response). Safe: connection already closed by finish_* helpers.
     lorcana_raise_fetch_time_limit();
-    lorcana_refresh_event_cache($eventId, [
+    if (function_exists('ini_set')) {
+        @ini_set('max_execution_time', '180');
+    }
+    $result = lorcana_refresh_event_cache($eventId, [
         'force' => $forceMelee,
         'blocking' => false,
         'allowLocalSslFallback' => $allowLocalSslFallback,
         'authToken' => $authToken,
         'roundsMode' => 'critical',
     ]);
-    return 'inline';
+    if (!empty($result['ok']) && empty($result['skipped']) && !empty($result['payload'])
+        && function_exists('lorcana_ensure_cache_sidecars')) {
+        @lorcana_ensure_cache_sidecars($eventId, null, $result['payload']);
+    }
+    if (!empty($result['skipped'])) {
+        return 'inline_skip:' . (string)($result['reason'] ?? 'unknown');
+    }
+    return !empty($result['ok']) ? 'inline' : 'inline_fail';
 }
 
 $apiTimingStart = microtime(true);
