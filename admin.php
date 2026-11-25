@@ -251,7 +251,7 @@ if (admin_is_logged_in()) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Admin — Analityka Lorcany</title>
+    <title>Admin — Analityka karciana by Crusty</title>
     <style>
         :root {
             --bg: #0b1220;
@@ -364,7 +364,7 @@ if (admin_is_logged_in()) {
     <div class="topnav">
         <div>
             <h1>Panel admina</h1>
-            <p class="sub">Analityka Lorcany — multi-turniej (DLC MAIN1 / MAIN2 / CCQ)</p>
+            <p class="sub">Analityka karciana by Crusty — multi-turniej (DLC MAIN1 / MAIN2 / CCQ / Melee)</p>
         </div>
         <div>
             <a href="index.html">← Strona publiczna</a>

@@ -329,7 +329,7 @@ describe('calculateSoftCutIdInflation', () => {
         assert.match(testsHtml, /soft-euc-play-hint__warn--alert/);
         assert.match(rootHtml, /soft-euc-play-hint__warn--alert/);
         assert.match(testsHtml, /prize-ladders\.js/);
-        assert.match(testsHtml, /Analityka Lorcany/);
+        assert.match(testsHtml, /Analityka karciana/);
         assert.doesNotMatch(testsHtml, /brand-mark">TESTS/);
     });
 });

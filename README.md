@@ -1,6 +1,6 @@
-# 🏆 Lorcana Live Predictor & Standings Hub
+# Analityka karciana by Crusty
 
-Zaawansowany system analizy turniejowej na żywo oraz silnik decyzyjny dla graczy turniejowych **Disney Lorcana TCG** (zintegrowany z platformą Ravensburger Play / Melee). 
+Zaawansowany system analizy turniejowej na żywo oraz silnik decyzyjny dla graczy turniejowych **Disney Lorcana TCG** / Cyberpunk (zintegrowany z platformą Ravensburger Play / Melee). 
 
 Aplikacja nie tylko prezentuje oficjalną i dynamiczną tabelę wyników live, ale przede wszystkim analizuje układ tabeli, **oblicza tiebreakery przeciwników (OMWP, GWP)** oraz wykorzystuje **symulację Monte Carlo**, aby wyznaczyć optymalną strategię gracza **nawet na 2 do 3 rund do przodu**.
 
