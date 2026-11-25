@@ -37,6 +37,31 @@ $parsedRounds = melee_parse_round_buttons($roundHtml, 'pairings-round-selector-c
 assert_true(count($parsedRounds) === 2, 'nested btn-group still finds rounds');
 assert_true(!empty($parsedRounds[1]['current']) && !empty($parsedRounds[1]['started']), 'current btn counts as started');
 
+// Live Swiss: Melee pre-creates Round 1..Cap; only data-is-started rounds are active.
+// Regression: must NOT jump activeRound to Cap (UI showed 4/4 with max 3 pts).
+$swissHtml = ''
+    . '<i class="fa fa-info-circle mr-1"></i>In Progress |'
+    . '<div>Rounds Cap: 4</div>'
+    . '<div id="pairings-round-selector-container">'
+    . '<button class="btn btn-gray round-selector" data-id="1" data-name="Round 1" data-is-started="True">'
+    . '<button class="btn btn-gray round-selector" data-id="2" data-name="Round 2" data-is-started="True">'
+    . '<button class="btn btn-gray round-selector" data-id="3" data-name="Round 3" data-is-started="False">'
+    . '<button class="btn btn-gray round-selector" data-id="4" data-name="Round 4" data-is-started="False">'
+    . '</div>'
+    . '<div id="standings-round-selector-container">'
+    . '<button class="btn btn-gray round-selector" data-id="1" data-name="Round 1" data-is-completed="True">'
+    . '<button class="btn btn-gray round-selector" data-id="2" data-name="Round 2" data-is-completed="False">'
+    . '<button class="btn btn-gray round-selector" data-id="3" data-name="Round 3" data-is-completed="False">'
+    . '<button class="btn btn-gray round-selector" data-id="4" data-name="Round 4" data-is-completed="False">'
+    . '</div>';
+$pairR = melee_parse_round_buttons($swissHtml, 'pairings-round-selector-container');
+$standR = melee_parse_round_buttons($swissHtml, 'standings-round-selector-container');
+$ptr = melee_resolve_round_pointers($pairR, $standR, 4);
+assert_true((int)$ptr['standingsRound'] === 1, 'standingsRound = last completed only');
+assert_true((int)$ptr['activeRound'] === 2, 'activeRound = highest started pairings (not Cap 4)');
+assert_true((int)$ptr['totalRounds'] === 4, 'totalRounds = Cap');
+assert_true((int)$ptr['pairingsRoundId'] === 2, 'pairings id = round 2');
+
 $standing = melee_normalize_standing_row([
     'Team' => [
         'Players' => [[

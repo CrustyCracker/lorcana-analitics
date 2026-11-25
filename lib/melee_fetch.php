@@ -625,6 +625,90 @@ function melee_fetch_round_matches($roundId, $referer) {
 }
 
 /**
+ * Pick standingsRound / activeRound from Melee round-selector buttons.
+ * Melee pre-creates Round 1..Cap; only data-is-started pairings are live.
+ *
+ * @param list<array{id:int,number:int,started:bool,completed:bool,current?:bool}> $pairRounds
+ * @param list<array{id:int,number:int,started:bool,completed:bool,current?:bool}> $standRounds
+ * @return array{standingsRound:int,standingsRoundId:?int,activeRound:int,pairingsRoundId:?int,totalRounds:int}
+ */
+function melee_resolve_round_pointers(array $pairRounds, array $standRounds, $roundsCap = 0) {
+    $standingsRoundNumber = 0;
+    $standingsRoundId = null;
+    foreach ($standRounds as $r) {
+        if (!empty($r['completed']) && (int)$r['number'] >= $standingsRoundNumber) {
+            $standingsRoundNumber = (int)$r['number'];
+            $standingsRoundId = (int)$r['id'];
+        }
+    }
+
+    $activeRoundNumber = 0;
+    $pairingsRoundId = null;
+    foreach ($pairRounds as $r) {
+        if (!empty($r['current'])) {
+            $activeRoundNumber = (int)$r['number'];
+            $pairingsRoundId = (int)$r['id'];
+        }
+    }
+    if ($pairingsRoundId === null) {
+        foreach ($pairRounds as $r) {
+            if (!empty($r['started']) && (int)$r['number'] >= $activeRoundNumber) {
+                $activeRoundNumber = (int)$r['number'];
+                $pairingsRoundId = (int)$r['id'];
+            }
+        }
+    }
+    // Lag: standings completed N, next pairings button exists but started flag lags —
+    // advance at most one past last completed standings (never to Cap).
+    if ($standingsRoundNumber > 0) {
+        $nextNum = $standingsRoundNumber + 1;
+        $next = null;
+        foreach ($pairRounds as $r) {
+            if ((int)$r['number'] === $nextNum) {
+                $next = $r;
+                break;
+            }
+        }
+        if ($next && $activeRoundNumber < $nextNum) {
+            $activeRoundNumber = $nextNum;
+            $pairingsRoundId = (int)$next['id'];
+        }
+    }
+    if ($pairingsRoundId === null && $pairRounds) {
+        $first = $pairRounds[0];
+        $pairingsRoundId = (int)$first['id'];
+        $activeRoundNumber = (int)$first['number'];
+    }
+    if ($standingsRoundId === null && $standingsRoundNumber <= 0 && $pairingsRoundId) {
+        $standingsRoundNumber = max(0, $activeRoundNumber - 1);
+        if ($standingsRoundNumber <= 0) {
+            $standingsRoundNumber = $activeRoundNumber;
+            $standingsRoundId = (int)$pairingsRoundId;
+        } else {
+            foreach ($standRounds as $r) {
+                if ((int)$r['number'] === $standingsRoundNumber) {
+                    $standingsRoundId = (int)$r['id'];
+                    break;
+                }
+            }
+            if ($standingsRoundId === null) {
+                $standingsRoundId = (int)$pairingsRoundId;
+            }
+        }
+    }
+
+    $totalRounds = max(count($pairRounds), count($standRounds), (int)$roundsCap);
+
+    return [
+        'standingsRound' => $standingsRoundNumber,
+        'standingsRoundId' => $standingsRoundId,
+        'activeRound' => $activeRoundNumber,
+        'pairingsRoundId' => $pairingsRoundId,
+        'totalRounds' => $totalRounds,
+    ];
+}
+
+/**
  * Build aggregated event payload from Melee public endpoints.
  *
  * @return array{ok:bool,payload?:array,error?:string,httpCode?:int}
@@ -661,72 +745,16 @@ function melee_build_event_payload($tournamentId, $options = []) {
     $gameLabel = melee_parse_game_label($html);
     $isCompleted = in_array($displayStatus, ['complete', 'completed', 'finished'], true);
 
-    $standingsRoundNumber = 0;
-    $standingsRoundId = null;
-    foreach ($standRounds as $r) {
-        if (!empty($r['completed']) || !empty($r['started'])) {
-            if ($r['number'] >= $standingsRoundNumber) {
-                $standingsRoundNumber = $r['number'];
-                $standingsRoundId = $r['id'];
-            }
-        }
+    $roundsCap = 0;
+    if (preg_match('/Rounds?\s+Cap:\s*(\d+)/i', $html, $m)) {
+        $roundsCap = (int)$m[1];
     }
-    if ($standingsRoundId === null && $standRounds) {
-        $last = $standRounds[count($standRounds) - 1];
-        $standingsRoundId = $last['id'];
-        $standingsRoundNumber = $last['number'];
-    }
-
-    $activeRoundNumber = 0;
-    $pairingsRoundId = null;
-    // Prefer explicitly current button, else highest started/completed pairings round.
-    foreach ($pairRounds as $r) {
-        if (!empty($r['current'])) {
-            $activeRoundNumber = (int)$r['number'];
-            $pairingsRoundId = (int)$r['id'];
-        }
-    }
-    if ($pairingsRoundId === null) {
-        foreach ($pairRounds as $r) {
-            if (!empty($r['started'])) {
-                if ($r['number'] >= $activeRoundNumber) {
-                    $activeRoundNumber = $r['number'];
-                    $pairingsRoundId = $r['id'];
-                }
-            }
-        }
-    }
-    // New round just paired: button may exist before data-is-started flips — advance past
-    // fully completed standings rounds when a higher pairings round id is present.
-    if ($pairRounds) {
-        $maxPair = $pairRounds[count($pairRounds) - 1];
-        $maxPairNum = (int)$maxPair['number'];
-        if ($maxPairNum > $activeRoundNumber && $standingsRoundNumber > 0 && $maxPairNum >= $standingsRoundNumber) {
-            // If standings already completed previous round and a newer pairings button exists, use it.
-            $prevCompleted = false;
-            foreach ($standRounds as $sr) {
-                if ((int)$sr['number'] === $maxPairNum - 1 && !empty($sr['completed'])) {
-                    $prevCompleted = true;
-                    break;
-                }
-            }
-            if ($prevCompleted || $maxPairNum > $standingsRoundNumber) {
-                $activeRoundNumber = $maxPairNum;
-                $pairingsRoundId = (int)$maxPair['id'];
-            }
-        }
-    }
-    if ($pairingsRoundId === null && $pairRounds) {
-        $last = $pairRounds[count($pairRounds) - 1];
-        $pairingsRoundId = $last['id'];
-        $activeRoundNumber = $last['number'];
-    }
-
-    $totalRounds = max(count($pairRounds), count($standRounds));
-    // Prefer published round count from page copy ("Rounds Cap: 4") when buttons missing.
-    if ($totalRounds === 0 && preg_match('/Rounds?\s+Cap:\s*(\d+)/i', $html, $m)) {
-        $totalRounds = (int)$m[1];
-    }
+    $pointers = melee_resolve_round_pointers($pairRounds, $standRounds, $roundsCap);
+    $standingsRoundNumber = (int)$pointers['standingsRound'];
+    $standingsRoundId = $pointers['standingsRoundId'];
+    $activeRoundNumber = (int)$pointers['activeRound'];
+    $pairingsRoundId = $pointers['pairingsRoundId'];
+    $totalRounds = (int)$pointers['totalRounds'];
 
     $roundsModeOpt = $options['roundsMode'] ?? null;
     if ($roundsModeOpt !== 'critical' && $roundsModeOpt !== 'all') {
